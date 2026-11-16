@@ -1,0 +1,31 @@
+# Ruta Addonero — Zartbank — 15/11 13:39 (datos sintéticos)
+NOTE Recoge 38g 00s del correo (de Zartch)
+NOTE Saca del banco de banda: 1× Arcanite Bar
+BUY 10620 65 6897   # Thorium Ore
+BUY 6370 24 2262   # Blackmouth Oil
+BUY 3820 12 1075   # Stranglekelp
+BUY 4338 424 2062   # Mageweave Cloth
+BUY 13422 13 9165   # Stonescale Eel
+BUY 13465 90 15499   # Mountain Silversage
+BUY 13466 42 14722   # Plaguebloom
+BUY 13464 30 10654   # Golden Sansam
+BUY 8838 38 4874   # Sungrass
+BUY 3358 38 4032   # Khadgar's Whisker
+NOTE Envía por correo a Zarthrin: 65× Thorium Ore, 424× Mageweave Cloth
+NOTE Envía por correo a Zartch: 24× Blackmouth Oil, 12× Stranglekelp, 13× Stonescale Eel, 90× Mountain Silversage, 42× Plaguebloom, 20× Crystal Vial, 30× Golden Sansam, 38× Sungrass, 38× Khadgar's Whisker
+NOTE Ahora entra con Zartch, Zarthrin y haz su parte; después vuelve aquí
+NOTE Recoge del correo (de Zartch): 2× Arcanite Bar, 12× Free Action Potion, 33× Stonescale Oil, 27× Elixir of the Mongoose, 42× Major Healing Potion, 38× Superior Healing Potion, 80× Linen Cloth, 6× Felcloth, 3× Elixir of Giants
+NOTE Recoge del correo (de Zarthrin): 105× Thorium Bar, 13× Mageweave Bag, 78× Bolt of Mageweave, 60× Mithril Ore
+SELL 12360 3 338608   # Arcanite Bar
+SELL 12359 105 7307   # Thorium Bar
+SELL 5634 12 5880   # Free Action Potion
+SELL 10050 13 38592   # Mageweave Bag
+SELL 13423 33 9330   # Stonescale Oil
+SELL 13452 27 62954   # Elixir of the Mongoose
+SELL 4339 78 8738   # Bolt of Mageweave
+SELL 13446 42 39431   # Major Healing Potion
+SELL 3928 38 9880   # Superior Healing Potion
+SELL 2589 80 87   # stock: Linen Cloth
+SELL 3858 60 4436   # stock: Mithril Ore
+SELL 14256 6 16796   # cartera (stop): Felcloth
+SELL 9206 3 25991   # cartera (objetivo): Elixir of Giants

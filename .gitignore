@@ -1,0 +1,13 @@
+work/
+dist/
+__pycache__/
+*.pyc
+*.sqlite
+*.sqlite-journal
+/plan.html
+/plan.json
+/rutas/
+# SavedVariables reales: pueden llevar nombres de personajes y oro
+Addonero.lua
+!Addonero/
+tests/out.*

@@ -1,0 +1,566 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Addonero · Plan de oro</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,600;9..144,700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+/* Layout: barra de pestañas fija arriba; cada vista es una columna de paneles. Resumen primero, detalle después. */
+:root {
+  --bg: #eef1f4;
+  --panel: #ffffff;
+  --ink: #18202a;
+  --ink-2: #4b5664;
+  --ink-3: #7b8592;
+  --line: #d9dee5;
+  --accent: #b07a12;          /* oro */
+  --accent-soft: #f6ead0;
+  --good: #1f7a4d; --good-soft: #dff1e7;
+  --warn: #9a5b00; --warn-soft: #fbeccc;
+  --bad: #b3261e;  --bad-soft: #f8dedb;
+  --info: #2b5c8a; --info-soft: #dfe9f4;
+  --coin-g: #c99a1c; --coin-s: #9aa3ad; --coin-c: #b06a3b;
+  --font-display: "Fraunces", Georgia, serif;
+  --font-body: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, Menlo, Consolas, monospace;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #11161c; --panel: #1a2129; --ink: #e8edf2; --ink-2: #aab4bf; --ink-3: #7d8894; --line: #2d3742;
+    --accent: #e0aa3e; --accent-soft: #3a2f17;
+    --good: #5cc28d; --good-soft: #17352a; --warn: #e5a54a; --warn-soft: #3b2d14;
+    --bad: #f0857c; --bad-soft: #3d1f1d; --info: #8ab4e0; --info-soft: #1c2c3d;
+    --coin-g: #e0b23c; --coin-s: #b9c1ca; --coin-c: #d08a5c;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #11161c; --panel: #1a2129; --ink: #e8edf2; --ink-2: #aab4bf; --ink-3: #7d8894; --line: #2d3742;
+  --accent: #e0aa3e; --accent-soft: #3a2f17;
+  --good: #5cc28d; --good-soft: #17352a; --warn: #e5a54a; --warn-soft: #3b2d14;
+  --bad: #f0857c; --bad-soft: #3d1f1d; --info: #8ab4e0; --info-soft: #1c2c3d;
+  --coin-g: #e0b23c; --coin-s: #b9c1ca; --coin-c: #d08a5c;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; }
+body { background: var(--bg); color: var(--ink); font: 15px/1.5 var(--font-body); }
+h1, h2, h3 { font-family: var(--font-display); text-wrap: balance; margin: 0; line-height: 1.2; }
+h1 { font-size: 26px; }
+h2 { font-size: 20px; }
+h3 { font-size: 16px; font-family: var(--font-body); font-weight: 600; }
+.num, td.n { font-variant-numeric: tabular-nums; }
+a { color: var(--info); }
+button { font: inherit; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+body > header { padding: 20px 20px 0; max-width: 1200px; margin: 0 auto; display: grid; gap: 6px; }
+body > header .meta { color: var(--ink-2); font-size: 13px; }
+nav { position: sticky; top: 0; z-index: 5; background: var(--bg); border-bottom: 1px solid var(--line); }
+nav .tabs { max-width: 1200px; margin: 0 auto; padding: 0 12px; display: flex; gap: 2px; overflow-x: auto; }
+nav a { padding: 12px 12px 10px; color: var(--ink-2); text-decoration: none; white-space: nowrap; border-bottom: 3px solid transparent; font-weight: 500; }
+nav a[aria-current="page"] { color: var(--ink); border-bottom-color: var(--accent); }
+main { max-width: 1200px; margin: 0 auto; padding: 20px; display: grid; gap: 18px; }
+section.view { display: none; gap: 18px; }
+section.view.on { display: grid; }
+.panel { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 16px; display: grid; gap: 12px; min-width: 0; align-content: start; }
+.panel > header { padding: 0; display: flex; justify-content: space-between; align-items: baseline; gap: 12px; flex-wrap: wrap; max-width: none; margin: 0; }
+.lead { color: var(--ink-2); max-width: 70ch; margin: 0; }
+.grid2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 18px; }
+
+.tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 12px; }
+.tile { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px; display: grid; gap: 2px; }
+.tile .k { color: var(--ink-2); font-size: 13px; }
+.tile .v { font-size: 22px; font-weight: 600; }
+.tile.hero { border-color: var(--accent); background: linear-gradient(0deg, var(--panel), var(--panel)), var(--accent-soft); box-shadow: inset 4px 0 0 var(--accent); }
+.tile .s { color: var(--ink-3); font-size: 12px; }
+
+.money { white-space: nowrap; font-variant-numeric: tabular-nums; }
+.money i { font-style: normal; display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin: 0 3px 1px 1px; vertical-align: middle; }
+.money i.g { background: var(--coin-g); } .money i.s { background: var(--coin-s); } .money i.c { background: var(--coin-c); }
+.money.neg { color: var(--bad); }
+.money.pos { color: var(--good); }
+
+.pill { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; font-weight: 600; padding: 1px 8px; border-radius: 999px; white-space: nowrap; }
+.pill.good { background: var(--good-soft); color: var(--good); }
+.pill.warn { background: var(--warn-soft); color: var(--warn); }
+.pill.bad { background: var(--bad-soft); color: var(--bad); }
+.pill.info { background: var(--info-soft); color: var(--info); }
+.pill.mute { background: var(--bg); color: var(--ink-2); border: 1px solid var(--line); }
+.pill.gold { background: var(--accent-soft); color: var(--accent); }
+
+.warnings { display: grid; gap: 8px; }
+.warning { display: flex; gap: 10px; align-items: flex-start; padding: 10px 12px; border-radius: 8px; background: var(--warn-soft); color: var(--ink); border-left: 4px solid var(--warn); }
+.warning b { color: var(--warn); }
+
+.tablewrap { overflow-x: auto; }
+table { border-collapse: collapse; width: 100%; font-size: 14px; }
+th { text-align: left; font-weight: 600; color: var(--ink-2); font-size: 12px; text-transform: uppercase; letter-spacing: .04em; padding: 8px; border-bottom: 1px solid var(--line); white-space: nowrap; }
+th.sortable { cursor: pointer; }
+th.sortable:hover { color: var(--ink); }
+td { padding: 9px 8px; border-bottom: 1px solid var(--line); vertical-align: top; }
+td.n, th.n { text-align: right; }
+tr.click { cursor: pointer; }
+tr.click:hover td { background: var(--bg); }
+tr.detail td { background: var(--bg); padding: 14px 16px; }
+tr.off td { color: var(--ink-3); }
+.sub { color: var(--ink-3); font-size: 12px; }
+
+.opp { display: grid; grid-template-columns: 1fr auto; gap: 4px 16px; padding: 12px 0; border-bottom: 1px solid var(--line); }
+.opp:last-child { border-bottom: 0; }
+.opp .t { font-weight: 600; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.opp .w { color: var(--ink-2); font-size: 14px; grid-column: 1 / -1; }
+.opp .p { text-align: right; font-weight: 600; font-size: 17px; }
+
+ul.why { margin: 0; padding-left: 18px; display: grid; gap: 4px; max-width: 80ch; }
+.tree { font-size: 14px; display: grid; gap: 2px; }
+.tree .node { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.tree .kids { margin-left: 18px; padding-left: 10px; border-left: 2px solid var(--line); display: grid; gap: 2px; }
+
+.route-tabs { display: flex; gap: 8px; flex-wrap: wrap; }
+.seg { border: 1px solid var(--line); background: var(--panel); color: var(--ink); padding: 6px 14px; border-radius: 8px; cursor: pointer; font-weight: 500; }
+.seg[aria-pressed="true"] { border-color: var(--accent); box-shadow: inset 0 -3px 0 var(--accent); }
+.btn { border: 1px solid var(--accent); background: var(--accent); color: #fff; padding: 7px 14px; border-radius: 8px; cursor: pointer; font-weight: 600; }
+.btn.ghost { background: transparent; color: var(--accent); }
+.route { font: 13px/1.6 var(--font-mono); background: var(--bg); border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; overflow-x: auto; display: grid; }
+.route .l { display: grid; grid-template-columns: 56px 1fr; gap: 10px; white-space: pre; }
+.route .op { font-weight: 600; }
+.route .BUY .op { color: var(--info); } .route .SELL .op { color: var(--good); }
+.route .CRAFT .op { color: var(--accent); } .route .NOTE .op { color: var(--ink-3); } .route .HOLD .op { color: var(--warn); }
+.route .c { color: var(--ink-3); }
+.route .hd { color: var(--ink-3); }
+.stats { display: flex; gap: 18px; flex-wrap: wrap; color: var(--ink-2); font-size: 14px; }
+.stats b { color: var(--ink); }
+
+.bar { height: 10px; border-radius: 5px; background: var(--bg); border: 1px solid var(--line); overflow: hidden; display: flex; }
+.bar span { display: block; height: 100%; background: var(--ink-3); }
+.bar span.full { background: var(--bad); }
+.slots { display: grid; gap: 8px; }
+.slots .row { display: grid; grid-template-columns: 120px 1fr 90px; gap: 10px; align-items: center; font-size: 14px; }
+.cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 14px; }
+.card { border: 1px solid var(--line); border-radius: 10px; padding: 14px; display: grid; gap: 8px; background: var(--panel); align-content: start; }
+.card.top { border-color: var(--accent); }
+.card .big { font-size: 20px; font-weight: 600; }
+.gap { display: grid; gap: 4px; font-size: 13px; color: var(--ink-2); }
+
+.filters { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+input[type="search"], select { font: inherit; padding: 6px 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel); color: var(--ink); }
+.chart { width: 100%; height: auto; display: block; }
+.chart text { fill: var(--ink-3); font: 11px var(--font-body); }
+.chart .grid { stroke: var(--line); stroke-width: 1; }
+.chart .ln { fill: none; stroke: var(--accent); stroke-width: 2; }
+.chart .ar { fill: var(--accent); opacity: .12; }
+.chart .ref { stroke: var(--ink-3); stroke-dasharray: 4 4; }
+.chart .qb { fill: var(--info); opacity: .55; }
+.chart .dot { fill: var(--accent); stroke: var(--panel); stroke-width: 2; }
+.chart .hair { stroke: var(--ink-3); stroke-width: 1; }
+.tip { position: fixed; pointer-events: none; background: var(--ink); color: var(--bg); padding: 6px 10px; border-radius: 6px; font-size: 13px; display: none; z-index: 20; white-space: nowrap; }
+.spark { width: 90px; height: 26px; display: block; }
+.spark path { fill: none; stroke: var(--accent); stroke-width: 1.5; }
+.spark circle { fill: var(--accent); }
+.itemlist { display: grid; gap: 2px; max-height: 520px; overflow-y: auto; }
+.itemlist button { text-align: left; border: 0; background: transparent; color: var(--ink); padding: 6px 8px; border-radius: 6px; cursor: pointer; display: flex; justify-content: space-between; gap: 8px; }
+.itemlist button[aria-pressed="true"] { background: var(--accent-soft); }
+.market { display: grid; grid-template-columns: 260px 1fr; gap: 18px; }
+@media (max-width: 760px) {
+  .market { grid-template-columns: 1fr; }
+  .itemlist { max-height: 220px; }
+  .slots .row { grid-template-columns: 90px 1fr 70px; }
+}
+@media (prefers-reduced-motion: no-preference) { nav a, .seg { transition: color .15s, border-color .15s; } }
+</style>
+</head>
+<body>
+<header>
+  <h1>Addonero · Plan de oro</h1>
+  <div class="meta" id="meta"></div>
+</header>
+<nav><div class="tabs" id="tabs"></div></nav>
+<main>
+  <section class="view" id="v-resumen"></section>
+  <section class="view" id="v-ruta"></section>
+  <section class="view" id="v-recetas"></section>
+  <section class="view" id="v-transformar"></section>
+  <section class="view" id="v-aprender"></section>
+  <section class="view" id="v-ideas"></section>
+  <section class="view" id="v-cartera"></section>
+  <section class="view" id="v-inventario"></section>
+  <section class="view" id="v-mercado"></section>
+</main>
+<div class="tip" id="tip"></div>
+<script>
+const PLAN = /*__PLAN__*/null;
+
+const VIEWS = [
+  ["resumen", "Resumen"], ["ruta", "Ruta"], ["recetas", "Qué ganas y por qué"],
+  ["transformar", "Transformaciones"], ["aprender", "Qué aprender"], ["ideas", "Ideas"], ["cartera", "Cartera"], ["inventario", "Qué tienes"], ["mercado", "Mercado"],
+];
+const $ = (s, el = document) => el.querySelector(s);
+const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+const short = ck => ck ? ck.split("-")[0] : "—";
+
+function money(c, opts = {}) {
+  if (c === null || c === undefined || isNaN(c)) return '<span class="money sub">—</span>';
+  const neg = c < 0; let v = Math.round(Math.abs(c));
+  const g = Math.floor(v / 10000), s = Math.floor((v % 10000) / 100), cu = v % 100;
+  let parts = [];
+  if (g) parts.push(`${g.toLocaleString("es-ES")}<i class="g"></i>`);
+  if (g || s) parts.push(`${g ? String(s).padStart(2, "0") : s}<i class="s"></i>`);
+  if (!g) parts.push(`${s ? String(cu).padStart(2, "0") : cu}<i class="c"></i>`);
+  const cls = opts.color ? (neg ? " neg" : " pos") : (neg ? " neg" : "");
+  const sign = neg ? "−" : (opts.signed ? "+" : "");
+  return `<span class="money${cls}" title="${(c / 10000).toFixed(2)} oro">${sign}${parts.join(" ")}</span>`;
+}
+const confPill = c => `<span class="pill ${c === "alta" ? "good" : c === "media" ? "warn" : "bad"}" title="Confianza en el precio y en las ventas">confianza ${c}</span>`;
+const pct = x => x === null || x === undefined ? "—" : `${(x * 100).toFixed(0)} %`;
+const fmtN = x => x === null || x === undefined ? "—" : (Math.round(x * 10) / 10).toLocaleString("es-ES");
+const itemName = id => (PLAN.items[id] && PLAN.items[id].name) || `item:${id}`;
+const METHOD = { vendedor: ["vendedor", "mute"], subasta: ["subasta", "info"], fabricar: ["lo fabricas", "gold"] };
+
+/* ---------------- Gráficas ---------------- */
+function spark(id) {
+  const it = PLAN.items[id]; if (!it || !it.hist || it.hist.length < 2) return "";
+  const v = it.hist.map(h => h[1]).filter(x => x);
+  const lo = Math.min(...v), hi = Math.max(...v), w = 90, h = 26, p = 3;
+  const x = i => p + i * (w - 2 * p) / (v.length - 1), y = val => h - p - (hi === lo ? .5 : (val - lo) / (hi - lo)) * (h - 2 * p);
+  const d = v.map((val, i) => `${i ? "L" : "M"}${x(i).toFixed(1)},${y(val).toFixed(1)}`).join("");
+  return `<svg class="spark" viewBox="0 0 ${w} ${h}" aria-hidden="true"><path d="${d}"/><circle cx="${x(v.length - 1)}" cy="${y(v[v.length - 1])}" r="2.5"/></svg>`;
+}
+
+function lineChart(id) {
+  const it = PLAN.items[id]; const hist = (it.hist || []).filter(h => h[1]);
+  if (hist.length < 2) return '<p class="sub">Sin histórico suficiente.</p>';
+  const W = 720, H = 240, L = 64, R = 16, T = 14, B = 28;
+  const vals = hist.map(h => h[1]); const refs = [it.med7].filter(Boolean);
+  let lo = Math.min(...vals, ...refs), hi = Math.max(...vals, ...refs);
+  const pad = (hi - lo) * .12 || hi * .1; lo = Math.max(0, lo - pad); hi = hi + pad;
+  const x = i => L + i * (W - L - R) / (hist.length - 1), y = v => T + (1 - (v - lo) / (hi - lo)) * (H - T - B);
+  const ticks = 4; let g = "";
+  for (let k = 0; k <= ticks; k++) {
+    const v = lo + (hi - lo) * k / ticks, yy = y(v);
+    g += `<line class="grid" x1="${L}" x2="${W - R}" y1="${yy}" y2="${yy}"/><text x="${L - 6}" y="${yy + 4}" text-anchor="end">${(v / 10000).toFixed(v < 100000 ? 2 : 1)}g</text>`;
+  }
+  hist.forEach((h, i) => { if (i % 3 === 0 || i === hist.length - 1) g += `<text x="${x(i)}" y="${H - 8}" text-anchor="middle">${h[0].slice(8)}/${h[0].slice(5, 7)}</text>`; });
+  const d = vals.map((v, i) => `${i ? "L" : "M"}${x(i).toFixed(1)},${y(v).toFixed(1)}`).join("");
+  const area = d + `L${x(vals.length - 1)},${H - B}L${x(0)},${H - B}Z`;
+  let ref = "";
+  if (it.med7) ref = `<line class="ref" x1="${L}" x2="${W - R}" y1="${y(it.med7)}" y2="${y(it.med7)}"/><text x="${W - R}" y="${y(it.med7) - 5}" text-anchor="end">mediana 7 días</text>`;
+  const last = vals.length - 1;
+  return `<svg class="chart" id="lc" viewBox="0 0 ${W} ${H}" role="img" aria-label="Precio de ${esc(it.name)} en 14 días">
+    ${g}<path class="ar" d="${area}"/><path class="ln" d="${d}"/>${ref}
+    <line class="hair" id="hair" x1="0" x2="0" y1="${T}" y2="${H - B}" style="display:none"/>
+    <circle class="dot" cx="${x(last)}" cy="${y(vals[last])}" r="5"/>
+    <rect id="hit" x="${L}" y="${T}" width="${W - L - R}" height="${H - T - B}" fill="transparent"/>
+  </svg>`;
+}
+
+function qtyChart(id) {
+  const it = PLAN.items[id]; const hist = (it.hist || []).filter(h => h[2] !== null);
+  if (hist.length < 2) return "";
+  const W = 720, H = 120, L = 64, R = 16, T = 10, B = 24;
+  const hi = Math.max(...hist.map(h => h[2])) * 1.1 || 1;
+  const bw = (W - L - R) / hist.length;
+  let g = `<line class="grid" x1="${L}" x2="${W - R}" y1="${H - B}" y2="${H - B}"/><text x="${L - 6}" y="${T + 8}" text-anchor="end">${Math.round(hi)}</text><text x="${L - 6}" y="${H - B}" text-anchor="end">0</text>`;
+  hist.forEach((h, i) => {
+    const bh = (h[2] / hi) * (H - T - B);
+    g += `<rect class="qb" x="${L + i * bw + 2}" y="${H - B - bh}" width="${Math.max(2, bw - 4)}" height="${bh}" rx="2"><title>${h[0]}: ${h[2]} publicadas</title></rect>`;
+  });
+  return `<svg class="chart" viewBox="0 0 ${W} ${H}" role="img" aria-label="Cantidad publicada por día">${g}</svg>`;
+}
+
+function wireChart(id) {
+  const svg = $("#lc"); if (!svg) return;
+  const it = PLAN.items[id]; const hist = (it.hist || []).filter(h => h[1]);
+  const tip = $("#tip"), hair = $("#hair"), hit = $("#hit");
+  const L = 64, R = 16, W = 720;
+  hit.addEventListener("mousemove", ev => {
+    const pt = svg.createSVGPoint(); pt.x = ev.clientX; pt.y = ev.clientY;
+    const p = pt.matrixTransform(svg.getScreenCTM().inverse());
+    const i = Math.max(0, Math.min(hist.length - 1, Math.round((p.x - L) / ((W - L - R) / (hist.length - 1)))));
+    const xx = L + i * (W - L - R) / (hist.length - 1);
+    hair.setAttribute("x1", xx); hair.setAttribute("x2", xx); hair.style.display = "";
+    tip.innerHTML = `${hist[i][0]} · ${money(hist[i][1])} · ${hist[i][2]} publicadas`;
+    tip.style.display = "block"; tip.style.left = (ev.clientX + 14) + "px"; tip.style.top = (ev.clientY - 10) + "px";
+  });
+  hit.addEventListener("mouseleave", () => { tip.style.display = "none"; hair.style.display = "none"; });
+}
+
+/* ---------------- Vistas ---------------- */
+function renderMeta() {
+  const s = PLAN.summary;
+  $("#meta").innerHTML = `Mercado <b>${esc(PLAN.market)}</b> · generado ${esc(PLAN.generated_txt)} · ruta para ${PLAN.settings.horizon_h} h · presupuesto ${pct(PLAN.settings.budget_pct)} del oro (${money(PLAN.settings.budget)})` +
+    (PLAN.banker ? ` · banquero <b>${esc(PLAN.banker)}</b>` : "") + (PLAN.synthetic ? ' · <span class="pill warn">datos sintéticos</span>' : "");
+}
+
+function renderResumen() {
+  const s = PLAN.summary;
+  const chosen = PLAN.opportunities.filter(o => o.included);
+  const tiles = `<div class="tiles">
+    <div class="tile hero"><span class="k">Beneficio estimado</span><span class="v">${money(s.profit)}</span><span class="s">en ${PLAN.settings.horizon_h} h, ya descontado el 5 % de la subasta</span></div>
+    <div class="tile"><span class="k">Oro que inviertes</span><span class="v">${money(s.investment)}</span><span class="s">lo que ya tienes no cuenta</span></div>
+    <div class="tile"><span class="k">Rentabilidad</span><span class="v num">${pct(s.roi)}</span><span class="s">beneficio ÷ inversión</span></div>
+    <div class="tile"><span class="k">Vendiendo lo que te sobra</span><span class="v">${money(s.stock_sale)}</span><span class="s">stock de bolsas y banco</span></div>
+    <div class="tile"><span class="k">Oro de tus personajes</span><span class="v">${money(s.gold)}</span><span class="s">${Object.values(PLAN.chars).map(c => esc(c.short)).join(" + ")}</span></div>
+  </div>`;
+  const warn = PLAN.warnings.length ? `<div class="warnings">${PLAN.warnings.map(w => `<div class="warning"><b>!</b><span>${esc(w)}</span></div>`).join("")}</div>` : "";
+  const opps = chosen.map(o => `<div class="opp">
+      <div class="t">${esc(o.name)} <span class="pill mute">${esc(short(o.char))}</span> ${o.kind === "flip" ? '<span class="pill info">reventa</span>' : ""} ${confPill(o.conf)}</div>
+      <div class="p">${money(o.profit_total, { signed: true, color: true })}</div>
+      <div class="w">${fmtN(o.units)} uds × ${money(o.profit)} · ${esc((o.why || [])[2] || o.why[0] || "")}</div>
+    </div>`).join("");
+  const order = `<p class="lead">${esc(s.order_txt)} Unos ${s.clicks} clics en total.</p>`;
+  const top = PLAN.learn.filter(l => l.daily_profit > 0).slice(0, 3).map(l =>
+    `<li><b>${esc(l.name)}</b> (${esc(l.prof)}): ${money(l.daily_profit)}/día${l.payback_days !== null ? ", se paga en " + (l.payback_days < 1 ? "menos de un día" : fmtN(l.payback_days) + " días") : ""}${l.skill_gap ? `; te faltan ${l.skill_gap} puntos` : ""}${l.new_profession ? "; profesión nueva" : ""}.</li>`).join("");
+  $("#v-resumen").innerHTML = tiles + warn + `<div class="grid2">
+    <div class="panel"><header><h2>Lo que vas a hacer</h2><a href="#ruta">Ver la ruta →</a></header>${order}<div>${opps}</div></div>
+    <div class="panel"><header><h2>Para ganar más mañana</h2><a href="#aprender">Qué aprender →</a></header><ul class="why">${top}</ul>
+      <h3>No merece la pena</h3><ul class="why">${PLAN.not_profitable.slice(0, 4).map(o => `<li><b>${esc(o.name)}</b>: ${esc(o.reason)}</li>`).join("")}</ul>
+      <a href="#recetas">Detalle de cada receta →</a>
+      <h3>Apuestas a unos días</h3><ul class="why">${PLAN.ideas.ideas.filter(c => c.included).slice(0, 4).map(c => `<li><b>${esc(c.title)}</b>: ${money(c.profit, { signed: true })} ${c.saving ? "de ahorro" : "si se cumple"}, riesgo ${c.risk}.</li>`).join("")}</ul>
+      <a href="#ideas">Ver las ideas →</a></div>
+  </div>`;
+}
+
+let routeChar = null;
+function renderRuta() {
+  const keys = Object.keys(PLAN.routes);
+  const ALL = { short: "Todos (pegar una vez)", text: PLAN.route_all, all: true,
+    spend: keys.reduce((a, k) => a + PLAN.routes[k].spend, 0), money: PLAN.summary.gold,
+    profit: PLAN.summary.profit, stock_value: PLAN.summary.stock_sale,
+    lines: keys.reduce((a, k) => a + PLAN.routes[k].lines, 0), clicks: PLAN.summary.clicks };
+  if (!routeChar || (routeChar !== "_todo" && !PLAN.routes[routeChar])) routeChar = keys.length > 1 ? "_todo" : keys[0];
+  const r = routeChar === "_todo" ? ALL : PLAN.routes[routeChar];
+  const lines = r.text.split("\n").filter(Boolean).map(l => {
+    if (l.startsWith("#")) return `<div class="l hd"><span></span><span>${esc(l)}</span></div>`;
+    const op = l.split(/\s+/)[0]; const [main, ...cm] = l.split("#");
+    if (op === "CHAR") return `<div class="l hd" style="margin-top:8px"><span class="op" style="color:var(--ink)">CHAR</span><span style="color:var(--ink);font-weight:600">${esc(main.slice(4).trim())}</span></div>`;
+    const rest = main.slice(op.length).trim();
+    return `<div class="l ${op}"><span class="op">${op}</span><span>${esc(rest)}${cm.length ? ` <span class="c"># ${esc(cm.join("#").trim())}</span>` : ""}</span></div>`;
+  }).join("");
+  $("#v-ruta").innerHTML = `<div class="panel">
+    <header><h2>Ruta</h2><div class="route-tabs">${keys.length > 1 ? `<button class="seg" aria-pressed="${routeChar === "_todo"}" data-ch="_todo">Todos (pegar una vez)</button>` : ""}${keys.map(k => `<button class="seg" aria-pressed="${k === routeChar}" data-ch="${esc(k)}">${esc(PLAN.routes[k].short)}</button>`).join("")}</div></header>
+    <p class="lead">${r.all ? `Pega esta ruta una sola vez con cualquier personaje: el addon guarda la parte de cada uno (líneas <b>CHAR</b>) y se la enseña cuando entras con él. ${esc(PLAN.summary.order_txt)} ` : ""}Copia el texto y pégalo en el addon (<b>Importar ruta</b>). Cada <b>BUY</b> compra hasta el precio máximo por unidad, cada <b>SELL</b> no publica por debajo del mínimo y cada <b>NOTE</b> es un paso manual (banco, correo, vendedor).</p>
+    <div class="stats"><span>Gasta <b>${money(r.spend)}</b> de ${money(r.money)}</span><span>Beneficio de sus recetas <b>${money(r.profit)}</b></span><span>Stock a la venta <b>${money(r.stock_value)}</b></span><span><b>${r.lines}</b> acciones · ~${r.clicks} clics</span></div>
+    <div class="route" aria-label="Ruta">${lines}</div>
+    <div class="filters"><button class="btn" id="copy">Copiar ruta${r.all ? " completa" : " de " + esc(r.short)}</button><span class="sub" id="copied" role="status"></span></div>
+  </div>`;
+  $("#v-ruta").querySelectorAll("[data-ch]").forEach(b => b.onclick = () => { routeChar = b.dataset.ch; renderRuta(); });
+  $("#copy").onclick = async () => {
+    try { await navigator.clipboard.writeText(r.text); $("#copied").textContent = "Copiada. Pégala en el addon con Ctrl+V."; }
+    catch (e) { $("#copied").textContent = "Tu navegador no deja copiar: selecciona el texto de la ruta y cópialo a mano."; }
+  };
+}
+
+function treeHTML(nodes, depth = 0) {
+  return nodes.map(n => {
+    const [lab, cls] = METHOD[n.method];
+    const alts = Object.entries(n.alts || {}).filter(([m]) => m !== n.method).map(([m, v]) => `${METHOD[m][0]} ${money(v)}`).join(", ");
+    return `<div class="node"><b>${fmtN(n.per_craft)}×</b> ${esc(n.name)} <span class="pill ${cls}">${lab}</span> ${money(n.unit)}/u${alts ? `<span class="sub">(${alts})</span>` : ""}${n.method === "fabricar" ? ` <span class="sub">receta ${esc(n.recipe_name)} · ${esc(short(n.char))}</span>` : ""}</div>` +
+      (n.children ? `<div class="kids">${treeHTML(n.children, depth + 1)}</div>` : "");
+  }).join("");
+}
+
+const openRows = new Set();
+function renderRecetas() {
+  const rows = PLAN.opportunities;
+  const body = rows.map((o, i) => {
+    const key = o.name + o.char;
+    const st = o.included ? '<span class="pill good">en la ruta</span>' : `<span class="pill mute" title="${esc(o.skip || "")}">fuera</span>`;
+    const main = `<tr class="click ${o.included ? "" : "off"}" data-k="${esc(key)}" aria-expanded="${openRows.has(key)}">
+      <td><b>${esc(o.name)}</b><div class="sub">${esc(short(o.char))}${o.prof ? " · " + esc(o.prof) : ""}</div></td>
+      <td>${st}</td><td class="n">${fmtN(o.units)}</td>
+      <td class="n">${money(o.cost)}</td><td class="n">${money(o.sell)}</td><td class="n">${money(o.profit, { color: true })}</td>
+      <td class="n">${pct(o.margin)}</td><td class="n">${money(o.profit_total, { color: true })}</td>
+      <td>${confPill(o.conf)}</td><td>${spark(o.out_item)}</td></tr>`;
+    const det = openRows.has(key) ? `<tr class="detail"><td colspan="10"><div class="grid2">
+        <div><h3>Por qué</h3><ul class="why">${(o.why || []).map(w => `<li>${esc(w)}</li>`).join("")}${o.skip ? `<li><b>${esc(o.skip)}</b></li>` : ""}</ul></div>
+        <div><h3>De dónde sale cada material</h3>${o.tree ? `<div class="tree">${treeHTML(o.tree)}</div>` : '<p class="sub">Compra directa en subasta.</p>'}
+        <p class="sub">Precio mínimo de venta en la ruta: ${money(o.min_sell)} (cubre costes + 5 %).</p></div></div></td></tr>` : "";
+    return main + det;
+  }).join("");
+  const bad = PLAN.not_profitable.map(o => `<tr><td><b>${esc(o.name)}</b><div class="sub">${esc(short(o.char))} · ${esc(o.prof || "")}</div></td>
+      <td class="n">${money(o.cost)}</td><td class="n">${money(o.net)}</td><td class="n">${money(o.profit, { color: true })}</td><td>${esc(o.reason)}</td></tr>`).join("");
+  $("#v-recetas").innerHTML = `<div class="panel"><header><h2>Recetas que dan dinero</h2><span class="sub">Pulsa una fila para ver el porqué y el árbol de materiales</span></header>
+    <div class="tablewrap"><table><thead><tr><th>Receta</th><th>Estado</th><th class="n">Uds</th><th class="n">Coste/u</th><th class="n">Venta/u</th><th class="n">Gana/u</th><th class="n">Margen</th><th class="n">Total</th><th>Confianza</th><th>14 días</th></tr></thead><tbody>${body}</tbody></table></div></div>
+    <div class="panel"><header><h2>Recetas que sabes y no compensan</h2></header>
+    <div class="tablewrap"><table><thead><tr><th>Receta</th><th class="n">Coste/u</th><th class="n">Venta neta/u</th><th class="n">Resultado/u</th><th>Motivo</th></tr></thead><tbody>${bad}</tbody></table></div></div>`;
+  $("#v-recetas").querySelectorAll("tr.click").forEach(tr => tr.onclick = () => {
+    const k = tr.dataset.k; openRows.has(k) ? openRows.delete(k) : openRows.add(k); renderRecetas();
+  });
+}
+
+function renderTransformar() {
+  const rows = PLAN.transformations.map(t => {
+    const good = t.saving !== null && t.saving > 0;
+    return `<tr><td><b>${esc(t.name)}</b><div class="sub">${esc(t.chain)}</div></td><td>${esc(t.char)}</td>
+      <td class="n">${money(t.craft)}</td><td class="n">${money(t.buy)}</td><td class="n">${money(t.saving, { color: true })}</td>
+      <td class="n">${money(t.value_added, { color: true })}</td><td class="n">${t.depth > 1 ? `<span class="pill gold">${t.depth} pasos</span>` : "1 paso"}</td>
+      <td><span class="pill ${good ? "good" : t.saving === null ? "mute" : "bad"}">${esc(t.advice)}</span></td></tr>`;
+  }).join("");
+  $("#v-transformar").innerHTML = `<div class="panel"><header><h2>Fabricar o comprar</h2></header>
+    <p class="lead">Para cada cosa que sabes fabricar: cuánto te cuesta hacerla con tus recetas (eligiendo en cada material lo más barato: vendedor, subasta o fabricarlo también) frente a comprarla hecha. <b>Valor añadido</b> es lo que ganas si la fabricas y la vendes.</p>
+    <div class="tablewrap"><table><thead><tr><th>Resultado</th><th>Quién</th><th class="n">Fabricar</th><th class="n">Comprar</th><th class="n">Ahorro</th><th class="n">Valor añadido</th><th class="n">Cadena</th><th>Consejo</th></tr></thead><tbody>${rows}</tbody></table></div></div>`;
+}
+
+function renderAprender() {
+  const card = (l, i) => {
+    const ok = l.daily_profit > 0;
+    const gap = l.skill_req && l.skill !== null && l.skill !== undefined
+      ? `<div class="gap"><span>Nivel ${l.skill}/${l.skill_req}${l.skill_gap ? ` · faltan ${l.skill_gap}` : " · ya puedes"}</span><div class="bar"><span style="width:${Math.min(100, 100 * l.skill / l.skill_req)}%;${l.skill_gap ? "" : "background:var(--good)"}"></span></div></div>` : "";
+    return `<div class="card ${i === 0 && ok ? "top" : ""}">
+      <div class="t"><h3>${esc(l.name)}</h3><div class="sub">${esc(l.prof)}${l.char ? " · " + esc(short(l.char)) : ""}</div></div>
+      <div style="display:flex;gap:6px;flex-wrap:wrap">${l.new_profession ? '<span class="pill info">profesión nueva</span>' : ""}${ok ? '<span class="pill good">compensa</span>' : '<span class="pill bad">hoy no</span>'}${l.conf ? confPill(l.conf) : ""}${l.cooldown_h ? `<span class="pill mute">enfriamiento ${l.cooldown_h} h</span>` : ""}</div>
+      <div class="big">${l.daily_profit !== null ? money(l.daily_profit, { color: true }) + '<span class="sub"> /día</span>' : "—"}</div>
+      <div class="stats"><span>Aprender: <b>${l.learn_cost ? money(l.learn_cost) : "?"}</b></span><span>Se paga en <b>${l.payback_days === null || l.payback_days === undefined ? "—" : l.payback_days < 1 ? "&lt; 1 día" : fmtN(l.payback_days) + " días"}</b></span></div>
+      ${gap}
+      <ul class="why">${(l.verdict || []).map(v => `<li>${esc(v)}</li>`).join("")}</ul>
+      ${l.tree ? `<details><summary>Materiales</summary><div class="tree">${treeHTML(l.tree)}</div></details>` : ""}
+    </div>`;
+  };
+  const own = PLAN.learn.filter(l => !l.new_profession), neu = PLAN.learn.filter(l => l.new_profession);
+  $("#v-aprender").innerHTML = `<div class="panel"><header><h2>Recetas de tus profesiones que aún no sabes</h2></header>
+    <p class="lead">Calculado con el mercado de hoy: beneficio por unidad × lo que el mercado absorbe al día (y el enfriamiento, si lo tiene). El coste de aprender y el nivel salen del catálogo; revísalos en Wowhead.</p>
+    <div class="cards">${own.map(card).join("")}</div></div>
+    <div class="panel"><header><h2>Si cambiaras de profesión</h2></header>
+    <p class="lead">Recetas del catálogo para profesiones que no tienes. Cada personaje solo puede tener dos, así que suponen dejar una y subir la nueva.</p>
+    <div class="cards">${neu.map((l, i) => card(l, 99)).join("")}</div></div>`;
+}
+
+const RISK = { bajo: "good", medio: "warn", alto: "bad" };
+let ideaChar = null;
+function renderIdeas() {
+  const I = PLAN.ideas, inc = I.ideas.filter(c => c.included), out = I.ideas.filter(c => !c.included);
+  const card = c => `<div class="card">
+      <div style="display:flex;gap:6px;flex-wrap:wrap"><span class="pill gold">${esc(c.label)}</span><span class="pill ${RISK[c.risk]}">riesgo ${c.risk}</span>${c.mode === "fabricar" ? '<span class="pill mute">lo fabricas</span>' : ""}${(c.signals || []).slice(1).map(x => `<span class="pill mute">+ ${esc(x.toLowerCase())}</span>`).join("")}</div>
+      <h3>${esc(c.title)}</h3>
+      <div style="display:flex;justify-content:space-between;align-items:end;gap:10px"><div class="big">${money(c.profit, { signed: true, color: true })}<span class="sub"> ${c.saving ? "de ahorro" : "si se cumple"}</span></div>${spark(c.item)}</div>
+      <div class="stats"><span>${c.mode === "fabricar" ? "Fabrica" : "Compra"} <b>${c.qty}</b> a ${money(c.entry)}</span><span>Pones <b>${money(c.invest)}</b></span>${c.saving ? "" : `<span>Objetivo <b>${money(c.target)}</b> (${c.gain > 0 ? "+" : ""}${pct(c.gain)} neto)</span><span>Vende hacia el <b>${esc(c.sell_date)}</b></span>`}<span>Guarda en <b>${esc(c.store)}</b> (${c.slots} ${c.slots === 1 ? "hueco" : "huecos"})</span></div>
+      <ul class="why">${c.why.map(w => `<li>${esc(w)}</li>`).join("")}</ul>
+      <h3>Cuándo salir</h3><ul class="why">${(c.exit || []).map(w => `<li>${esc(w)}</li>`).join("")}</ul>
+    </div>`;
+  const rows = out.map(c => `<tr><td><b>${esc(c.name)}</b><div class="sub">${esc(c.title)}</div></td><td><span class="pill gold">${esc(c.label)}</span></td><td><span class="pill ${RISK[c.risk]}">${c.risk}</span></td>
+      <td class="n">${money(c.entry)}</td><td class="n">${money(c.target)}</td><td class="n">${pct(c.gain)}</td><td class="n">${c.horizon} d</td><td>${esc(c.skip || "")}<div class="sub">${esc(c.why[0])}</div></td></tr>`).join("");
+  const keys = Object.keys(I.routes);
+  if (!ideaChar || (ideaChar !== "_todo" && !I.routes[ideaChar])) ideaChar = keys.length > 1 ? "_todo" : keys[0];
+  const r = ideaChar === "_todo" ? { short: "Todos", text: I.route_all } : I.routes[ideaChar];
+  const lines = r ? r.text.split("\n").filter(Boolean).map(l => {
+    if (l.startsWith("#")) return `<div class="l hd"><span></span><span>${esc(l)}</span></div>`;
+    const op = l.split(/\s+/)[0]; const [main, ...cm] = l.split("#");
+    if (op === "CHAR") return `<div class="l hd" style="margin-top:8px"><span class="op" style="color:var(--ink)">CHAR</span><span style="color:var(--ink);font-weight:600">${esc(main.slice(4).trim())}</span></div>`;
+    return `<div class="l ${op}"><span class="op">${op}</span><span>${esc(main.slice(op.length).trim())}${cm.length ? ` <span class="c"># ${esc(cm.join("#").trim())}</span>` : ""}</span></div>`;
+  }).join("") : "";
+  $("#v-ideas").innerHTML = `<div class="panel"><header><h2>Apuestas para los próximos días</h2></header>
+      <p class="lead">Aquí no hay beneficio seguro: son compras de hoy para vender más adelante. Cada objetivo es un escenario, no una predicción, y por eso cada idea lleva su riesgo y su precio de salida. Se usa solo el oro que sobra después de la ruta (como mucho el ${pct(I.spec_pct)} del total). La fase del servidor se lee en los precios y en lo que se publica, no en cuánta gente hay a nivel máximo.</p>
+      <ul class="why">${I.outlook.text.map(t => `<li>${esc(t)}</li>`).join("")}</ul></div>
+    <div class="tiles">
+      <div class="tile"><span class="k">Oro para apuestas</span><span class="v">${money(I.budget)}</span><span class="s">lo compra ${esc(I.buyer)}</span></div>
+      <div class="tile"><span class="k">Lo que pones</span><span class="v">${money(I.invest)}</span><span class="s">${inc.length} ideas</span></div>
+      <div class="tile hero"><span class="k">Si todas se cumplen</span><span class="v">${money(I.profit, { signed: true })}</span><span class="s">escenario, no previsión</span></div>
+      <div class="tile"><span class="k">Si todas salen mal</span><span class="v">${money(-I.loss_stop)}</span><span class="s">vendiendo al saltar el stop (−20 %)</span></div>
+      <div class="tile"><span class="k">Sitio para guardar</span><span class="v num">${I.storage.reduce((a, s) => a + s.free_after, 0)}</span><span class="s">huecos libres después (antes ${I.storage.reduce((a, s) => a + s.free_before, 0)})</span></div>
+    </div>
+    <div class="cards">${inc.map(card).join("")}</div>
+    ${r ? `<div class="panel"><header><h2>Ruta de las apuestas</h2><div class="route-tabs">${keys.length > 1 ? `<button class="seg" aria-pressed="${ideaChar === "_todo"}" data-ich="_todo">Todos (pegar una vez)</button>` : ""}${keys.map(k => `<button class="seg" aria-pressed="${k === ideaChar}" data-ich="${esc(k)}">${esc(I.routes[k].short)}</button>`).join("")}</div></header>
+      <p class="lead">Va aparte de la ruta normal: si quieres hacer estas apuestas, pégala en el addon con <b>Añadir a la ruta</b> para no borrar la que ya tengas. Puedes quitar las líneas de las que no te convenzan.</p>
+      <div class="route">${lines}</div><div class="filters"><button class="btn" id="copyi">Copiar ruta de apuestas</button><span class="sub" id="copiedi" role="status"></span></div></div>` : ""}
+    <div class="panel"><header><h2>Otras ideas que no entran hoy</h2></header>
+      <div class="tablewrap"><table><thead><tr><th>Objeto</th><th>Tipo</th><th>Riesgo</th><th class="n">Entrada</th><th class="n">Objetivo</th><th class="n">Ganancia</th><th class="n">Plazo</th><th>Por qué no entra</th></tr></thead><tbody>${rows}</tbody></table></div></div>`;
+  $("#v-ideas").querySelectorAll("[data-ich]").forEach(b => b.onclick = () => { ideaChar = b.dataset.ich; renderIdeas(); });
+  const cb = $("#copyi");
+  if (cb) cb.onclick = async () => {
+    try { await navigator.clipboard.writeText(r.text); $("#copiedi").textContent = "Copiada. Pégala en el addon con Ctrl+V."; }
+    catch (e) { $("#copiedi").textContent = "Tu navegador no deja copiar: selecciona el texto y cópialo a mano."; }
+  };
+}
+
+function renderCartera() {
+  const C = PLAN.portfolio;
+  const ST = { stop: ["vende: stop", "bad"], objetivo: ["vende: objetivo", "good"], vencida: ["fecha pasada", "warn"], espera: ["espera", "mute"], cerrada: ["cerrada", "mute"] };
+  const rows = C.positions.map(p => `<tr class="${p.status === "cerrada" ? "off" : ""}"><td><b>${esc(p.name)}</b><div class="sub">${p.sold ? `vendidas ${fmtN(p.sold)} · ` : ""}plan ${fmtN(p.plan_qty)}</div></td>
+      <td class="n">${fmtN(p.qty)}</td><td class="n">${money(p.entry)}<div class="sub">${p.entry_src.startsWith("lo que") ? "real" : "previsto"}</div></td>
+      <td class="n">${money(p.mv)}</td><td class="n">${money(p.pnl, { signed: true, color: true })}<div class="sub">${p.pnl_pct === null ? "" : (p.pnl_pct > 0 ? "+" : "") + pct(p.pnl_pct)}</div></td>
+      <td class="n">${money(p.realized, { signed: true, color: true })}</td>
+      <td class="n">${money(p.target)}<div class="sub">stop ${money(p.stop)}</div></td><td class="n">${p.due ? esc(p.due.slice(8) + "/" + p.due.slice(5, 7)) : "—"}<div class="sub">${p.days_left === null ? "" : p.days_left > 0 ? "faltan " + p.days_left + " d" : "pasada"}</div></td>
+      <td><span class="pill ${ST[p.status][1]}">${ST[p.status][0]}</span><div class="sub">${esc(p.advice)}</div></td><td>${spark(p.item)}</td></tr>`).join("");
+  const led = C.ledger.map(e => `<tr><td class="n">${esc(e.t)}</td><td>${esc(e.char)}</td><td><span class="pill ${e.op === "BUY" ? "info" : "good"}">${e.op === "BUY" ? "compra" : "venta"}</span></td><td>${esc(e.name)}</td><td class="n">${fmtN(e.qty)}</td><td class="n">${money(e.unit)}</td><td class="n">${money(e.total)}</td></tr>`).join("");
+  $("#v-cartera").innerHTML = `<div class="tiles">
+      <div class="tile"><span class="k">Lo que te costó</span><span class="v">${money(C.cost)}</span><span class="s">apuestas abiertas</span></div>
+      <div class="tile"><span class="k">Lo que vale hoy</span><span class="v">${money(C.value)}</span><span class="s">vendiendo ahora, sin el 5 %</span></div>
+      <div class="tile hero"><span class="k">Resultado abierto</span><span class="v">${money(C.pnl, { signed: true, color: true })}</span><span class="s">todavía no realizado</span></div>
+      <div class="tile"><span class="k">Ya ganado</span><span class="v">${money(C.realized, { signed: true, color: true })}</span><span class="s">ventas cobradas por correo</span></div>
+      <div class="tile"><span class="k">Piden que actúes</span><span class="v num">${C.alerts}</span><span class="s">ya están en la ruta</span></div>
+    </div>
+    <div class="panel"><header><h2>Apuestas abiertas</h2></header>
+      <p class="lead">Cada apuesta que importas en el addon queda anotada con su objetivo, su stop y su fecha. El precio de compra es el que pagaste de verdad si el addon registró la compra. Cuando una toca venderse, la venta aparece sola en la ruta del personaje que la tiene.</p>
+      ${rows ? `<div class="tablewrap"><table><thead><tr><th>Objeto</th><th class="n">Tienes</th><th class="n">Pagaste/u</th><th class="n">Hoy/u</th><th class="n">Resultado</th><th class="n">Ya ganado</th><th class="n">Objetivo</th><th class="n">Fecha</th><th>Qué hacer</th><th>14 días</th></tr></thead><tbody>${rows}</tbody></table></div>` : '<p class="sub">Aún no hay apuestas. Importa en el addon la ruta de la pestaña Ideas.</p>'}</div>
+    <div class="panel"><header><h2>Últimas compras y ventas</h2><span class="sub">las registra el addon: compras en subasta y ventas cobradas en el correo</span></header>
+      ${led ? `<div class="tablewrap"><table><thead><tr><th class="n">Cuándo</th><th>Quién</th><th>Tipo</th><th>Objeto</th><th class="n">Cant.</th><th class="n">Precio/u</th><th class="n">Total</th></tr></thead><tbody>${led}</tbody></table></div>` : '<p class="sub">Sin movimientos todavía.</p>'}</div>`;
+}
+
+let invLoc = "todo", invSort = "total";
+function renderInventario() {
+  const ACTION = { ruta: ["la usa la ruta", "good"], guardar: ["guardar", "info"], subasta: ["vender en subasta", "gold"], vendedor: ["al vendedor", "mute"], esperar: ["vender más tarde", "warn"], cartera: ["apuesta abierta", "gold"], nada: ["—", "mute"] };
+  const LOC = { bags: "bolsas", bank: "banco", warband: "banco de banda" };
+  const blocks = PLAN.inventory.map(v => {
+    const slots = Object.entries(v.slots).filter(([, s]) => s).map(([loc, s]) => {
+      const used = s.total - s.free, p = used / s.total * 100;
+      return `<div class="row"><span>${LOC[loc]}</span><div class="bar" title="${used} de ${s.total} huecos ocupados"><span class="${s.free / s.total < .1 ? "full" : ""}" style="width:${p}%"></span></div><span class="num sub">${s.free} libres</span></div>`;
+    }).join("");
+    let items = v.items.filter(e => invLoc === "todo" || e.loc === invLoc);
+    items.sort((a, b) => invSort === "slot" ? a.per_slot - b.per_slot : b.total - a.total);
+    const rows = items.map(e => `<tr><td><b>${esc(e.name)}</b><div class="sub">${LOC[e.loc]}</div></td><td class="n">${e.count}</td>
+      <td class="n">${money(e.unit)}</td><td class="n">${money(e.total)}</td><td class="n">${e.slots}</td><td class="n">${money(e.per_slot)}</td>
+      <td><span class="pill ${ACTION[e.action][1]}">${ACTION[e.action][0]}</span><div class="sub">${esc(e.why)}</div></td></tr>`).join("");
+    return `<div class="panel"><header><h2>${esc(v.short)}</h2><span class="stats">${v.money !== null && v.money !== undefined ? `<span>Oro <b>${money(v.money)}</b></span>` : ""}<span>Objetos <b>${money(v.value)}</b></span></span></header>
+      <div class="slots">${slots}</div>
+      ${rows ? `<div class="tablewrap"><table><thead><tr><th>Objeto</th><th class="n">Cant.</th><th class="n">Valor/u</th><th class="n">Total</th><th class="n">Huecos</th><th class="n">Valor/hueco</th><th>Qué hacer</th></tr></thead><tbody>${rows}</tbody></table></div>` : '<p class="sub">Nada en esta zona.</p>'}</div>`;
+  }).join("");
+  $("#v-inventario").innerHTML = `<div class="panel"><header><h2>Qué tienes</h2>
+      <div class="filters"><label for="invloc" class="sub">Zona</label><select id="invloc"><option value="todo">Todo</option><option value="bags">Bolsas</option><option value="bank">Banco</option><option value="warband">Banco de banda</option></select>
+      <label for="invsort" class="sub">Orden</label><select id="invsort"><option value="total">Más valioso primero</option><option value="slot">Menos valor por hueco primero</option></select></div></header>
+      <p class="lead">El valor de cada objeto es lo que sacarías vendiéndolo (subasta neta o vendedor, lo que sea más). Ordena por <b>valor por hueco</b> para ver qué ocupa sitio en el banco y vale poco.</p></div>` + blocks;
+  $("#invloc").value = invLoc; $("#invsort").value = invSort;
+  $("#invloc").onchange = e => { invLoc = e.target.value; renderInventario(); };
+  $("#invsort").onchange = e => { invSort = e.target.value; renderInventario(); };
+}
+
+let mkItem = null, mkQuery = "";
+function renderMercado() {
+  const ids = Object.keys(PLAN.items).filter(id => PLAN.items[id].hist && PLAN.items[id].hist.length)
+    .sort((a, b) => PLAN.items[a].name.localeCompare(PLAN.items[b].name));
+  if (!mkItem || !PLAN.items[mkItem]) mkItem = ids.find(id => PLAN.opportunities[0] && +id === PLAN.opportunities[0].out_item) || ids[0];
+  const it = PLAN.items[mkItem];
+  const list = ids.filter(id => PLAN.items[id].name.toLowerCase().includes(mkQuery.toLowerCase()))
+    .map(id => `<button aria-pressed="${id === String(mkItem)}" data-id="${id}"><span>${esc(PLAN.items[id].name)}</span>${spark(id)}</button>`).join("");
+  $("#v-mercado").innerHTML = `<div class="panel market">
+    <div><label class="sub" for="mkq">Buscar objeto</label><input type="search" id="mkq" value="${esc(mkQuery)}" placeholder="Thorium, Lotus…" style="width:100%;margin:4px 0 8px"><div class="itemlist">${list}</div></div>
+    <div style="display:grid;gap:12px;min-width:0">
+      <header style="display:flex;gap:10px;align-items:center;flex-wrap:wrap"><h2>${esc(it.name)}</h2>${confPill(it.conf)}</header>
+      <div class="stats"><span>Mínimo <b>${money(it.min)}</b></span><span>Valor de mercado <b>${money(it.mv)}</b></span><span>Mediana 7 días <b>${money(it.med7)}</b></span><span>Publicadas <b>${it.qty}</b></span><span>Ventas/día ≈ <b>${fmtN(it.vol)}</b></span>${it.vendor_buy ? `<span>Vendedor <b>${money(it.vendor_buy)}</b></span>` : ""}${it.trend !== null ? `<span>Tendencia <b>${it.trend > 0 ? "+" : ""}${pct(it.trend)}</b></span>` : ""}</div>
+      <h3>Valor de mercado, últimos 14 días</h3>${lineChart(mkItem)}
+      <h3>Cantidad publicada</h3>${qtyChart(mkItem)}
+    </div></div>`;
+  $("#v-mercado").querySelectorAll("[data-id]").forEach(b => b.onclick = () => { mkItem = b.dataset.id; renderMercado(); });
+  const q = $("#mkq"); q.oninput = e => { mkQuery = e.target.value; const pos = e.target.selectionStart; renderMercado(); const n = $("#mkq"); n.focus(); n.setSelectionRange(pos, pos); };
+  wireChart(mkItem);
+}
+
+const RENDER = { resumen: renderResumen, ruta: renderRuta, recetas: renderRecetas, transformar: renderTransformar, aprender: renderAprender, ideas: renderIdeas, cartera: renderCartera, inventario: renderInventario, mercado: renderMercado };
+function show() {
+  const h = location.hash.replace("#", "");
+  const v = RENDER[h] ? h : "resumen";
+  document.querySelectorAll("section.view").forEach(s => s.classList.toggle("on", s.id === "v-" + v));
+  document.querySelectorAll("nav a").forEach(a => a.setAttribute("aria-current", a.dataset.v === v ? "page" : "false"));
+  RENDER[v]();
+}
+$("#tabs").innerHTML = VIEWS.map(([k, t]) => `<a href="#${k}" data-v="${k}">${t}</a>`).join("");
+renderMeta();
+window.addEventListener("hashchange", show);
+show();
+</script>
+</body>
+</html>

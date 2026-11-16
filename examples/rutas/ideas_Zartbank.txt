@@ -1,0 +1,15 @@
+# Ideas Addonero — Zartbank — 15/11 13:39
+BUY 6370 40 2262   # despensa: Blackmouth Oil
+NOTE Guarda 40× Blackmouth Oil en el banco de banda
+BUY 10620 19 6897   # despensa: Thorium Ore
+NOTE Guarda 19× Thorium Ore en el banco de banda
+BUY 13465 4 15499   # Mountain Silversage
+BUY 13466 4 12955   # Plaguebloom
+NOTE Envía por correo a Zartch: 4× Mountain Silversage, 4× Plaguebloom
+BUY 2592 120 402   # progresión del servidor: Wool Cloth
+NOTE Guarda 120× Wool Cloth en el banco de banda hasta el 06/12; vende a 8s 18c o más
+HOLD 2592 120 818 308 2026-12-06 386   # apuesta: Wool Cloth
+NOTE Ahora entra con Zartch y haz su parte; después vuelve aquí
+NOTE Recoge del correo (de Zartch): 2× Elixir of the Mongoose
+NOTE Guarda 2× Elixir of the Mongoose en el banco de banda hasta el 08/12; vende a 14g 90s o más
+HOLD 13452 2 149058 43950 2026-12-08 54938   # apuesta: Elixir of the Mongoose

@@ -1,0 +1,5 @@
+# Ideas Addonero — Zartch — 15/11 13:39
+NOTE Recoge del correo (de Zartbank): 4× Mountain Silversage, 4× Plaguebloom
+NOTE Compra al vendedor: 2× Crystal Vial
+CRAFT 17571 2   # Elixir of the Mongoose
+NOTE Envía por correo a Zartbank: 2× Elixir of the Mongoose

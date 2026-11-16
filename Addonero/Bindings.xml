@@ -1,0 +1,5 @@
+<Bindings>
+    <Binding name="ADDONERO_NEXT" header="ADDONERO" category="ADDONS">
+        Addonero_Next()
+    </Binding>
+</Bindings>
