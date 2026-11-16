@@ -3,7 +3,7 @@
 Objetivo: ganar oro en **WoW Forever** con un addon de subasta + un planificador externo.
 
 ## Decisiones (15/11/2026)
-- Versión: WoW Forever (lanzado 4/11/2026). Usa la API moderna de Midnight (interfaz 12.1.5, TOC 120105), subasta tipo Retail con commodities por cantidad.
+- Versión: WoW Forever (lanzado 4/11/2026). Usa la API moderna de Midnight, subasta tipo Retail con commodities por cantidad. Interfaz **16001** (cliente 1.60.1; corregido el 16/11, antes 120105).
 - Forever no tiene todavía API oficial de precios de subasta → **precios y profesiones salen del escaneo en el juego**. Si Blizzard la abre, se añade como segunda fuente.
 - Comprar, publicar y fabricar necesitan evento de hardware: **un clic (o tecla) por acción**, nunca automatizado del todo (riesgo de baneo).
 - El addon no tiene red: datos fuera vía SavedVariables (`/reload`), ruta dentro pegándola en el addon.
@@ -16,7 +16,10 @@ Objetivo: ganar oro en **WoW Forever** con un addon de subasta + un planificador
 
 ## Decisión (16/11/2026): no solapar con el addon de subasta instalado
 - El usuario ya usa un addon de subasta que escanea y guarda precios. El escaneo completo tiene un límite de uno cada 15 minutos compartido por todos los addons: escanear dos veces no aporta nada.
-- Siguiente paso: usar ese addon como fuente de precios (en el juego y leyendo sus SavedVariables) y dejar el escaneo propio solo como alternativa. Detalle en `CLAUDE.md`.
+- Es **Auctionator 341**. Por defecto no usa `ReplicateItems` (escaneo resumen con `SendBrowseQuery`); el usuario activa su escaneo completo.
+- En el juego: con Auctionator escaneando, Oroboros no pide otro `ReplicateItems` y **lee el mismo resultado** (el evento llega a todos los addons). Así conserva profundidad y valor de mercado. `/oro scan forzar` para el propio.
+- Fuera del juego: el exportador lee `Auctionator.lua` (su base va en CBOR) y rellena histórico y precios que falten. No se usa su tabla interna desde el juego: su API pública solo da el mínimo.
+- Lo que Auctionator no tiene (profundidad, valor de mercado) se estima y baja la confianza. Detalle en `docs/fuentes-de-precios.md`.
 
 ## Flujo (v0.5.0)
 1. Addon: escaneo completo (ReplicateItems cada 15 min): precio mín./valor de mercado (15 % más barato)/cantidad/profundidad (uds a ≤ mín ×1,10/1,25/1,5/2) + histórico diario 30 días. Recetas aprendidas y no aprendidas con reactivos, origen y enfriamiento. Precios de vendedor. Oro, bolsas, banco y banco de banda con huecos libres. Nivel de objeto. **Libro** (`ledger`): cada compra en subasta (objeto, cantidad, precio real; con la ruta o a mano) y cada venta cobrada por correo. **Apuestas** (`positions`): cada `HOLD` importado con objetivo, stop, fecha y entrada.
@@ -75,7 +78,10 @@ HOLD  <itemID> <cantidad> <objetivo> <stop> <AAAA-MM-DD> [entrada]
 Precios en cobre o `1g23s45c`. `#` = comentario.
 
 ## Pendiente
-- Usar el addon de subasta instalado como fuente de precios (ver `CLAUDE.md`).
+- Validar en el juego la lectura pasiva del escaneo de Auctionator.
+- Clave de mercado: si la subasta de Forever es única por reglas regionales (Auctionator usa `"PvE"`), cambiar `ns.MarketKey`.
+- Duraciones de publicación en Forever (Auctionator usa 2/8/24 h).
+- Búsqueda puntual de los objetos de la ruta para tener profundidad real cuando los precios vengan solo de Auctionator.
 - Validar en el cliente real (escaneo, banco, compra pequeña, publicación, libro de compras y facturas del correo, tooltip).
 - Confirmar las reglas de correo entre personajes en Forever (facción, reino, tiempo de entrega).
 - Automatizar el correo con un clic por envío (línea `MAIL`), si compensa.

@@ -169,12 +169,20 @@ class Data:
             conf = "media"
         else:
             conf = "alta"
+        depth = self._depth(p)
+        depth_est = bool(depth) and not self._depth_real(p)
+        if depth_est and conf == "alta":
+            conf = "media"          # sin profundidad real (precio de Auctionator) no damos confianza alta
         age_h = (self.now - p["t"]) / 3600 if p and p["t"] else None
         st = {"min": p["min"] if p else None, "mv": cur, "qty": qty, "med7": med7, "cv": cv, "vol": vol,
               "sell": sell, "sell_note": note, "trend": trend, "days": days, "conf": conf, "age_h": age_h,
-              "depth": self._depth(p)}
+              "depth": depth, "depth_est": depth_est, "src": (p or {}).get("src")}
         self._stats[item_id] = st
         return st
+
+    @staticmethod
+    def _depth_real(p):
+        return bool(p) and all(p.get(k) is not None for k in ("d110", "d125", "d150", "d200"))
 
     @staticmethod
     def _depth(p):
@@ -513,7 +521,7 @@ def find_flips(data, horizon_h, char):
                 f"Ahora se vende a {money(p['min'])} y su mediana de 7 días es {money(st['med7'])} "
                 f"({(1 - p['min'] / st['med7']) * 100:.0f} % más barato).",
                 f"Compras {qty} y las vuelves a poner a ~{money(sell)}: ganas {money(profit)} cada una.",
-                f"Solo hay {st['depth'][0]} a ese precio y se venden unas {st['vol']:.0f} al día: "
+                f"Solo hay {st['depth'][0]}{' (estimado: sin búsqueda propia)' if st['depth_est'] else ''} a ese precio y se venden unas {st['vol']:.0f} al día: "
                 "es una oportunidad puntual y con riesgo (puede que el precio no vuelva).",
             ],
         })
@@ -1047,6 +1055,8 @@ def write_html(plan, path):
 
 
 def main():
+    from oroboros_export import utf8_output
+    utf8_output()
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--db", required=True, help="SQLite generado por oroboros_export.py")
     ap.add_argument("--catalog", default=os.path.join(HERE, "catalog.json"))

@@ -1,5 +1,15 @@
 # Fuentes de precios: Auctionator como fuente y escaneo propio como alternativa
 
+> **Decidido e implementado (16/11/2026, v0.6.0).** El usuario activa en Auctionator su escaneo completo. Eso cambia la propuesta del apartado 6 a mejor: el resultado de `ReplicateItems` llega por `REPLICATE_ITEM_LIST_UPDATE` a todos los addons, así que **Oroboros lee el escaneo de Auctionator** sin pedir otro. Conserva mínimo, valor de mercado, cantidad y profundidad, y no hace falta leer la tabla interna de Auctionator desde el juego. Hecho:
+> - `Scanner.FullScan` no llama a `ReplicateItems` si Auctionator tiene el escaneo completo activado; `/oro scan forzar` sí. El tiempo de espera cuenta también el último escaneo de Auctionator (`AUCTIONATOR_SAVEDVARS.TimeOfLastReplicateScan`).
+> - Lectura pasiva del resultado ajeno, como mucho una vez cada 5 minutos.
+> - `oroboros_export.py --auctionator`: mezcla `Auctionator.lua` en el SQLite (columna `src`). Gana Oroboros si tiene dato del mismo día.
+> - El planificador marca la profundidad estimada (`depth_est`) y no da confianza alta con ella.
+> - TOC: `## Interface: 16001, 120105` y `## OptionalDeps: Auctionator`.
+> - Pruebas en Windows sin `PYTHONUTF8`.
+>
+> Pendiente: validar en el juego; la clave de mercado (`"PvE"`) cuando se confirme; la búsqueda puntual de los objetos de la ruta (apartado 6c) solo hace falta si no hay escaneo completo.
+
 Informe del 16/11/2026. Todo lo de abajo está comprobado en los archivos de la instalación (solo lectura), salvo lo marcado como **sin verificar**. Las rutas de Auctionator son relativas a `Interface/AddOns/Auctionator/`.
 
 ## 1. Lo que hay instalado

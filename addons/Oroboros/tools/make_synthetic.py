@@ -8,6 +8,7 @@ WoW Forever en su segunda semana, plausible pero no real).
 """
 import argparse
 import random
+import sys
 import time
 
 MARKET = "ForeverPvE-Horde"
@@ -269,6 +270,11 @@ def to_lua(v, ind=""):
 
 
 if __name__ == "__main__":
+    for _s in (sys.stdout, sys.stderr):
+        try:
+            _s.reconfigure(encoding="utf-8", errors="replace")
+        except (AttributeError, ValueError):
+            pass
     ap = argparse.ArgumentParser()
     ap.add_argument("--out", default="Oroboros.lua")
     ap.add_argument("--seed", type=int, default=7)

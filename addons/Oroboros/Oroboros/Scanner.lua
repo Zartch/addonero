@@ -9,6 +9,7 @@ local CHUNK = 1500                  -- subastas procesadas por frame para no con
 Scanner.ahOpen = false
 Scanner.state = "idle"              -- idle | waiting | reading
 Scanner.lastReplicate = 0
+Scanner.lastRead = 0                -- última vez que leímos un resultado de ReplicateItems (nuestro o ajeno)
 local pending = {}                  -- [itemID] = { callbacks }
 
 local function setStatus(text)
@@ -30,14 +31,48 @@ end)
 ----------------------------------------------------------------------
 -- Escaneo completo (ReplicateItems)
 ----------------------------------------------------------------------
+----------------------------------------------------------------------
+-- Auctionator: si está cargado y hace él el escaneo completo, no pedimos otro.
+-- ReplicateItems tiene un límite de ~1 cada 15 min compartido entre addons, y su
+-- resultado (REPLICATE_ITEM_LIST_UPDATE) llega a todos: lo leemos sin pedirlo.
+----------------------------------------------------------------------
+function Scanner.AuctionatorLoaded()
+    return type(Auctionator) == "table" and type(Auctionator.API) == "table" and Auctionator.API.v1 ~= nil
+end
+
+-- true si Auctionator tiene activado su escaneo completo (opción «replicate_scan»)
+function Scanner.AuctionatorReplicates()
+    if not Scanner.AuctionatorLoaded() then return false end
+    local cfg = Auctionator.Config
+    if type(cfg) ~= "table" or type(cfg.Get) ~= "function" or type(cfg.Options) ~= "table" then return false end
+    local ok, v = pcall(cfg.Get, cfg.Options.REPLICATE_SCAN)
+    return ok and v == true
+end
+
+-- último ReplicateItems pedido por nosotros o por Auctionator
+local function lastReplicateAny()
+    local t = Scanner.lastReplicate
+    local sv = AUCTIONATOR_SAVEDVARS
+    if type(sv) == "table" and type(sv.TimeOfLastReplicateScan) == "number" and sv.TimeOfLastReplicateScan > t then
+        t = sv.TimeOfLastReplicateScan
+    end
+    return t
+end
+
 function Scanner.CanFullScan()
-    local left = REPLICATE_COOLDOWN - (time() - Scanner.lastReplicate)
+    local left = REPLICATE_COOLDOWN - (time() - lastReplicateAny())
     return left <= 0, math.max(0, left)
 end
 
-function Scanner.FullScan()
+-- force = true lanza nuestro ReplicateItems aunque Auctionator escanee (/oro scan forzar)
+function Scanner.FullScan(force)
     if not Scanner.ahOpen then ns.Print("abre la casa de subastas primero.") return end
     if Scanner.state ~= "idle" then ns.Print("ya hay un escaneo en curso.") return end
+    if not force and Scanner.AuctionatorReplicates() then
+        ns.Print("el escaneo completo lo hace Auctionator y Oroboros lee el mismo resultado: usa su botón de escaneo " ..
+                 "(o espera su autoescaneo). Para lanzarlo desde aquí: /oro scan forzar.")
+        return
+    end
     local ok, left = Scanner.CanFullScan()
     if not ok then
         ns.Print(string.format("escaneo completo disponible en %d:%02d.", math.floor(left / 60), left % 60))
@@ -49,8 +84,11 @@ function Scanner.FullScan()
     C_AuctionHouse.ReplicateItems()
 end
 
-local function readReplicate()
+-- passive = true cuando el escaneo lo pidió otro addon (Auctionator)
+local function readReplicate(passive)
     Scanner.state = "reading"
+    Scanner.lastRead = time()
+    local label = passive and "Escaneo de Auctionator" or "Escaneo completo"
     local total = C_AuctionHouse.GetNumReplicateItems()
     local byItem, idx = {}, 0
     local seenInfo = {}
@@ -72,22 +110,30 @@ local function readReplicate()
             end
         end
         idx = last
-        setStatus(string.format("Escaneo completo: %d / %d", idx, total))
+        setStatus(string.format("%s: %d / %d", label, idx, total))
         if idx < total then
             C_Timer.After(0, step)
         else
             local n = ns.DB.RecordPrices(byItem, true)
             Scanner.state = "idle"
-            setStatus(string.format("Escaneo completo terminado: %d objetos, %d subastas.", n, total))
-            ns.Print(string.format("escaneo completo: %d objetos (%d subastas). Haz /reload para guardar a disco.", n, total))
+            setStatus(string.format("%s leído: %d objetos, %d subastas.", label, n, total))
+            ns.Print(string.format("%s: %d objetos (%d subastas). Haz /reload para guardar a disco.", label:lower(), n, total))
             if ns.UI then ns.UI.Refresh() end
         end
     end
     step()
 end
 
+local PASSIVE_GAP = 5 * 60          -- el evento puede repetirse: un escaneo ajeno se lee una vez
+
 ns.On("REPLICATE_ITEM_LIST_UPDATE", function()
-    if Scanner.state == "waiting" then readReplicate() end
+    if Scanner.state == "waiting" then
+        readReplicate(false)
+    elseif Scanner.state == "idle" and Scanner.ahOpen and time() - Scanner.lastRead > PASSIVE_GAP then
+        -- ReplicateItems pedido por otro addon: leemos el mismo resultado sin pedir otro
+        Scanner.lastReplicate = math.max(Scanner.lastReplicate, time())
+        readReplicate(true)
+    end
 end)
 
 ----------------------------------------------------------------------

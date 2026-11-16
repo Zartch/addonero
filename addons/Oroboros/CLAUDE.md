@@ -8,8 +8,9 @@ Lee `README.md` (uso y funciones) y `docs/arquitectura.md` (decisiones y reglas)
 
 ## Estructura
 
-- `Oroboros/` — el addon (Lua 5.1, API moderna de Midnight, interfaz 120105). Archivos: `Core`, `DB`, `Scanner`, `Professions`, `Ledger`, `Queue`, `UI`.
-- `tools/oroboros_export.py` — SavedVariables → SQLite/JSON.
+- `Oroboros/` — el addon (Lua 5.1, API moderna de Midnight, interfaz 16001 de Forever; el TOC también lista 120105). Archivos: `Core`, `DB`, `Scanner`, `Professions`, `Ledger`, `Queue`, `UI`.
+- `tools/oroboros_export.py` — SavedVariables → SQLite/JSON (con `--auctionator`, añade los precios de Auctionator).
+- `tools/auctionator_source.py` — lee `Auctionator.lua` (base en CBOR) y la mezcla en el SQLite.
 - `tools/oroboros_plan.py` — planificador: rutas, transformaciones, qué aprender, inventario → `plan.html`.
 - `tools/oroboros_ideas.py` — ideas de especulación y cartera.
 - `tools/planner_ui.html` — plantilla de la página (el plan se incrusta en `/*__PLAN__*/null`).
@@ -32,7 +33,8 @@ Con datos reales: `python tools/oroboros_export.py --find "<carpeta WoW>" --sqli
 
 Para probar el addon en el juego, enlaza la carpeta en vez de copiarla (así los cambios se ven con `/reload`):
 
-- Windows (cmd como administrador): `mklink /D "<WoW>\<Forever>\Interface\AddOns\Oroboros" "<repo>\addons\Oroboros\Oroboros"`
+- Windows (unión, sin administrador): `mklink /J "<WoW>\_forever_\Interface\AddOns\Oroboros" "<repo>\addons\Oroboros\Oroboros"`
+- Instalación del usuario: `F:\World of Warcraft\_forever_\` (cliente 1.60.1, interfaz 16001).
 - macOS/Linux: `ln -s <repo>/addons/Oroboros/Oroboros "<WoW>/<Forever>/Interface/AddOns/Oroboros"`
 
 ## Reglas que no se rompen
@@ -49,18 +51,16 @@ Para probar el addon en el juego, enlaza la carpeta en vez de copiarla (así los
 - Nada se ha probado todavía en el cliente real: solo con la simulación y con datos sintéticos.
 - Lo primero que hay que validar en el juego: carga del addon y número de interfaz, lectura del banco (¿pestañas o clásico?), libro de compras (compra de equipo, facturas del correo), tooltip.
 
-## Siguiente tarea: no solapar con el addon de subasta que ya está instalado
+## Fuente de precios: Auctionator (hecho, sin probar en el juego)
 
-El usuario ya usa un addon de subasta (lo llamó "acuttioner": comprobar si es **Auctioneer** o **Auctionator**). Ese addon ya escanea y guarda precios. El escaneo completo (`C_AuctionHouse.ReplicateItems`) tiene un límite de uno cada 15 minutos **compartido entre todos los addons**, así que escanear dos veces no sirve.
+El usuario usa **Auctionator** con su escaneo completo activado. Detalle y referencias a su código en `docs/fuentes-de-precios.md`.
 
-Plan:
+- En el juego: si Auctionator hace el escaneo completo, `Scanner.FullScan` no llama a `ReplicateItems`; Oroboros lee su resultado al llegar `REPLICATE_ITEM_LIST_UPDATE` (lectura pasiva). `/oro scan forzar` lanza el propio.
+- Fuera del juego: `oroboros_export.py --auctionator` mezcla su base (precio, histórico de 21 días y cantidad). Gana Oroboros si tiene dato del mismo día.
+- Sin profundidad real, el planificador la estima y no da confianza alta (`stats()["depth_est"]`).
 
-1. Mirar qué hay instalado: `<WoW>/<Forever>/Interface/AddOns/` y `WTF/Account/<CUENTA>/SavedVariables/` (y `.../<Reino>/<Personaje>/SavedVariables/`).
-2. Leer el código y los SavedVariables de ese addon para ver qué guarda de verdad: precio por objeto, histórico por día, cantidad publicada, y si expone una API para otros addons. No fiarse de la memoria: comprobarlo en los archivos. (Pista sin verificar: Auctionator suele tener `Auctionator.API.v1.GetAuctionPriceByItemID(nombreAddon, itemID)` y guarda en `AUCTIONATOR_PRICE_DATABASE`.)
-3. Hacer la fuente de precios intercambiable:
-   - En el juego: si el otro addon está cargado, `Scanner.FullScan` no llama a `ReplicateItems`; `DB` toma una foto diaria de sus precios para nuestro histórico.
-   - Fuera del juego: `oroboros_export.py` puede leer directamente sus SavedVariables.
-4. Ver qué pierde el planificador si esa fuente no da cantidad publicada ni profundidad (hoy las usa para: cuántas unidades proponer, ventas por día, ideas de "oferta que se seca" y "progresión"). Si faltan, mantener una búsqueda puntual propia (`Scanner.Search`) solo para los objetos que el plan usa.
-5. Mantener el escaneo propio como alternativa cuando el otro addon no esté.
+Por validar en el juego: que la lectura pasiva funciona con el escaneo de Auctionator; el número de interfaz; si la subasta es única por reglas regionales (Auctionator usa la clave `"PvE"`, Oroboros `Reino-Facción`; si es única, pasar a esa clave); duraciones de publicación (Auctionator usa 2/8/24 h en Forever, `postDuration` asume 12/24/48 h).
+
+Goblinomics (instalado) es contabilidad y patrimonio sobre precios de TSM/Auctionator: no escanea, no ejecuta acciones ni planifica. Se solapa con el libro de compras e inventario de Oroboros, no con el escaneo, la cola ni el planificador.
 
 Otros pendientes: ver `docs/arquitectura.md`, sección Pendiente.

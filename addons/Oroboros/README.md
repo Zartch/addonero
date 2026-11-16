@@ -51,8 +51,8 @@ Dos reglas del juego condicionan el diseño:
 
 ## Instalación
 
-1. Copia la carpeta `Oroboros/` en `World of Warcraft/<carpeta de Forever>/Interface/AddOns/`.
-2. En el juego, comprueba la versión de interfaz con `/dump select(4, GetBuildInfo())`. Si no es `120105`, cambia la línea `## Interface:` de `Oroboros.toc` o activa "Cargar addons desactualizados".
+1. Copia la carpeta `Oroboros/` en `World of Warcraft/_forever_/Interface/AddOns/`, o enlázala para que los cambios se vean con `/reload` (en Windows, sin ser administrador: `mklink /J "<WoW>\_forever_\Interface\AddOns\Oroboros" "<repo>\addons\Oroboros\Oroboros"`).
+2. El TOC declara `## Interface: 16001, 120105` (Forever usa 16001; cliente 1.60.1). Compruébalo en el juego con `/dump select(4, GetBuildInfo())`; si no coincide, cambia la línea `## Interface:` de `Oroboros.toc` o activa "Cargar addons desactualizados".
 3. Escribe `/oro` para ver la ayuda.
 4. Para el planificador necesitas Python 3.8 o posterior. No hay dependencias que instalar.
 
@@ -60,7 +60,7 @@ Dos reglas del juego condicionan el diseño:
 
 | Paso | Dónde | Qué hacer |
 |---|---|---|
-| 1 | Subasta | Al abrirla aparece la ventana. Pulsa **Escaneo completo** (uno cada 15 minutos como mucho). |
+| 1 | Subasta | Al abrirla aparece la ventana. Pulsa **Escaneo completo** (uno cada 15 minutos como mucho). Con Auctionator y su escaneo completo activado, escanea él y Oroboros lee el mismo resultado (ver «Con Auctionator»). |
 | 2 | Cada profesión | Ábrela una vez con cada personaje. Se lee sola. |
 | 3 | Vendedores de materiales | Ábrelos una vez (hilo, viales…). |
 | 4 | Banco | Ábrelo una vez con cada personaje. |
@@ -80,6 +80,14 @@ python tools/make_synthetic.py --out Oroboros.lua
 python tools/oroboros_export.py Oroboros.lua --sqlite oroboros.sqlite
 python tools/oroboros_plan.py --db oroboros.sqlite --html plan.html --routes rutas --synthetic
 ```
+
+## Con Auctionator
+
+Si Auctionator está instalado, Oroboros no escanea dos veces (detalle en `docs/fuentes-de-precios.md`):
+
+- **En el juego.** Activa en Auctionator el escaneo completo (opciones avanzadas: escaneo con `ReplicateItems`). Cuando Auctionator escanea, Oroboros lee el mismo resultado: mínimo, valor de mercado, cantidad y profundidad, sin pedir otro escaneo. Su botón **Escaneo completo** solo te lo recuerda; `/oro scan forzar` lanza el propio, respetando el límite de 15 minutos de los dos. Sin Auctionator, todo sigue como antes.
+- **Fuera del juego.** `oroboros_export.py --auctionator` añade los precios y el histórico de 21 días que guarda Auctionator. Rellena los días y objetos que Oroboros no tiene; si los dos tienen dato del mismo día, gana el de Oroboros (trae profundidad).
+- **Lo que no da Auctionator:** profundidad y valor de mercado. Con sus precios el planificador estima la profundidad y no da confianza alta.
 
 ## Varios personajes y banquero
 
@@ -107,7 +115,7 @@ Se abre sola al abrir la subasta, a su derecha. También con `/oro show`. Se cie
 
 | Elemento | Función |
 |---|---|
-| **Escaneo completo** | Lee toda la subasta. El pie indica cuánto falta para el siguiente. |
+| **Escaneo completo** | Lee toda la subasta. El pie indica cuánto falta para el siguiente, o «lo hace Auctionator». |
 | **Importar ruta** | Abre el cuadro para pegar una ruta. **Cargar ruta** sustituye la que hubiera; **Añadir a la ruta** suma pasos sin borrar (úsalo para la ruta de ideas); **Vaciar** limpia el cuadro. |
 | Línea de estado | Dice qué va a hacer el siguiente clic o por qué no puede. |
 | **Siguiente** | Ejecuta el paso actual. Se puede asignar a una tecla en *Opciones → Atajos → Oroboros*. |
@@ -134,7 +142,8 @@ El tooltip de cada objeto muestra el precio guardado y qué personaje tuyo lo fa
 |---|---|
 | `/oro` | Muestra la ayuda. |
 | `/oro show` | Muestra u oculta la ventana. |
-| `/oro scan` | Escaneo completo (con la subasta abierta). |
+| `/oro scan` | Escaneo completo (con la subasta abierta). Con Auctionator escaneando, avisa y no lanza otro. |
+| `/oro scan forzar` | Escaneo propio aunque Auctionator haga el suyo (respeta el límite de 15 minutos de los dos). |
 | `/oro price <itemID o enlace>` | Precio guardado: mínimo, valor de mercado, cantidad y hora. |
 | `/oro prof` | Profesiones de todos tus personajes, con recetas aprendidas y vistas. |
 | `/oro quien <itemID o enlace>` | Qué personaje tuyo lo fabrica. |
@@ -209,6 +218,7 @@ Convierte el archivo del addon en SQLite y JSON.
 ```
 python tools/oroboros_export.py <ruta a Oroboros.lua> --sqlite oroboros.sqlite --json oroboros.json
 python tools/oroboros_export.py --find "<carpeta WoW>" --sqlite oroboros.sqlite
+python tools/oroboros_export.py --find "<carpeta WoW>" --auctionator --sqlite oroboros.sqlite
 ```
 
 | Opción | Significado |
@@ -217,6 +227,7 @@ python tools/oroboros_export.py --find "<carpeta WoW>" --sqlite oroboros.sqlite
 | `--find <carpeta>` | Busca el archivo dentro de la carpeta de WoW. Si hay varios, usa el más reciente. |
 | `--sqlite <archivo>` | Escribe la base SQLite. |
 | `--json <archivo>` | Escribe el contenido en JSON. |
+| `--auctionator [archivo]` | Añade al SQLite los precios de Auctionator. Sin ruta, busca `Auctionator.lua` junto a `Oroboros.lua`. |
 
 ### oroboros_plan.py
 
@@ -349,8 +360,8 @@ Completa lo que el juego no da al addon. **Los valores son de ejemplo: revísalo
 | Tabla | Contenido |
 |---|---|
 | `items` | Nombre, calidad, venta al vendedor, pila, si es apilable en subasta, compra al vendedor, nivel de objeto. |
-| `prices` | Por mercado y objeto: mínimo, valor de mercado, cantidad, subastas, hora y profundidad (`d110`, `d125`, `d150`, `d200`). |
-| `history` | Por mercado, objeto y día: mínimo, valor de mercado y cantidad. |
+| `prices` | Por mercado y objeto: mínimo, valor de mercado, cantidad, subastas, hora, profundidad (`d110`, `d125`, `d150`, `d200`) y origen (`src`: `oro` Oroboros, `atr` Auctionator). |
+| `history` | Por mercado, objeto y día: mínimo, valor de mercado, cantidad y origen (`src`). Con Auctionator, «valor de mercado» es el mínimo más alto del día. |
 | `characters` | Mercado, oro, nivel, clase. |
 | `inventory` | Por personaje y zona (`bags`, `bank`, `warband`): objeto y cantidad. |
 | `slots` | Huecos totales y libres por personaje y zona. |
@@ -421,8 +432,11 @@ El addon se reparte en siete archivos que comparten una tabla privada `ns`. Solo
 
 | Función | Qué hace |
 |---|---|
-| `Scanner.CanFullScan()` | Si se puede escanear ya y cuántos segundos faltan. |
-| `Scanner.FullScan()` | Lanza el escaneo completo y lo procesa por tandas para no congelar el juego. |
+| `Scanner.CanFullScan()` | Si se puede escanear ya y cuántos segundos faltan (cuenta también el último escaneo de Auctionator). |
+| `Scanner.FullScan(force)` | Lanza el escaneo completo y lo procesa por tandas para no congelar el juego. Si Auctionator hace el escaneo completo, no lo lanza salvo con `force`. |
+| `Scanner.AuctionatorLoaded()` / `Scanner.AuctionatorReplicates()` | Si Auctionator está cargado / si tiene activado su escaneo completo. |
+
+Cuando otro addon pide `ReplicateItems`, el evento `REPLICATE_ITEM_LIST_UPDATE` llega también a Oroboros, que lee ese resultado (una vez cada 5 minutos como mucho).
 | `Scanner.Search(itemID, callback)` | Busca un objeto, guarda su precio y devuelve las filas ordenadas por precio. |
 
 También guarda los precios de los vendedores al abrirlos.
@@ -477,7 +491,8 @@ No expone funciones. Escucha:
 ## Límites conocidos
 
 - **Sin probar en el juego real.** Lo que más necesita verse: la lectura del banco (Forever puede usar pestañas o el sistema clásico; el addon prueba los dos), la compra de equipo en el libro, las facturas del correo y el tooltip.
-- **Sin API oficial de precios** para Forever: todos los datos salen del escaneo en el juego.
+- **Sin API oficial de precios** para Forever: los datos salen del escaneo en el juego, propio o de Auctionator.
+- **Auctionator no guarda profundidad ni valor de mercado:** con sus precios, la profundidad es una estimación.
 - **Ventas por día estimadas** y a la baja. Más escaneos al día dan mejor estimación.
 - **Correo y vendedor no automatizados:** son pasos `NOTE`.
 - **El correo solo da el nombre del objeto:** la venta se anota si el addon ya conoce ese objeto.
@@ -491,7 +506,8 @@ No expone funciones. Escucha:
 |---|---|
 | El addon no aparece en la lista | La carpeta debe llamarse `Oroboros` y contener `Oroboros.toc`. Revisa el número de `## Interface:`. |
 | El exportador dice que no hay `OroborosDB` | No se ha escrito el archivo: haz `/reload` o sal del juego. |
-| "Escaneo completo disponible en…" | El juego limita el escaneo completo a uno cada 15 minutos. |
+| "Escaneo completo disponible en…" | El juego limita el escaneo completo a uno cada 15 minutos, contando también el de Auctionator. |
+| "El escaneo completo lo hace Auctionator…" | Escanea con Auctionator: Oroboros lee su resultado. Para el propio, `/oro scan forzar`. |
 | El plan no usa las recetas de un personaje | Entra con él y abre cada profesión; luego `/reload`. |
 | "Nada por debajo de…" al comprar | El precio ha subido desde el escaneo. Salta el paso o vuelve a planificar. |
 | "El mercado está por debajo de tu mínimo" al vender | Alguien ha bajado el precio. No publica para no vender a pérdida. |

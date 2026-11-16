@@ -6,6 +6,8 @@ para que el planificador (paso 2) trabaje con los datos.
 Uso:
   python oroboros_export.py "C:/.../SavedVariables/Oroboros.lua" --sqlite oroboros.sqlite --json oroboros.json
   python oroboros_export.py --find "C:/Program Files (x86)/World of Warcraft" --sqlite oroboros.sqlite
+  python oroboros_export.py --find "F:/World of Warcraft/_forever_" --auctionator --sqlite oroboros.sqlite
+      (--auctionator sin ruta busca Auctionator.lua junto a Oroboros.lua)
 
 Sin dependencias externas (solo biblioteca estándar).
 """
@@ -24,7 +26,7 @@ import sys
 class LuaParser:
     TOKEN = re.compile(r"""
         (?P<ws>\s+|--[^\n]*)
-      | (?P<str>"(?:\\.|[^"\\])*")
+      | (?P<str>"(?:\\[\s\S]|[^"\\])*")
       | (?P<num>-?(?:0x[0-9a-fA-F]+|\d+\.?\d*(?:[eE][+-]?\d+)?|\.\d+(?:[eE][+-]?\d+)?))
       | (?P<name>[A-Za-z_][A-Za-z0-9_]*)
       | (?P<sym>[{}\[\]=,;])
@@ -32,7 +34,9 @@ class LuaParser:
 
     ESCAPES = {"n": "\n", "t": "\t", "r": "\r", '"': '"', "\\": "\\", "'": "'", "\n": "\n"}
 
-    def __init__(self, text):
+    def __init__(self, text, binary=False):
+        # binary=True: las cadenas se devuelven byte a byte (latin-1), sin decodificar UTF-8
+        self.binary = binary
         self.tokens = []
         pos = 0
         while pos < len(text):
@@ -72,6 +76,8 @@ class LuaParser:
                 out.append(c)
                 k += 1
         raw = "".join(out)
+        if self.binary:
+            return raw
         # WoW escribe UTF-8; los escapes numéricos dan bytes sueltos
         try:
             return raw.encode("latin-1").decode("utf-8")
@@ -142,9 +148,10 @@ CREATE TABLE positions  (item_id INTEGER PRIMARY KEY, qty REAL, entry REAL, targ
                          t INTEGER, char TEXT);
 CREATE TABLE prices     (market TEXT, item_id INTEGER, min REAL, mv REAL, qty INTEGER, auctions INTEGER,
                          t INTEGER, d110 INTEGER, d125 INTEGER, d150 INTEGER, d200 INTEGER,
+                         src TEXT DEFAULT 'oro',               -- oro = Oroboros | atr = Auctionator
                          PRIMARY KEY (market, item_id));
 CREATE TABLE history    (market TEXT, item_id INTEGER, day TEXT, min REAL, mv REAL, qty INTEGER,
-                         PRIMARY KEY (market, item_id, day));
+                         src TEXT DEFAULT 'oro', PRIMARY KEY (market, item_id, day));
 CREATE TABLE characters (char TEXT PRIMARY KEY, market TEXT, money INTEGER, level INTEGER, class TEXT, t INTEGER);
 CREATE TABLE inventory  (char TEXT, location TEXT, item_id INTEGER, count INTEGER,
                          PRIMARY KEY (char, location, item_id));   -- location: bags | bank | warband
@@ -191,12 +198,12 @@ def write_sqlite(db, path):
         for item_id, p in as_dict(m.get("prices")).items():
             d = p.get("d") or [None] * 4
             d = d if isinstance(d, list) else [d.get(k) for k in (1, 2, 3, 4)]
-            con.execute("INSERT INTO prices VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+            con.execute("INSERT INTO prices VALUES (?,?,?,?,?,?,?,?,?,?,?,'oro')",
                         (market, int(item_id), p.get("min"), p.get("mv"), p.get("qty"), p.get("n"), p.get("t"),
                          *d[:4]))
         for item_id, days in as_dict(m.get("history")).items():
             for day, h in as_dict(days).items():
-                con.execute("INSERT INTO history VALUES (?,?,?,?,?,?)",
+                con.execute("INSERT INTO history VALUES (?,?,?,?,?,?,'oro')",
                             (market, int(item_id), day, h.get("min"), h.get("mv"), h.get("qty")))
 
     seen_reagents = set()
@@ -260,12 +267,42 @@ def find_file(root):
     return hits[0]
 
 
+def add_auctionator(sqlite_path, atr_path, oroboros_path):
+    import auctionator_source
+    if atr_path == "auto":
+        atr_path = os.path.join(os.path.dirname(os.path.abspath(oroboros_path)), "Auctionator.lua")
+        if not os.path.exists(atr_path):
+            print(f"Auctionator: no encuentro {atr_path}; sigo solo con los datos de Oroboros.")
+            return
+    atr = auctionator_source.load(atr_path)
+    con = sqlite3.connect(sqlite_path)
+    # mismo criterio que el planificador: el mercado de la mayoría de personajes
+    markets = [r[0] for r in con.execute("SELECT market FROM characters WHERE market IS NOT NULL")]
+    market = max(set(markets), key=markets.count) if markets else auctionator_source.pick_market(atr["markets"])
+    n_price, n_hist = auctionator_source.merge(con, atr, market)
+    con.close()
+    total = sum(len(v) for v in atr["markets"].values())
+    print(f"Auctionator → mercado {market}: {total} objetos leídos, {n_price} precios y {n_hist} días de histórico añadidos.")
+
+
+def utf8_output():
+    """La consola de Windows usa cp1252: sin esto, «→» rompe la salida."""
+    for stream in (sys.stdout, sys.stderr):
+        try:
+            stream.reconfigure(encoding="utf-8", errors="replace")
+        except (AttributeError, ValueError):
+            pass
+
+
 def main():
+    utf8_output()
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("path", nargs="?", help="ruta a SavedVariables/Oroboros.lua")
     ap.add_argument("--find", metavar="WOW_ROOT", help="buscar Oroboros.lua dentro de la carpeta de WoW")
     ap.add_argument("--sqlite", help="fichero SQLite de salida")
     ap.add_argument("--json", help="fichero JSON de salida")
+    ap.add_argument("--auctionator", nargs="?", const="auto", metavar="RUTA",
+                    help="añadir los precios de Auctionator (sin ruta: Auctionator.lua junto a Oroboros.lua)")
     args = ap.parse_args()
 
     path = args.path or (find_file(args.find) if args.find else None)
@@ -283,6 +320,8 @@ def main():
     if args.sqlite:
         counts = write_sqlite(db, args.sqlite)
         print(f"SQLite → {args.sqlite}  " + ", ".join(f"{k}: {v}" for k, v in counts.items()))
+        if args.auctionator:
+            add_auctionator(args.sqlite, args.auctionator, path)
     if not args.json and not args.sqlite:
         print(json.dumps({k: (len(v) if hasattr(v, "__len__") else v) for k, v in db.items()}, indent=1))
 

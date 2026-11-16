@@ -81,8 +81,14 @@ function UI.UpdateFooter()
     local ok, left = ns.Scanner.CanFullScan()
     local m = ns.DB.Market()
     local last = m.lastFull > 0 and date("%d/%m %H:%M", m.lastFull) or "nunca"
+    local scanTxt
+    if ns.Scanner.AuctionatorReplicates() then
+        scanTxt = "escaneo: lo hace Auctionator"
+    else
+        scanTxt = ok and "escaneo listo" or string.format("escaneo en %d:%02d", math.floor(left / 60), left % 60)
+    end
     footerText:SetText(string.format("%s  ·  último completo: %s  ·  %s",
-        ok and "escaneo listo" or string.format("escaneo en %d:%02d", math.floor(left / 60), left % 60),
+        scanTxt,
         last, ns.Money(GetMoney())))
 end
 

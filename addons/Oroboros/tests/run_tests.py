@@ -1,4 +1,9 @@
 import os, subprocess, sys, sqlite3
+for _s in (sys.stdout, sys.stderr):      # consola de Windows en cp1252
+    try:
+        _s.reconfigure(encoding="utf-8", errors="replace")
+    except (AttributeError, ValueError):
+        pass
 from lupa.lua51 import LuaRuntime
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -40,6 +45,38 @@ check(d == [20, 40, 40, 240], f"profundidad de mercado {d}")
 ns.Scanner.FullScan()
 check(ns.Scanner.CanFullScan() is False or True, "cooldown de escaneo respetado")
 check(len(calls()) == 0, "no repite ReplicateItems antes de 15 min")
+
+# Auctionator con su escaneo completo activado: no pedimos otro y leemos el suyo
+lua.execute("""
+Auctionator = { API = { v1 = {} }, Config = { Options = { REPLICATE_SCAN = "replicate_scan_3" },
+                Get = function(k) return k == "replicate_scan_3" end } }
+AUCTIONATOR_SAVEDVARS = {}
+""")
+ns.Scanner.lastReplicate = 0; ns.Scanner.lastRead = 0
+check(ns.Scanner.AuctionatorReplicates() is True, "Auctionator: detecta su escaneo completo")
+ns.Scanner.FullScan()
+check(len(calls()) == 0, "Auctionator: Oroboros no llama a ReplicateItems")
+mprices = G.OroborosDB.markets[ns.MarketKey()].prices
+mprices[2589] = None
+lua.execute("AUCTIONATOR_SAVEDVARS.TimeOfLastReplicateScan = time()")
+fire("REPLICATE_ITEM_LIST_UPDATE"); G.RunTimers()
+p = ns.DB.GetPrice(2589)
+check(p is not None and p.mv == 32 and p.d[1] == 20, "Auctionator: leemos su escaneo con valor de mercado y profundidad")
+mprices[2589] = None
+fire("REPLICATE_ITEM_LIST_UPDATE"); G.RunTimers()
+check(ns.DB.GetPrice(2589) is None, "Auctionator: el mismo escaneo no se lee dos veces")
+ns.Scanner.lastReplicate = 0
+can, left = ns.Scanner.CanFullScan()
+check(can is False and left > 14 * 60, "Auctionator: respetamos su límite de 15 min")
+ns.Scanner.FullScan(True)
+check(len(calls()) == 0, "/oro scan forzar también respeta el límite")
+lua.execute("AUCTIONATOR_SAVEDVARS.TimeOfLastReplicateScan = time() - 16 * 60")
+ns.Scanner.FullScan(True)
+check(calls() == [("ReplicateItems",)], "/oro scan forzar lanza nuestro escaneo")
+fire("REPLICATE_ITEM_LIST_UPDATE"); G.RunTimers()
+check(ns.DB.GetPrice(2589) is not None, "escaneo forzado leído")
+lua.execute("Auctionator = nil; AUCTIONATOR_SAVEDVARS = nil")
+check(ns.Scanner.AuctionatorReplicates() is False, "sin Auctionator: escaneo propio")
 
 # Banco
 c = G.OroborosDB.chars["Zartch-ForeverNormal"]
@@ -164,7 +201,7 @@ with open(sv, "w", encoding="utf-8") as fh:
     fh.write('Extra = {\n\t"a", -- [1]\n\t{\n\t\t2589, -- [1]\n\t\t2, -- [2]\n\t}, -- [2]\n}\n')
 out = os.path.join(ROOT, "tests", "out.sqlite")
 r = subprocess.run([sys.executable, os.path.join(ROOT, "tools", "oroboros_export.py"), sv,
-                    "--sqlite", out, "--json", out.replace(".sqlite", ".json")], capture_output=True, text=True)
+                    "--sqlite", out, "--json", out.replace(".sqlite", ".json")], capture_output=True, text=True, encoding="utf-8", errors="replace")
 print(r.stdout.strip(), r.stderr.strip())
 con = sqlite3.connect(out)
 check(con.execute("SELECT mv FROM prices WHERE item_id=2589").fetchone()[0] == 32, "SQLite: precios")
@@ -175,7 +212,68 @@ check(con.execute("SELECT count FROM inventory WHERE location='bank' AND item_id
 check(con.execute("SELECT free FROM slots WHERE location='warband'").fetchone()[0] == 15, "SQLite: huecos banda")
 check(con.execute("SELECT d125 FROM prices WHERE item_id=2589").fetchone()[0] == 40, "SQLite: profundidad")
 
+# Auctionator.lua junto a Oroboros.lua: el exportador mezcla sus precios
+con.close()       # en Windows no se puede borrar un SQLite abierto
 sys.path.insert(0, os.path.join(ROOT, "tools"))
+import datetime
+from auctionator_source import cbor_encode, cbor_decode
+d0 = (datetime.date.today() - datetime.date(2020, 1, 1)).days
+pve = {
+    "2589": {"m": 33, "h": {str(d0 - 1): 45, str(d0): 33}, "l": {}, "a": {str(d0 - 1): 500, str(d0): 240}},
+    "9999": {"m": 500, "h": {str(d0 - 2): 520, str(d0 - 1): 510}, "l": {str(d0 - 2): 480},
+             "a": {str(d0 - 2): 30, str(d0 - 1): 25}},
+    "g:6070:200": {"m": 1, "h": {str(d0): 1}, "l": {}, "a": {}},
+    "p:123": {"m": 1, "h": {str(d0): 1}, "l": {}, "a": {}},
+    "version": 2,
+}
+blob = cbor_encode(pve)
+check(cbor_decode(blob) == pve, "CBOR: ida y vuelta")
+def lua_bytes(b):   # como WoW: bytes altos tal cual; controles, comillas y barras escapados
+    return "".join(chr(c) if (32 <= c < 127 or c >= 128) and c not in (34, 92) else "\\%03d" % c for c in b)
+atr_lua = "\n".join([
+    "",
+    "AUCTIONATOR_PRICE_DATABASE = {",
+    '\t["__dbversion"] = 8,',
+    '\t["PvE"] = "' + lua_bytes(blob) + '",',
+    '\t["Viejo"] = {',
+    '\t\t["2589"] = {',
+    '\t\t\t["m"] = 1,',
+    '\t\t\t["h"] = {',
+    '\t\t\t\t["2000"] = 1,',
+    "\t\t\t},",
+    "\t\t},",
+    "\t},",
+    "}",
+    "AUCTIONATOR_SAVEDVARS = {",
+    '\t["TimeOfLastBrowseScan"] = 1,',
+    "}",
+    "",
+])
+with open(os.path.join(ROOT, "tests", "Auctionator.lua"), "w", encoding="latin-1", newline="\n") as fh:
+    fh.write(atr_lua)
+r = subprocess.run([sys.executable, os.path.join(ROOT, "tools", "oroboros_export.py"), sv, "--sqlite", out, "--auctionator"],
+                   capture_output=True, text=True, encoding="utf-8", errors="replace")
+print(r.stdout.strip(), r.stderr.strip())
+con = sqlite3.connect(out)
+mk_ = con.execute("SELECT market FROM characters").fetchone()[0]
+row = con.execute("SELECT min, mv, qty, d110, src FROM prices WHERE market=? AND item_id=9999", (mk_,)).fetchone()
+check(row == (500, 500, 25, None, "atr"), f"Auctionator: precio de un objeto nuevo {row}")
+check(con.execute("SELECT mv, src FROM prices WHERE item_id=2589").fetchone() == (32, "oro"),
+      "Auctionator: no pisa el precio de Oroboros del mismo día")
+d2 = (datetime.date.today() - datetime.timedelta(days=2)).isoformat()
+check(con.execute("SELECT min, mv, qty, src FROM history WHERE item_id=9999 AND day=?", (d2,)).fetchone() == (480, 520, 30, "atr"),
+      "Auctionator: histórico (mínimo, más alto y cantidad del día)")
+check(con.execute("SELECT COUNT(*) FROM history WHERE item_id=2589 AND src='atr'").fetchone()[0] == 1,
+      "Auctionator: solo añade los días que Oroboros no tiene")
+check(con.execute("SELECT COUNT(*) FROM prices WHERE item_id IN (6070, 123)").fetchone()[0] <= 1,
+      "Auctionator: ignora claves de equipo por nivel y mascotas")
+con.close()
+from oroboros_plan import Data
+dd = Data(out, os.path.join(ROOT, "tools", "catalog.json"))
+st_ = dd.stats(9999)
+check(st_["depth_est"] and st_["src"] == "atr" and st_["conf"] != "alta", f"planificador: profundidad estimada y confianza {st_['conf']}")
+check(dd.stats(2589)["depth_est"] is False, "planificador: profundidad real de Oroboros")
+
 from oroboros_export import LuaParser
 extra = LuaParser('Extra = {\n\t"a", -- [1]\n\t{\n\t\t2589, -- [1]\n\t\t2, -- [2]\n\t}, -- [2]\n}\nS = "\\195\\177and\\"u"').assignments()
 check(extra["Extra"] == ["a", [2589, 2]] and extra["S"] == 'ñand"u', f"parser: arrays estilo WoW y escapes {extra}")
@@ -186,9 +284,9 @@ tmp = tempfile.mkdtemp()
 subprocess.run([sys.executable, os.path.join(ROOT, "tools", "make_synthetic.py"), "--out", os.path.join(tmp, "A.lua")], check=True, capture_output=True)
 subprocess.run([sys.executable, os.path.join(ROOT, "tools", "oroboros_export.py"), os.path.join(tmp, "A.lua"), "--sqlite", os.path.join(tmp, "a.sqlite")], check=True, capture_output=True)
 r = subprocess.run([sys.executable, os.path.join(ROOT, "tools", "oroboros_plan.py"), "--db", os.path.join(tmp, "a.sqlite"),
-                    "--json", os.path.join(tmp, "p.json"), "--html", os.path.join(tmp, "p.html"), "--synthetic"], capture_output=True, text=True)
+                    "--json", os.path.join(tmp, "p.json"), "--html", os.path.join(tmp, "p.html"), "--synthetic"], capture_output=True, text=True, encoding="utf-8", errors="replace")
 check(r.returncode == 0, "planificador se ejecuta " + r.stderr[-300:])
-plan = json.load(open(os.path.join(tmp, "p.json")))
+plan = json.load(open(os.path.join(tmp, "p.json"), encoding="utf-8"))
 s_ = plan["summary"]
 check(s_["profit"] > 0 and s_["investment"] <= plan["settings"]["budget"] + 1, "beneficio > 0 y la inversión cabe en el presupuesto")
 check(all(o["profit"] > 0 and o["margin"] >= 0.08 for o in plan["opportunities"] if o.get("included")), "solo entra lo rentable (margen ≥ 8 %)")
@@ -243,8 +341,8 @@ for ck, t in list(parts.items()) + [(p.char, p.text) for p in ns.Queue.Split(I["
     n, nerr = ns.Queue.Parse(t)
     check(len(list(nerr.values())) == 0 and len(list(n.values())) > 0, f"ruta única: el addon entiende la parte de {ck.split('-')[0]}")
 r2 = subprocess.run([sys.executable, os.path.join(ROOT, "tools", "oroboros_plan.py"), "--db", os.path.join(tmp, "a.sqlite"),
-                     "--json", os.path.join(tmp, "p2.json"), "--banker", "none"], capture_output=True, text=True)
-p2 = json.load(open(os.path.join(tmp, "p2.json")))
+                     "--json", os.path.join(tmp, "p2.json"), "--banker", "none"], capture_output=True, text=True, encoding="utf-8", errors="replace")
+p2 = json.load(open(os.path.join(tmp, "p2.json"), encoding="utf-8"))
 check(p2["banker"] is None and any("BUY " in rt["text"] for rt in p2["routes"].values() if rt["short"] == "Zarthrin"),
       "sin banquero, cada personaje compra lo suyo")
 check(not any(c["item"] in (14256, 9206, 4234) for c in I["ideas"]), "no se repite una apuesta que ya está abierta")

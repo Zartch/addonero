@@ -1,6 +1,6 @@
 # Addonero — proyecto de addons para WoW
 
-Monorepo de addons para **World of Warcraft Forever** (API moderna de Midnight, interfaz 120105, Lua 5.1). El usuario (Zartch) habla español: código comentado, textos del juego y documentación en español.
+Monorepo de addons para **World of Warcraft Forever** (API moderna de Midnight, interfaz 16001 en Forever, Lua 5.1). El usuario (Zartch) habla español: código comentado, textos del juego y documentación en español.
 
 ## Estructura
 

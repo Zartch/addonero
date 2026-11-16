@@ -119,6 +119,7 @@ SlashCmdList.OROBOROS = function(msg)
         ns.Print("comandos:")
         ns.Print("  /oro show     – mostrar/ocultar la ventana")
         ns.Print("  /oro scan     – escaneo completo (con la subasta abierta)")
+        ns.Print("  /oro scan forzar – escaneo propio aunque Auctionator haga el suyo")
         ns.Print("  /oro price <itemID|link> – ver precio guardado")
         ns.Print("  /oro prof     – profesiones de todos tus personajes")
         ns.Print("  /oro quien <itemID|link> – qué personaje lo fabrica")
@@ -131,7 +132,7 @@ SlashCmdList.OROBOROS = function(msg)
     elseif cmd == "show" then
         ns.UI.Toggle()
     elseif cmd == "scan" then
-        ns.Scanner.FullScan()
+        ns.Scanner.FullScan(rest:lower() == "forzar")
     elseif cmd == "price" then
         local id = tonumber(rest) or tonumber((rest or ""):match("item:(%d+)"))
         if not id then ns.Print("uso: /oro price <itemID|link>") return end
