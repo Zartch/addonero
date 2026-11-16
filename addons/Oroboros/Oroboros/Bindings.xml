@@ -1,0 +1,5 @@
+<Bindings>
+    <Binding name="OROBOROS_NEXT" header="OROBOROS" category="ADDONS">
+        Oroboros_Next()
+    </Binding>
+</Bindings>

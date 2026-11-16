@@ -1,0 +1,509 @@
+# Oroboros
+
+Addon del proyecto [Addonero](../../README.md).
+
+Addon de subasta para **WoW Forever** y planificador de oro. Versión 0.5.0.
+
+El addon escanea la subasta, guarda precios, recetas, inventario y compras, y ejecuta una ruta de compra, fabricación y venta con un clic por acción. El planificador (fuera del juego) lee esos datos y calcula qué fabricar, qué comprar, qué aprender y qué apuestas hacer, y genera la ruta que pegas en el addon.
+
+> **Estado:** la lógica está probada fuera del juego con una simulación de la API de WoW y con datos sintéticos (84 comprobaciones). **Todavía no se ha probado en el cliente real.** La primera sesión en el juego es de validación.
+
+## Índice
+
+1. [Cómo funciona](#cómo-funciona)
+2. [Instalación](#instalación)
+3. [Primer uso](#primer-uso)
+4. [Varios personajes y banquero](#varios-personajes-y-banquero)
+5. [La ventana del addon](#la-ventana-del-addon)
+6. [Comandos](#comandos)
+7. [Formato de ruta](#formato-de-ruta)
+8. [Qué guarda el addon](#qué-guarda-el-addon)
+9. [Planificador](#planificador)
+10. [La página del plan](#la-página-del-plan)
+11. [Ideas de especulación](#ideas-de-especulación)
+12. [Cartera](#cartera)
+13. [catalog.json](#catalogjson)
+14. [Base de datos SQLite](#base-de-datos-sqlite)
+15. [Referencia de funciones del addon](#referencia-de-funciones-del-addon)
+16. [Límites conocidos](#límites-conocidos)
+17. [Problemas frecuentes](#problemas-frecuentes)
+18. [Pruebas](#pruebas)
+
+## Cómo funciona
+
+```
+ EN EL JUEGO                         FUERA DEL JUEGO
+ ┌─────────────────────┐  /reload   ┌──────────────────────┐
+ │ Addon: escanea y     │──────────▶│ oroboros_export.py    │
+ │ guarda en            │ Oroboros  │  → oroboros.sqlite    │
+ │ SavedVariables       │   .lua    └──────────┬───────────┘
+ └─────────▲───────────┘                       ▼
+           │ pegar ruta             ┌──────────────────────┐
+           └────────────────────────│ oroboros_plan.py      │
+                                    │  → plan.html + rutas  │
+                                    └──────────────────────┘
+```
+
+Dos reglas del juego condicionan el diseño:
+
+- **Un clic por acción.** Comprar, publicar y fabricar exigen un clic o una tecla. Automatizarlo del todo es *botting* y se castiga con baneo. El addon prepara y comprueba cada acción; tú pulsas **Siguiente**.
+- **El addon no tiene red ni escribe archivos.** Solo guarda `SavedVariables`, que el juego escribe al hacer `/reload` o al salir. Por eso los datos salen por ese archivo y la ruta entra pegándola.
+
+## Instalación
+
+1. Copia la carpeta `Oroboros/` en `World of Warcraft/<carpeta de Forever>/Interface/AddOns/`.
+2. En el juego, comprueba la versión de interfaz con `/dump select(4, GetBuildInfo())`. Si no es `120105`, cambia la línea `## Interface:` de `Oroboros.toc` o activa "Cargar addons desactualizados".
+3. Escribe `/oro` para ver la ayuda.
+4. Para el planificador necesitas Python 3.8 o posterior. No hay dependencias que instalar.
+
+## Primer uso
+
+| Paso | Dónde | Qué hacer |
+|---|---|---|
+| 1 | Subasta | Al abrirla aparece la ventana. Pulsa **Escaneo completo** (uno cada 15 minutos como mucho). |
+| 2 | Cada profesión | Ábrela una vez con cada personaje. Se lee sola. |
+| 3 | Vendedores de materiales | Ábrelos una vez (hilo, viales…). |
+| 4 | Banco | Ábrelo una vez con cada personaje. |
+| 5 | Correo | Ábrelo: las ventas de subasta cobradas se anotan. |
+| 6 | Cualquier sitio | `/reload` o salir del juego, para que se escriba el archivo. |
+| 7 | Fuera del juego | `python tools/oroboros_export.py --find "<carpeta WoW>" --sqlite oroboros.sqlite` |
+| 8 | Fuera del juego | `python tools/oroboros_plan.py --db oroboros.sqlite --html plan.html --routes rutas` |
+| 9 | Navegador | Abre `plan.html`, ve a **Ruta** y pulsa **Copiar ruta completa**. |
+| 10 | Juego | **Importar ruta** → pegar (Ctrl+V) → **Cargar ruta** → pulsar **Siguiente**. |
+
+Cuantos más días escanees, mejor: el planificador necesita histórico para calcular medianas, tendencias y ventas por día. Con menos de 4 días la confianza sale baja; las ideas de especulación piden entre 7 y 13 días.
+
+Para probar sin jugar:
+
+```
+python tools/make_synthetic.py --out Oroboros.lua
+python tools/oroboros_export.py Oroboros.lua --sqlite oroboros.sqlite
+python tools/oroboros_plan.py --db oroboros.sqlite --html plan.html --routes rutas --synthetic
+```
+
+## Varios personajes y banquero
+
+Los datos del addon son **de la cuenta**: lo que lee un personaje lo ven todos. Un personaje de nivel bajo parado en la subasta conoce las recetas de los demás.
+
+1. Entra una vez con cada artesano y abre sus profesiones y su banco. Repítelo cuando aprenda recetas. El plan avisa si las de alguien tienen más de una semana.
+2. Con el personaje de la subasta escribe `/oro banquero`. Desde entonces el planificador le da **todas** las compras y ventas.
+3. La ruta **Todos** (`ruta_todo.txt`) lleva una sección `CHAR Nombre` por personaje. La pegas **una vez** con cualquiera y cada uno ve su parte al entrar.
+
+Reparto del trabajo con banquero:
+
+| Quién | Qué hace |
+|---|---|
+| Banquero, primera parte | Compra en la subasta y envía los materiales por correo. |
+| Artesanos | Recogen el correo, compran al vendedor, fabrican y devuelven lo fabricado. Va antes el que fabrica para otro artesano. |
+| Banquero, segunda parte | Recoge y vende. También vende el stock sobrante de los demás y las apuestas de la cartera que toca cerrar. |
+
+Sin banquero marcado, cada personaje compra y vende lo suyo. `--banker Nombre` lo fuerza desde el planificador y `--banker none` lo desactiva.
+
+Solo se comparten datos entre personajes de la **misma cuenta de WoW** (la misma carpeta `WTF/Account/<CUENTA>`).
+
+## La ventana del addon
+
+Se abre sola al abrir la subasta, a su derecha. También con `/oro show`. Se cierra con Escape.
+
+| Elemento | Función |
+|---|---|
+| **Escaneo completo** | Lee toda la subasta. El pie indica cuánto falta para el siguiente. |
+| **Importar ruta** | Abre el cuadro para pegar una ruta. **Cargar ruta** sustituye la que hubiera; **Añadir a la ruta** suma pasos sin borrar (úsalo para la ruta de ideas); **Vaciar** limpia el cuadro. |
+| Línea de estado | Dice qué va a hacer el siguiente clic o por qué no puede. |
+| **Siguiente** | Ejecuta el paso actual. Se puede asignar a una tecla en *Opciones → Atajos → Oroboros*. |
+| **Saltar** | Pasa al paso siguiente sin hacer el actual. |
+| Lista | Los pasos de la ruta de este personaje, con los hechos marcados, y los personajes que tienen pasos pendientes. |
+| Pie | Estado del escaneo, hora del último escaneo completo y tu oro. |
+
+Qué hace **Siguiente** según el paso:
+
+- **Comprar un material apilable** (3 clics): busca → calcula cuántas unidades hay por debajo de tu máximo → inicia la compra → el servidor da el precio final → si sigue por debajo del máximo, confirmas; si ha subido, se cancela sola.
+- **Comprar equipo** (2 clics): busca → compra la subasta más barata por debajo del máximo.
+- **Vender** (2 clics): busca → pone 1 cobre menos que el más barato de otro jugador (no compite con tus propias subastas). Si ese precio queda por debajo de tu mínimo, **no publica**. El equipo se publica de una subasta en una.
+- **Fabricar** (1 clic): con la ventana de esa profesión abierta.
+- **Nota** (1 clic): paso manual; el clic solo lo marca como hecho.
+- **Apuesta** (1 clic): anota la apuesta para la cartera.
+
+El tooltip de cada objeto muestra el precio guardado y qué personaje tuyo lo fabrica.
+
+## Comandos
+
+`/oroboros` y `/oro` son equivalentes.
+
+| Comando | Qué hace |
+|---|---|
+| `/oro` | Muestra la ayuda. |
+| `/oro show` | Muestra u oculta la ventana. |
+| `/oro scan` | Escaneo completo (con la subasta abierta). |
+| `/oro price <itemID o enlace>` | Precio guardado: mínimo, valor de mercado, cantidad y hora. |
+| `/oro prof` | Profesiones de todos tus personajes, con recetas aprendidas y vistas. |
+| `/oro quien <itemID o enlace>` | Qué personaje tuyo lo fabrica. |
+| `/oro banquero` | Marca o desmarca este personaje como banquero. |
+| `/oro import` | Abre el cuadro para pegar una ruta. |
+| `/oro compras` | Últimas 10 compras y ventas registradas. |
+| `/oro stats` | Objetos conocidos y precios por mercado. |
+| `/oro set <clave> <valor>` | Cambia la configuración. |
+
+Configuración (`/oro set`):
+
+| Clave | Por defecto | Significado |
+|---|---|---|
+| `historyDays` | 30 | Días de histórico diario que se conservan por objeto. |
+| `mvPercent` | 0.15 | Fracción más barata de lo publicado que se usa para el valor de mercado. |
+| `postDuration` | 2 | Duración de las subastas: 1 = 12 h, 2 = 24 h, 3 = 48 h. |
+| `undercut` | 1 | Cobre que se rebaja respecto al más barato de otro jugador. |
+| `ahCut` | 0.05 | Comisión de la subasta, para el neto que muestra la línea de estado. |
+
+## Formato de ruta
+
+Una acción por línea. `#` empieza un comentario. Los precios van en cobre (`12345`) o como `1g23s45c`.
+
+```
+# comentario
+CHAR  Zartbank                 # lo que sigue es para ese personaje
+BUY   2589 200 45              # itemID, cantidad, precio MÁXIMO por unidad
+SELL  2996 40 3s50c            # itemID, cantidad, precio MÍNIMO por unidad
+CRAFT 2963 100                 # recipeID, veces
+NOTE  Envía por correo a Zartch: 200× Linen Cloth
+HOLD  2592 600 7s98c 2s52c 2026-12-06 3s15c
+```
+
+| Línea | Campos | Qué hace |
+|---|---|---|
+| `CHAR` | nombre del personaje | Abre una sección. Todo lo que sigue se guarda para ese personaje. Una ruta sin `CHAR` es para el personaje con el que la pegas. |
+| `BUY` | itemID, cantidad, precio máximo por unidad | Compra hasta ese precio. Si no hay nada por debajo, lo dice y no compra. |
+| `SELL` | itemID, cantidad, precio mínimo por unidad | Publica lo que tengas en las bolsas, sin bajar del mínimo. |
+| `CRAFT` | recipeID, veces | Fabrica. Necesita la ventana de esa profesión abierta. |
+| `NOTE` | texto libre | Paso manual: banco, correo, vendedor. |
+| `HOLD` | itemID, cantidad, objetivo, stop, fecha (AAAA-MM-DD), entrada (opcional) | Anota una apuesta: lo que guardas, a qué precio venderlo, a qué precio rendirte y hasta cuándo. |
+
+Las líneas que el addon no entiende se ignoran y se avisan en el chat.
+
+## Qué guarda el addon
+
+Todo va en `WTF/Account/<CUENTA>/SavedVariables/Oroboros.lua`, en la variable `OroborosDB`.
+
+| Dato | Cuándo se lee | Detalle |
+|---|---|---|
+| Precios | Escaneo completo o búsqueda de un objeto | Por objeto: mínimo, valor de mercado (media del 15 % más barato de lo publicado), cantidad, número de subastas y profundidad (unidades a ≤ mínimo ×1,10 / 1,25 / 1,5 / 2). |
+| Histórico | Con cada escaneo | Una foto por día y objeto, 30 días. |
+| Recetas | Al abrir una profesión | Aprendidas **y no aprendidas**: materiales, objeto resultante, dificultad, de dónde se aprende y enfriamiento. |
+| Precios de vendedor | Al abrir un vendedor | Solo artículos de stock ilimitado y pagados en oro. |
+| Personaje | Al entrar y al cambiar el oro | Oro, nivel, clase y mercado. |
+| Bolsas | Cada vez que cambian | Objetos y huecos libres. |
+| Banco y banco de banda | Con el banco abierto | Objetos y huecos libres. |
+| Libro de compras | Al comprar en subasta | Objeto, cantidad y precio real, con la ruta o a mano. |
+| Libro de ventas | Al abrir el correo | Ventas de subasta cobradas, una sola vez cada una. |
+| Apuestas | Al ejecutar un `HOLD` | Cantidad, entrada, objetivo, stop y fecha. |
+| Rutas | Al importar | Una por personaje, con el progreso. |
+| Información de objetos | Al verlos | Nombre, calidad, nivel de objeto, tamaño de pila y precio de venta al vendedor. |
+
+El **mercado** es la combinación de reino y facción. Los precios se guardan por mercado.
+
+## Planificador
+
+### oroboros_export.py
+
+Convierte el archivo del addon en SQLite y JSON.
+
+```
+python tools/oroboros_export.py <ruta a Oroboros.lua> --sqlite oroboros.sqlite --json oroboros.json
+python tools/oroboros_export.py --find "<carpeta WoW>" --sqlite oroboros.sqlite
+```
+
+| Opción | Significado |
+|---|---|
+| `path` | Ruta al `Oroboros.lua` de SavedVariables. |
+| `--find <carpeta>` | Busca el archivo dentro de la carpeta de WoW. Si hay varios, usa el más reciente. |
+| `--sqlite <archivo>` | Escribe la base SQLite. |
+| `--json <archivo>` | Escribe el contenido en JSON. |
+
+### oroboros_plan.py
+
+Calcula el plan.
+
+```
+python tools/oroboros_plan.py --db oroboros.sqlite --html plan.html --routes rutas
+```
+
+| Opción | Por defecto | Significado |
+|---|---|---|
+| `--db` | obligatorio | SQLite del exportador. |
+| `--html <archivo>` | — | Escribe la página del plan. |
+| `--json <archivo>` | — | Escribe el plan en JSON. |
+| `--routes <carpeta>` | — | Escribe `ruta_todo.txt`, `ruta_<personaje>.txt`, `ideas_todo.txt` e `ideas_<personaje>.txt`. |
+| `--horizon` | 48 | Horas que cubre la ruta. |
+| `--budget` | 0.8 | Fracción del oro total que puede gastar la ruta. |
+| `--spec` | 0.15 | Fracción del oro total para apuestas, solo de lo que sobra tras la ruta. |
+| `--banker <nombre>` | el de `/oro banquero` | Personaje que compra y vende. `none` lo desactiva. |
+| `--brief <archivo>` | — | Resumen del mercado en Markdown para pedir más ideas a un LLM. |
+| `--catalog <archivo>` | `tools/catalog.json` | Catálogo con lo que el juego no da. |
+| `--synthetic` | — | Marca el plan como hecho con datos inventados. |
+
+Cómo decide:
+
+- **Coste de cada material:** lo más barato entre vendedor, subasta o fabricarlo con tus recetas, en cadena (hasta 4 niveles) y entre personajes.
+- **Precio de venta prudente:** el de hoy, pero nunca más de un 15 % por encima de la mediana de 7 días. Si hoy no hay nadie vendiendo, la mediana.
+- **Cuántas hacer:** lo que el mercado absorbe en el horizonte, como mucho el 30 % de lo publicado, y el enfriamiento de la receta.
+- **Ventas por día:** se estiman con las bajadas de cantidad publicada entre un día y el siguiente.
+- **Margen mínimo:** 8 % sobre el coste. Por debajo, la receta sale como no rentable, con el motivo.
+- **Confianza** (alta, media, baja): según la volatilidad, las ventas por día y los días de histórico.
+- **Qué entra en la ruta:** primero lo que más rinde por cada oro invertido, ponderado por la confianza, hasta agotar el presupuesto.
+- **Tu stock primero:** bolsas → banco → banco de banda → banquero → otro personaje. La ruta añade los pasos de banco y correo.
+- **Oro:** si a un personaje no le llega, la ruta incluye que otro se lo envíe.
+- **Reventa:** objetos con el mínimo un 25 % por debajo de su mediana de 7 días.
+- **Stock sobrante:** propone venderlo, salvo que sea material de una receta con enfriamiento, de una receta que te conviene aprender, o que ese día haya señal de compra.
+
+### make_synthetic.py
+
+Crea un `Oroboros.lua` inventado para probar: tres personajes (un banquero y dos artesanos), 14 días de precios, bancos, compras y apuestas.
+
+```
+python tools/make_synthetic.py --out Oroboros.lua --seed 7
+```
+
+## La página del plan
+
+`plan.html` es un archivo único que se abre en cualquier navegador.
+
+| Pestaña | Qué muestra |
+|---|---|
+| **Resumen** | Beneficio estimado, inversión, rentabilidad, avisos, lo que vas a hacer y el orden entre personajes. |
+| **Ruta** | La ruta completa (**Todos**) o la de cada personaje, con botón de copiar. |
+| **Qué ganas y por qué** | Cada receta rentable: unidades, coste, venta, margen, confianza y gráfica. Al pulsar una fila salen la explicación en frases y de dónde sale cada material. Debajo, las que sabes y no compensan, con el motivo. |
+| **Transformaciones** | Para cada cosa que sabes fabricar: coste de fabricarla frente a comprarla, ahorro, valor añadido y consejo. |
+| **Qué aprender** | Recetas que no sabes: beneficio por día, coste de aprender, días en pagarse y puntos que te faltan. Incluye recetas de profesiones que no tienes. |
+| **Ideas** | Apuestas a varios días, con su ruta aparte. |
+| **Cartera** | Apuestas abiertas y últimas compras y ventas. |
+| **Qué tienes** | Bolsas, banco y banco de banda de cada personaje: valor, huecos, valor por hueco y qué hacer con cada objeto. |
+| **Mercado** | Precio y cantidad publicada de cada objeto en 14 días. |
+
+Qué hacer con cada objeto de **Qué tienes**:
+
+| Etiqueta | Significado |
+|---|---|
+| la usa la ruta | La ruta de hoy lo gasta. |
+| guardar | Es material de una receta con enfriamiento, de una que te conviene aprender, o hay señal de compra. |
+| vender en subasta | Te sobra y el mercado lo absorbe. Ya está en la ruta. |
+| vender más tarde | Te sobra, pero vender más hoy hundiría el precio. |
+| al vendedor | Vale más en el vendedor o vale muy poco. |
+| apuesta abierta | Está en la cartera; manda lo que diga la cartera. |
+
+## Ideas de especulación
+
+Compras de hoy para vender más adelante. Usan solo el oro que sobra después de la ruta. Los objetivos son **escenarios, no predicciones**.
+
+| Tipo | Señal | Riesgo |
+|---|---|---|
+| Despensa | Un material que la ruta ya compra está al menos un 8 % por debajo de su mediana de 14 días. Compra para 5 días más. | bajo |
+| Rebote | Precio al menos un 15 % por debajo de su mediana, con 3 ventas al día o más. | medio |
+| Ciclo semanal | Un día de la semana caro y otro barato, coincidentes en las dos semanas y con un 15 % de diferencia. | medio |
+| Oferta que se seca | Lo publicado cae un 30 % en dos semanas y el precio sube. | medio |
+| Evento | Una fecha de `catalog.json` a entre 3 y 35 días y los objetos que deberían subir. | medio |
+| Progresión del servidor | Material de nivel bajo que se publica cada vez menos (−12 % o más) y cuyo precio ha dejado de bajar en los últimos 5 días. Si no cumple las dos cosas, queda en vigilancia con el motivo. | alto |
+
+La **fase del servidor** se lee en el mercado: cómo cambian la oferta y el precio de los materiales de nivel bajo frente a los de nivel alto. No depende de cuánta gente haya a nivel máximo.
+
+Cada idea trae:
+
+- La razón en frases y las demás señales que la apoyan.
+- Cuánto comprar: el mínimo entre el 35 % del presupuesto de apuestas, lo que hay cerca del precio mínimo, el 25 % de las ventas de una semana y los huecos libres.
+- Dónde guardarlo.
+- Fecha y precio objetivo, precio a partir del cual no pierdes, y stop (un 20 % por debajo de la entrada).
+- Si sabes fabricarlo más barato que comprarlo, la idea es fabricarlo.
+
+La ruta de ideas va aparte (`ideas_todo.txt`). Pégala con **Añadir a la ruta** para no borrar la ruta normal.
+
+Con `--brief mercado.md` el planificador escribe una tabla del mercado y las ideas ya encontradas, con una petición lista para pegar en un LLM y pedirle ideas que estas reglas no ven.
+
+## Cartera
+
+Cada línea `HOLD` que ejecutas en el juego abre una apuesta. En la siguiente pasada, el planificador la cruza con el libro de compras y con el inventario.
+
+| Estado | Condición | Qué hace el plan |
+|---|---|---|
+| objetivo | El precio de hoy llega al objetivo. | Añade la venta a la ruta. |
+| stop | El precio de hoy cae hasta el stop. | Añade la venta a la ruta. |
+| vencida | Ha pasado la fecha. | Añade la venta si estás en beneficio; si no, solo avisa. |
+| espera | Nada de lo anterior. | Nada. |
+| cerrada | Ya no lo tienes. | Nada. |
+
+- **Precio de compra:** la media de lo que pagaste según el libro. Si no hay compras registradas (lo fabricaste o lo compraste sin el addon), el previsto en el plan.
+- **Cantidad:** lo planeado menos lo vendido, sin pasar de lo que tienes en bolsas y bancos.
+- No se propone una idea nueva sobre un objeto con apuesta abierta.
+
+## catalog.json
+
+Completa lo que el juego no da al addon. **Los valores son de ejemplo: revísalos.**
+
+| Sección | Contenido |
+|---|---|
+| `recipes` | Por recipeID: `skill` (nivel de profesión requerido), `learn_cost` (cobre), `cooldown_h`, `learn_note`. |
+| `professions` | Recetas de profesiones que no tienes, para la pestaña Qué aprender: nombre, objeto, materiales, nivel y coste. |
+| `server` | `launch` (fecha de apertura), `low_level_max_ilvl` (nivel de objeto hasta el que un material cuenta como de nivel bajo, 40), `progression_horizon_days` (plazo de las apuestas de progresión, 21). |
+| `events` | Fechas que mueven la demanda: `name`, `date`, `items`, `uplift` (multiplicador supuesto) y `note`. Incluye la apertura de bandas del 9 de diciembre de 2026. |
+| `progression` | Por itemID de nivel bajo: `note` (para qué se sigue usando a nivel 60) y `scenario` (multiplicador supuesto). |
+
+## Base de datos SQLite
+
+| Tabla | Contenido |
+|---|---|
+| `items` | Nombre, calidad, venta al vendedor, pila, si es apilable en subasta, compra al vendedor, nivel de objeto. |
+| `prices` | Por mercado y objeto: mínimo, valor de mercado, cantidad, subastas, hora y profundidad (`d110`, `d125`, `d150`, `d200`). |
+| `history` | Por mercado, objeto y día: mínimo, valor de mercado y cantidad. |
+| `characters` | Mercado, oro, nivel, clase. |
+| `inventory` | Por personaje y zona (`bags`, `bank`, `warband`): objeto y cantidad. |
+| `slots` | Huecos totales y libres por personaje y zona. |
+| `professions` | Nivel y máximo por personaje y profesión. |
+| `recipes` | Por personaje: receta, aprendida o no, objeto resultante, cantidades, dificultad, origen, enfriamiento. |
+| `reagents` | Materiales de cada receta. |
+| `ledger` | Compras y ventas: hora, personaje, objeto, cantidad, precio por unidad, total. |
+| `positions` | Apuestas: cantidad, entrada, objetivo, stop, fecha. |
+| `config` | Configuración del addon, incluido el banquero. |
+| `recipe_cost` (vista) | Coste por material: vendedor si existe; si no, el mínimo de subasta. |
+
+Ejemplo, beneficio bruto por receta aprendida:
+
+```sql
+SELECT rc.name, p.mv AS venta,
+       SUM(c.qty * c.unit_cost) AS coste,
+       p.mv * 0.95 - SUM(c.qty * c.unit_cost) AS margen
+FROM recipes rc
+JOIN recipe_cost c ON c.recipe_id = rc.recipe_id
+JOIN prices p ON p.item_id = rc.output_item
+WHERE rc.learned = 1
+GROUP BY rc.char, rc.recipe_id
+ORDER BY margen DESC LIMIT 20;
+```
+
+Con varios mercados, filtra por `market`.
+
+## Referencia de funciones del addon
+
+El addon se reparte en siete archivos que comparten una tabla privada `ns`. Solo `Oroboros_Next()` y la variable `OroborosDB` son globales.
+
+### Core.lua — utilidades, eventos y comandos
+
+| Función | Qué hace |
+|---|---|
+| `ns.Print(...)` | Escribe en el chat con el prefijo del addon. |
+| `ns.Money(cobre)` | Formatea un precio como `12g 34s 56c`. |
+| `ns.Today()` | Fecha de hoy, `AAAA-MM-DD`. |
+| `ns.MarketKey()` | Clave del mercado: reino y facción. |
+| `ns.CharKey()` | Clave del personaje: nombre y reino. |
+| `ns.Cfg(clave)` | Valor de configuración, o el valor por defecto. |
+| `ns.On(evento, función)` | Registra un manejador. Si el evento no existe en esta versión del juego, lo ignora sin romper la carga. |
+
+### DB.lua — base de datos
+
+| Función | Qué hace |
+|---|---|
+| `DB.Init(defaults)` | Crea o migra `OroborosDB` y limpia el histórico antiguo. |
+| `DB.Market(mk)` | Devuelve (y crea) los datos de un mercado. |
+| `DB.SetItemInfo(itemID, nombre, calidad, apilable)` | Guarda lo que se sabe del objeto. |
+| `DB.ItemName(itemID)` | Nombre del objeto. |
+| `DB.IsCommodity(itemID)` | Si se vende por cantidad en la subasta. |
+| `DB.Aggregate(listados)` | De una lista de `{precio, cantidad}` saca mínimo, valor de mercado, cantidad, número de subastas y profundidad. |
+| `DB.RecordPrices(porObjeto, completo, mk)` | Guarda precios e histórico. Con `completo`, lo que no aparece queda con cantidad 0. |
+| `DB.GetPrice(itemID, mk)` | Último precio guardado. |
+| `DB.PruneHistory()` | Borra el histórico más antiguo que `historyDays`. |
+| `DB.SetVendorPrice(itemID, precio)` | Guarda el precio de compra al vendedor. |
+| `DB.Char()` | Datos del personaje actual. |
+| `DB.SnapshotCharacter()` | Guarda oro, nivel, clase y mercado. |
+| `DB.ReadContainers(ids)` | Lee contenedores: objetos y huecos. |
+| `DB.SnapshotBags()` | Guarda las bolsas. |
+| `DB.SnapshotBank()` | Guarda el banco y el banco de banda (con el banco abierto). |
+| `DB.AddLedger(op, itemID, cantidad, unidad, total, origen)` | Anota una compra o una venta. |
+| `DB.SetPosition(acción)` | Abre o amplía una apuesta. |
+| `DB.PrintStats()` | Imprime el tamaño de la base de datos. |
+
+### Scanner.lua — subasta y vendedores
+
+| Función | Qué hace |
+|---|---|
+| `Scanner.CanFullScan()` | Si se puede escanear ya y cuántos segundos faltan. |
+| `Scanner.FullScan()` | Lanza el escaneo completo y lo procesa por tandas para no congelar el juego. |
+| `Scanner.Search(itemID, callback)` | Busca un objeto, guarda su precio y devuelve las filas ordenadas por precio. |
+
+También guarda los precios de los vendedores al abrirlos.
+
+### Professions.lua — recetas
+
+| Función | Qué hace |
+|---|---|
+| `Professions.Scan()` | Lee la profesión abierta: nivel, recetas, materiales, origen y enfriamientos. Ignora profesiones enlazadas o de otros. |
+| `Professions.Crafters(itemID)` | Qué personajes de la cuenta saben fabricar un objeto. |
+| `Professions.PrintSummary()` | Resumen de profesiones de todos los personajes. |
+
+También añade al tooltip el precio guardado y quién fabrica el objeto.
+
+### Ledger.lua — compras y ventas reales
+
+No expone funciones. Escucha:
+
+- La confirmación y el éxito de una compra por cantidad, para anotar objeto, cantidad y precio final.
+- La puja y la compra completada de una subasta de equipo.
+- Las facturas de venta del correo, sin repetir ninguna.
+
+### Queue.lua — ruta
+
+| Función | Qué hace |
+|---|---|
+| `Queue.ParseMoney(texto)` | Convierte `12345` o `1g23s45c` a cobre. |
+| `Queue.Parse(texto)` | Convierte un texto en acciones y lista de líneas no entendidas. |
+| `Queue.ResolveChar(nombre)` | Encuentra la clave de un personaje por su nombre. |
+| `Queue.Split(texto)` | Parte una ruta con líneas `CHAR` en secciones por personaje. |
+| `Queue.Import(texto, añadir)` | Guarda la parte de cada personaje. Con `añadir`, suma a lo que hubiera. |
+| `Queue.Items()` | Acciones del personaje actual. |
+| `Queue.Current()` | Acción pendiente y su posición. |
+| `Queue.Pending()` | Otros personajes con acciones pendientes. |
+| `Queue.Skip()` | Salta la acción actual. |
+| `Queue.Describe(acción)` | Texto de una acción para la lista. |
+| `Queue.Next()` | Ejecuta el siguiente paso. Solo debe llamarse desde un clic o una tecla. |
+| `Queue.Phase()` | Fase del paso en curso. |
+
+### UI.lua — ventana
+
+| Función | Qué hace |
+|---|---|
+| `UI.Toggle()` | Muestra u oculta la ventana. |
+| `UI.OnAuctionHouse(abierta)` | Coloca la ventana junto a la subasta o la oculta. |
+| `UI.SetStatus(texto)` | Cambia la línea de estado. |
+| `UI.Refresh()` | Repinta la lista de pasos. |
+| `UI.UpdateFooter()` | Repinta el pie. |
+| `UI.ShowImport()` | Abre el cuadro para pegar una ruta. |
+| `Oroboros_Next()` | Función global del atajo de teclado; equivale al botón **Siguiente**. |
+
+## Límites conocidos
+
+- **Sin probar en el juego real.** Lo que más necesita verse: la lectura del banco (Forever puede usar pestañas o el sistema clásico; el addon prueba los dos), la compra de equipo en el libro, las facturas del correo y el tooltip.
+- **Sin API oficial de precios** para Forever: todos los datos salen del escaneo en el juego.
+- **Ventas por día estimadas** y a la baja. Más escaneos al día dan mejor estimación.
+- **Correo y vendedor no automatizados:** son pasos `NOTE`.
+- **El correo solo da el nombre del objeto:** la venta se anota si el addon ya conoce ese objeto.
+- **Lo fabricado no pasa por el libro de compras:** en la cartera su coste es el previsto.
+- **catalog.json son valores de ejemplo**, y los multiplicadores de eventos y progresión son suposiciones.
+- **Encantamientos sobre equipo:** no se evalúan, porque no producen un objeto vendible.
+
+## Problemas frecuentes
+
+| Síntoma | Causa y solución |
+|---|---|
+| El addon no aparece en la lista | La carpeta debe llamarse `Oroboros` y contener `Oroboros.toc`. Revisa el número de `## Interface:`. |
+| El exportador dice que no hay `OroborosDB` | No se ha escrito el archivo: haz `/reload` o sal del juego. |
+| "Escaneo completo disponible en…" | El juego limita el escaneo completo a uno cada 15 minutos. |
+| El plan no usa las recetas de un personaje | Entra con él y abre cada profesión; luego `/reload`. |
+| "Nada por debajo de…" al comprar | El precio ha subido desde el escaneo. Salta el paso o vuelve a planificar. |
+| "El mercado está por debajo de tu mínimo" al vender | Alguien ha bajado el precio. No publica para no vender a pérdida. |
+| No fabrica | Abre la ventana de esa profesión antes de pulsar. |
+| La ruta de otro personaje no aparece al entrar | Se guarda al salir del personaje con el que la pegaste. Sal de forma normal, sin cerrar el juego a la fuerza. |
+| Confianza baja en todo | Faltan días de histórico. |
+
+## Pruebas
+
+```
+pip install -r tests/requirements.txt
+python tests/run_tests.py
+```
+
+Carga el addon en Lua 5.1 con una simulación de la API de WoW, simula escaneos, compras, ventas, correo, banco y varios personajes, y ejecuta de extremo a extremo datos sintéticos → exportador → planificador → rutas, que se pasan por el lector de rutas del addon.

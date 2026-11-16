@@ -1,13 +1,12 @@
-work/
+**/work/
 dist/
 __pycache__/
 *.pyc
 *.sqlite
 *.sqlite-journal
-/plan.html
-/plan.json
-/rutas/
-# SavedVariables reales: pueden llevar nombres de personajes y oro
-Addonero.lua
-!Addonero/
-tests/out.*
+**/tests/out.*
+# SavedVariables reales: llevan nombres de personajes y oro
+SavedVariables/
+# copia de SavedVariables que generan las pruebas
+addons/*/tests/*.lua
+!addons/*/tests/mock_wow.lua

@@ -1,0 +1,15 @@
+## Interface: 120105
+## Title: Oroboros
+## Notes: Escaneo de subasta, base de datos de precios, recetas y cola de compra/venta (un clic por acción).
+## Author: Zartch
+## Version: 0.5.0
+## SavedVariables: OroborosDB
+## IconTexture: Interface\Icons\INV_Misc_Coin_02
+
+Core.lua
+DB.lua
+Scanner.lua
+Professions.lua
+Ledger.lua
+Queue.lua
+UI.lua

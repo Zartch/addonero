@@ -1,0 +1,14 @@
+# Ruta Oroboros — Zartch — 16/11 17:50 (datos sintéticos)
+NOTE Envía 38g 00s por correo a Zartbank
+NOTE Saca del banco: 1× Arcane Crystal, 20× Stonescale Eel, 12× Plaguebloom, 40× Golden Sansam, 80× Linen Cloth, 6× Felcloth, 3× Elixir of Giants
+NOTE Recoge del correo (de Zarthrin): 2× Thorium Bar
+NOTE Recoge del correo (de Zartbank): 24× Blackmouth Oil, 12× Stranglekelp, 13× Stonescale Eel, 90× Mountain Silversage, 42× Plaguebloom, 20× Crystal Vial, 30× Golden Sansam, 38× Sungrass, 38× Khadgar's Whisker
+NOTE Compra al vendedor: 45× Leaded Vial
+NOTE Compra al vendedor: 67× Crystal Vial
+CRAFT 17187 2   # Transmute: Arcanite
+CRAFT 6624 12   # Free Action Potion
+CRAFT 17551 33   # Stonescale Oil
+CRAFT 17571 27   # Elixir of the Mongoose
+CRAFT 17556 42   # Major Healing Potion
+CRAFT 11457 38   # Superior Healing Potion
+NOTE Envía por correo a Zartbank: 2× Arcanite Bar, 12× Free Action Potion, 33× Stonescale Oil, 27× Elixir of the Mongoose, 42× Major Healing Potion, 38× Superior Healing Potion, 80× Linen Cloth, 6× Felcloth, 3× Elixir of Giants

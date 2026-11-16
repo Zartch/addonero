@@ -1,0 +1,9 @@
+# Ruta Oroboros — Zarthrin — 16/11 17:50 (datos sintéticos)
+NOTE Saca del banco: 2× Thorium Bar, 80× Mageweave Cloth
+NOTE Recoge del correo (de Zartbank): 65× Thorium Ore, 424× Mageweave Cloth
+NOTE Compra al vendedor: 26× Heavy Silken Thread
+CRAFT 16153 105   # Smelt Thorium
+CRAFT 3865 126   # Bolt of Mageweave
+CRAFT 12065 13   # Mageweave Bag
+NOTE Envía por correo a Zartch: 2× Thorium Bar
+NOTE Envía por correo a Zartbank: 105× Thorium Bar, 13× Mageweave Bag, 78× Bolt of Mageweave, 60× Mithril Ore
