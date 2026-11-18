@@ -1,6 +1,6 @@
 # Franjas horarias: cuándo se vende y cuándo está barato cada objeto
 
-Diseño del 18/11/2026. Estado: **propuesta, pendiente de aprobar**.
+Diseño del 18/11/2026. Estado: **implementado** (19/11/2026, plan en `docs/planes/2026-11-19-franjas-horarias.md`). El análisis se calcula al generar el plan leyendo el archivo, en vez de guardar una tabla `hours` en el SQLite del plan, para que nunca esté desfasado.
 
 ## Para qué
 

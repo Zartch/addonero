@@ -89,6 +89,20 @@ Si Auctionator está instalado, Oroboros no escanea dos veces (detalle en `docs/
 - **Fuera del juego.** `oroboros_export.py --auctionator` añade los precios y el histórico de 21 días que guarda Auctionator. Rellena los días y objetos que Oroboros no tiene; si los dos tienen dato del mismo día, gana el de Oroboros (trae profundidad).
 - **Lo que no da Auctionator:** profundidad y valor de mercado. Con sus precios el planificador estima la profundidad y no da confianza alta.
 
+## Franjas horarias
+
+Para saber a qué horas se vende más cada objeto (diseño en `docs/franjas-horarias.md`):
+
+1. **Escanea varias veces al día**, en distintas franjas, y haz `/reload` después de cada escaneo. El addon guarda los últimos 12 escaneos completos; `/oro stats` y el pie de la ventana muestran «escaneos guardados: N/12».
+2. **Exporta antes de llegar a 12**, o se pierde el más antiguo. Los escaneos se van añadiendo a un archivo permanente que nunca se borra:
+   ```
+   python tools/oroboros_export.py --find "<carpeta WoW>" --auctionator --archive work/archivo.sqlite --sqlite work/oroboros.sqlite
+   ```
+3. **Genera el plan con el archivo**: `python tools/oroboros_plan.py --db work/oroboros.sqlite --archive work/archivo.sqlite --html work/plan.html --routes work/rutas`. Las ventas dirán en qué franja desaparece más el objeto, las compras en cuál está más barato, y la pestaña **Horas** muestra todas las franjas.
+4. Para mirarlo por consola: `python tools/oroboros_hours.py work/archivo.sqlite` (o `--item <id>`).
+
+Se cuentan dos cosas entre escaneos seguidos (como mucho 6 h): lo que desaparece en total y lo que desaparece **barato** (a ≤ mínimo × 1,25, con el mismo umbral en los dos escaneos), que es lo que más probablemente se ha vendido. Una franja necesita 3 mediciones en 2 días distintos para darse por fiable.
+
 ## Varios personajes y banquero
 
 Los datos del addon son **de la cuenta**: lo que lee un personaje lo ven todos. Un personaje de nivel bajo parado en la subasta conoce las recetas de los demás.
@@ -228,6 +242,7 @@ python tools/oroboros_export.py --find "<carpeta WoW>" --auctionator --sqlite or
 | `--find <carpeta>` | Busca el archivo dentro de la carpeta de WoW. Si hay varios, usa el más reciente. |
 | `--sqlite <archivo>` | Escribe la base SQLite. |
 | `--json <archivo>` | Escribe el contenido en JSON. |
+| `--archive <archivo>` | Añade los escaneos guardados en el juego a un SQLite permanente (franjas horarias). |
 | `--auctionator [archivo]` | Añade al SQLite los precios de Auctionator. Sin ruta, busca `Auctionator.lua` junto a `Oroboros.lua`. |
 
 ### oroboros_plan.py
