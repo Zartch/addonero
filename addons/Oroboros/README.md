@@ -258,6 +258,8 @@ Cómo decide:
 - **Coste de cada material:** lo más barato entre vendedor, subasta o fabricarlo con tus recetas, en cadena (hasta 4 niveles) y entre personajes.
 - **Precio de venta prudente:** el de hoy, pero nunca más de un 15 % por encima de la mediana de 7 días. Si hoy no hay nadie vendiendo, la mediana.
 - **Cuántas hacer:** lo que el mercado absorbe en el horizonte, como mucho el 30 % de lo publicado, y el enfriamiento de la receta.
+- **Lote de prueba:** mientras no haya días de escaneo suficientes para medir las ventas por día, como mucho 20 unidades o 1 oro por receta o reventa, y lo de confianza baja no pasa del 30 % del presupuesto. Escanea una o dos veces al día y las cantidades crecerán solas.
+- **Qué aprender:** primero las recetas a tu alcance; las que tienen el nivel sin comprobar (en Forever el juego no lo da) van en un grupo aparte.
 - **Ventas por día:** se estiman con las bajadas de cantidad publicada entre un día y el siguiente.
 - **Margen mínimo:** 8 % sobre el coste. Por debajo, la receta sale como no rentable, con el motivo.
 - **Confianza** (alta, media, baja): según la volatilidad, las ventas por día y los días de histórico.

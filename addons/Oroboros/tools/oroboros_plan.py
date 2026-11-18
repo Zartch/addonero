@@ -27,6 +27,10 @@ import oroboros_ideas
 AH_CUT = 0.05
 TIERS = (1.10, 1.25, 1.5, 2.0)
 CONF_FACTOR = {"alta": 1.0, "media": 0.75, "baja": 0.5}
+# Sin histórico para saber cuánto se vende al día, solo un lote de prueba
+TRIAL_UNITS = 20          # unidades como mucho
+TRIAL_INVEST = 10000      # 1 oro de inversión como mucho
+LOW_CONF_SHARE = 0.3      # parte del presupuesto que puede ir a cosas de confianza baja
 MIN_MARGIN = 0.08
 HERE = os.path.dirname(os.path.abspath(__file__))
 
@@ -108,6 +112,7 @@ class Data:
                 "cooldown_h": extra.get("cooldown_h") or (24 if r["cd_until"] else None),
                 "skill_req": extra.get("skill"), "learn_cost": extra.get("learn_cost"),
                 "learn_note": extra.get("learn_note"),
+                "difficulty": r["difficulty"],
             })
         # recetas aprendidas sin enfriamiento → fuentes para fabricar intermedios
         self.craft_sources = defaultdict(list)
@@ -142,6 +147,7 @@ class Data:
         qtys = [x["qty"] for x in h if x["qty"] is not None]
         drops = [max(0, a - b) for a, b in zip(qtys, qtys[1:])]
         vol = statistics.mean(drops) if len(drops) >= 3 else None
+        vol_est = vol is None          # sin días suficientes: ventas/día supuestas, no medidas
         qty = p["qty"] if p else 0
         if vol is None and qty:
             vol = qty * 0.1
@@ -176,7 +182,7 @@ class Data:
         age_h = (self.now - p["t"]) / 3600 if p and p["t"] else None
         st = {"min": p["min"] if p else None, "mv": cur, "qty": qty, "med7": med7, "cv": cv, "vol": vol,
               "sell": sell, "sell_note": note, "trend": trend, "days": days, "conf": conf, "age_h": age_h,
-              "depth": depth, "depth_est": depth_est, "src": (p or {}).get("src")}
+              "depth": depth, "depth_est": depth_est, "src": (p or {}).get("src"), "vol_est": vol_est}
         self._stats[item_id] = st
         return st
 
@@ -269,6 +275,9 @@ def evaluate(data, r, horizon_h, crafts_override=None):
         if r["cd_until"] and r["cd_until"] > data.now:
             cd_note += f" Disponible dentro de {(r['cd_until'] - data.now) / 3600:.0f} h."
 
+    trial = bool(st["vol_est"]) and not crafts_override
+    if trial:
+        crafts = min(crafts, max(1, int(TRIAL_UNITS / y)))
     if crafts_override:
         crafts = crafts_override
     nodes = None
@@ -290,6 +299,8 @@ def evaluate(data, r, horizon_h, crafts_override=None):
         return out
 
     cost = sum(n["unit"] * n["per_craft"] for n in nodes)
+    if trial and cost * crafts > TRIAL_INVEST:
+        crafts = max(1, int(TRIAL_INVEST // max(cost, 1)))
     deposit = 100 if data.stack(r["out"]) == 1 else 100 / max(1, crafts)
     net = st["sell"] * (1 - AH_CUT)
     profit = net * y - cost - deposit
@@ -301,7 +312,7 @@ def evaluate(data, r, horizon_h, crafts_override=None):
         "profit": profit, "profit_total": profit * crafts, "margin": margin, "breakeven": breakeven,
         "min_sell": int(math.ceil(breakeven * 1.05)), "conf": st["conf"], "vol": st["vol"], "qty": st["qty"],
         "cv": st["cv"], "trend": st["trend"], "tree": nodes, "cooldown_h": r["cooldown_h"],
-        "investment": None,
+        "investment": None, "trial": trial,
     })
 
     # Explicación en lenguaje llano
@@ -314,7 +325,10 @@ def evaluate(data, r, horizon_h, crafts_override=None):
         f"Se vende a {money(st['sell'])}; quitando el 5 % de la subasta te quedan {money(net)}.",
         f"{'Ganas' if profit > 0 else 'Pierdes'} {money(abs(profit))} por unidad ({margin * 100:.0f} % sobre el coste).",
     ]
-    if st["vol"] is not None:
+    if trial:
+        why.append(f"Aún no hay días de escaneo suficientes para saber cuánto se vende ({st['days']} días con datos): "
+                   f"lote de prueba de {units:g} (como mucho {TRIAL_UNITS} unidades o {money(TRIAL_INVEST)}).")
+    elif st["vol"] is not None:
         why.append(f"Hay {st['qty']} publicadas y se venden unas {st['vol']:.0f} al día (estimación). "
                    f"Propongo {units:g} en {horizon_h} h para no hundir el precio.")
     if st["sell_note"]:
@@ -452,7 +466,9 @@ def select(data, plan, opps, budget, horizon_h):
         o["solo_investment"] = t.spend()
     # primero lo que más rinde por cada oro invertido, ponderado por confianza
     key = lambda o: o["profit_total"] * CONF_FACTOR[o["conf"]] / (o["solo_investment"] + 50000)
+    low_cap, low_spent = budget * LOW_CONF_SHARE, 0.0
     for o in sorted(opps, key=key, reverse=True):
+        low = o["conf"] == "baja"
         for attempt in range(3):
             trial = plan.clone()
             before = trial.spend()
@@ -461,13 +477,17 @@ def select(data, plan, opps, budget, horizon_h):
             else:
                 owned = apply_flip(trial, o)
             inv = trial.spend() - before
-            if before + inv <= budget:
+            # lo de confianza baja no puede pasar del 30 % del presupuesto en total
+            limit = min(budget, before + max(0.0, low_cap - low_spent)) if low else budget
+            if before + inv <= limit:
                 plan.__dict__.update(trial.__dict__)
                 o["investment"], o["included"] = inv, True
                 o["owned_used"] = owned
                 chosen.append(o)
+                if low:
+                    low_spent += inv
                 break
-            room = budget - before
+            room = limit - before
             if room <= 0 or o["crafts"] <= 1:
                 break
             scale = max(0.0, room / inv) * 0.95
@@ -487,7 +507,13 @@ def select(data, plan, opps, budget, horizon_h):
             pass
         if not o.get("included"):
             o["included"] = False
-            o["skip"] = "No cabe en el presupuesto." if o.get("reason") is None else o["reason"]
+            if o.get("reason") is not None:
+                o["skip"] = o["reason"]
+            elif low and low_spent >= low_cap * 0.95:
+                o["skip"] = (f"Confianza baja: ya va el {LOW_CONF_SHARE * 100:.0f} % del presupuesto "
+                             "a cosas sin histórico suficiente.")
+            else:
+                o["skip"] = "No cabe en el presupuesto."
     return chosen
 
 
@@ -503,6 +529,8 @@ def find_flips(data, horizon_h, char):
         if p["min"] >= st["med7"] * 0.75 or st["vol"] < 0.5:
             continue
         qty = max(1, min(st["depth"][0], int(st["vol"] * horizon_h / 24)))
+        if st["vol_est"]:
+            qty = max(1, min(qty, TRIAL_UNITS, int(TRIAL_INVEST // max(p["min"], 1))))
         buy = data.buy_unit(item_id, qty)
         if not buy:
             continue
@@ -576,6 +604,17 @@ def learn_suggestions(data, horizon_h):
             skill = (data.professions.get(r["char"], {}).get(r["prof"]) or {}).get("skill")
         e["skill"], e["skill_req"] = skill, r.get("skill_req")
         e["skill_gap"] = max(0, (r.get("skill_req") or 0) - (skill or 0)) if skill is not None and r.get("skill_req") else None
+        # ¿Te llega el nivel? En Forever el juego no da el nivel que pide una receta no aprendida.
+        # relativeDifficulty 1-3 (media, fácil, trivial) = ya está a tu alcance; 0 es ambiguo
+        # (naranja, o muy por encima de tu nivel).
+        if r.get("new_profession"):
+            e["reach"] = "nueva"
+        elif r.get("skill_req") and skill is not None:
+            e["reach"] = "ok" if skill >= r["skill_req"] else "falta"
+        elif r.get("difficulty") in (1, 2, 3):
+            e["reach"] = "ok"
+        else:
+            e["reach"] = "desconocido"
         dp = e.get("daily_profit")
         e["payback_days"] = (cost / dp) if (cost and dp and dp > 0) else (0 if dp and dp > 0 and not cost else None)
         verdict = []
@@ -593,13 +632,19 @@ def learn_suggestions(data, horizon_h):
                 verdict.append(f"Te faltan {e['skill_gap']} puntos de {r['prof']} ({skill}/{r['skill_req']}).")
             elif skill is not None and r.get("skill_req"):
                 verdict.append(f"Ya tienes el nivel ({skill}/{r['skill_req']}).")
+            if e["reach"] == "desconocido":
+                verdict.append("No sé qué nivel pide: en Forever el juego no lo dice y puede estar muy por "
+                               "encima del tuyo. Compruébalo antes de buscarla.")
+            if data.stats(r["out"]).get("vol_est") if r.get("out") else False:
+                verdict.append("Ventas por día supuestas: aún no hay días de escaneo suficientes.")
             if r.get("learn_note"):
                 verdict.append(r["learn_note"])
             if r.get("source"):
                 verdict.append(f"Dónde: {r['source']}.")
         e["verdict"] = verdict
         out.append(e)
-    out.sort(key=lambda e: (e.get("daily_profit") is None, -(e.get("daily_profit") or -1e12)))
+    out.sort(key=lambda e: (e.get("reach") == "desconocido", e.get("daily_profit") is None,
+                            -(e.get("daily_profit") or -1e12)))
     return out
 
 

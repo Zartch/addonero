@@ -40,6 +40,9 @@ Objetivo: ganar oro en **WoW Forever** con un addon de subasta + un planificador
 ## Reglas del planificador
 - Precio de venta prudente: el de hoy, pero nunca > mediana 7 días × 1,15.
 - Cantidad: lo que el mercado absorbe en el horizonte (48 h por defecto), máx. 30 % de lo publicado, y el enfriamiento.
+- **Lote de prueba** (18/11/2026, primer plan real): sin histórico para medir ventas/día (menos de 3 bajadas de cantidad entre días), como mucho 20 unidades o 1 oro por fabricación o reventa. Antes se suponía un 10 % de lo publicado al día y salían cientos de unidades.
+- Lo de confianza baja suma como mucho el 30 % del presupuesto.
+- Qué aprender: en Forever `GetRecipeSourceText` no da nada y la lista incluye recetas de otras expansiones. Una receta está «a tu alcance» si el catálogo dice su nivel y lo tienes, o si el juego le da dificultad 1–3; con dificultad 0 (ambiguo) va a «nivel sin comprobar», al final.
 - Margen mínimo 8 %. Confianza alta/media/baja por volatilidad, ventas/día y días de histórico.
 - Selección por beneficio por oro invertido × confianza. Stock propio primero: bolsas → banco → banda → banquero → otro personaje (NOTE de banco/correo).
 - No se vende stock de un objeto sobre el que hoy hay señal de compra (ideas).

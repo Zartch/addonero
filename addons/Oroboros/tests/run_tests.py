@@ -353,6 +353,39 @@ for ck, t in list(parts.items()) + [(p.char, p.text) for p in ns.Queue.Split(I["
 r2 = subprocess.run([sys.executable, os.path.join(ROOT, "tools", "oroboros_plan.py"), "--db", os.path.join(tmp, "a.sqlite"),
                      "--json", os.path.join(tmp, "p2.json"), "--banker", "none", "--now", NOW], capture_output=True, text=True, encoding="utf-8", errors="replace")
 p2 = json.load(open(os.path.join(tmp, "p2.json"), encoding="utf-8"))
+
+# Sin histórico (primer día con datos reales): lotes de prueba y tope para la confianza baja
+import shutil
+nh = os.path.join(tmp, "nohist.sqlite")
+shutil.copy(os.path.join(tmp, "a.sqlite"), nh)
+_c = sqlite3.connect(nh); _c.execute("DELETE FROM history")
+# como en Forever: el juego da dificultad 0 a casi todas las recetas no aprendidas; una queda «fácil» (2)
+_c.execute("UPDATE recipes SET difficulty=0 WHERE learned=0")
+_c.execute("UPDATE recipes SET difficulty=2 WHERE recipe_id=(SELECT MIN(recipe_id) FROM recipes WHERE learned=0)")
+_c.commit(); _c.close()
+# catálogo sin niveles de receta: en Forever el juego no los da
+def _strip_skill(x):
+    if isinstance(x, dict):
+        return {k: _strip_skill(v) for k, v in x.items() if k != "skill"}
+    return [_strip_skill(v) for v in x] if isinstance(x, list) else x
+cat_ns = os.path.join(tmp, "catalog_noskill.json")
+json.dump(_strip_skill(json.load(open(os.path.join(ROOT, "tools", "catalog.json"), encoding="utf-8"))),
+          open(cat_ns, "w", encoding="utf-8"), ensure_ascii=False)
+r3 = subprocess.run([sys.executable, os.path.join(ROOT, "tools", "oroboros_plan.py"), "--db", nh,
+                     "--json", os.path.join(tmp, "p3.json"), "--now", NOW, "--catalog", cat_ns], capture_output=True, text=True, encoding="utf-8", errors="replace")
+check(r3.returncode == 0, "planificador sin histórico " + r3.stderr[-300:])
+p3 = json.load(open(os.path.join(tmp, "p3.json"), encoding="utf-8"))
+inc3 = [o for o in p3["opportunities"] if o.get("included")]
+crafts3 = [o for o in inc3 if o["kind"] == "craft"]
+check(crafts3 and all(o.get("trial") for o in crafts3), f"sin histórico: todo es lote de prueba ({len(crafts3)} fabricaciones)")
+check(all(o["units"] <= 20 and (o["crafts"] == 1 or o["cost"] * o["crafts"] <= 10000) for o in crafts3),
+      "lote de prueba: como mucho 20 unidades o 1 oro " + str([(o["name"], o["units"], round(o["cost"] * o["crafts"])) for o in crafts3]))
+low3 = sum(o["investment"] for o in inc3 if o["conf"] == "baja")
+check(low3 <= p3["settings"]["budget"] * 0.3 + 1, f"confianza baja: como mucho el 30 % del presupuesto ({low3:.0f} de {p3['settings']['budget']:.0f})")
+reach = [l.get("reach") for l in p3["learn"] if not l.get("new_profession")]
+first_unknown = reach.index("desconocido") if "desconocido" in reach else len(reach)
+check(all(x == "desconocido" for x in reach[first_unknown:]) and 0 < first_unknown < len(reach),
+      f"aprender: primero lo que está a tu alcance, al final el nivel sin comprobar ({reach.count('desconocido')} de {len(reach)})")
 check(p2["banker"] is None and any("BUY " in rt["text"] for rt in p2["routes"].values() if rt["short"] == "Zarthrin"),
       "sin banquero, cada personaje compra lo suyo")
 check(not any(c["item"] in (14256, 9206, 4234) for c in I["ideas"]), "no se repite una apuesta que ya está abierta")

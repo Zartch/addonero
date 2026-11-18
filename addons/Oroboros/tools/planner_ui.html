@@ -313,7 +313,7 @@ function renderResumen() {
       <div class="w">${fmtN(o.units)} uds × ${money(o.profit)} · ${esc((o.why || [])[2] || o.why[0] || "")}</div>
     </div>`).join("");
   const order = `<p class="lead">${esc(s.order_txt)} Unos ${s.clicks} clics en total.</p>`;
-  const top = PLAN.learn.filter(l => l.daily_profit > 0).slice(0, 3).map(l =>
+  const top = PLAN.learn.filter(l => l.daily_profit > 0 && l.reach !== "desconocido").slice(0, 3).map(l =>
     `<li><b>${esc(l.name)}</b> (${esc(l.prof)}): ${money(l.daily_profit)}/día${l.payback_days !== null ? ", se paga en " + (l.payback_days < 1 ? "menos de un día" : fmtN(l.payback_days) + " días") : ""}${l.skill_gap ? `; te faltan ${l.skill_gap} puntos` : ""}${l.new_profession ? "; profesión nueva" : ""}.</li>`).join("");
   $("#v-resumen").innerHTML = tiles + warn + `<div class="grid2">
     <div class="panel"><header><h2>Lo que vas a hacer</h2><a href="#ruta">Ver la ruta →</a></header>${order}<div>${opps}</div></div>
@@ -421,10 +421,15 @@ function renderAprender() {
       ${l.tree ? `<details><summary>Materiales</summary><div class="tree">${treeHTML(l.tree)}</div></details>` : ""}
     </div>`;
   };
-  const own = PLAN.learn.filter(l => !l.new_profession), neu = PLAN.learn.filter(l => l.new_profession);
+  const own = PLAN.learn.filter(l => !l.new_profession && l.reach !== "desconocido"),
+        unk = PLAN.learn.filter(l => !l.new_profession && l.reach === "desconocido"),
+        neu = PLAN.learn.filter(l => l.new_profession);
   $("#v-aprender").innerHTML = `<div class="panel"><header><h2>Recetas de tus profesiones que aún no sabes</h2></header>
     <p class="lead">Calculado con el mercado de hoy: beneficio por unidad × lo que el mercado absorbe al día (y el enfriamiento, si lo tiene). El coste de aprender y el nivel salen del catálogo; revísalos en Wowhead.</p>
-    <div class="cards">${own.map(card).join("")}</div></div>
+    <div class="cards">${own.map(card).join("") || '<p class="lead">Ninguna receta a tu alcance compensa hoy.</p>'}</div></div>
+    <div class="panel"><header><h2>Nivel sin comprobar</h2></header>
+    <p class="lead">En Forever el juego no dice qué nivel pide una receta que no sabes, y la lista incluye recetas de otras expansiones. Estas pueden estar muy por encima de tu nivel: compruébalas antes de buscarlas.</p>
+    <details><summary>${unk.length} recetas</summary><div class="cards">${unk.map((l, i) => card(l, 99)).join("")}</div></details></div>
     <div class="panel"><header><h2>Si cambiaras de profesión</h2></header>
     <p class="lead">Recetas del catálogo para profesiones que no tienes. Cada personaje solo puede tener dos, así que suponen dejar una y subir la nueva.</p>
     <div class="cards">${neu.map((l, i) => card(l, 99)).join("")}</div></div>`;
