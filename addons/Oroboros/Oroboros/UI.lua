@@ -87,9 +87,9 @@ function UI.UpdateFooter()
     else
         scanTxt = ok and "escaneo listo" or string.format("escaneo en %d:%02d", math.floor(left / 60), left % 60)
     end
-    footerText:SetText(string.format("%s  ·  último completo: %s  ·  %s",
-        scanTxt,
-        last, ns.Money(GetMoney())))
+    local nScans, cap = ns.DB.ScanCount()
+    footerText:SetText(string.format("%s  ·  último completo: %s  ·  escaneos guardados: %d/%d%s  ·  %s",
+        scanTxt, last, nScans, cap, nScans >= cap and " (exporta)" or "", ns.Money(GetMoney())))
 end
 
 function UI.SetStatus(text)

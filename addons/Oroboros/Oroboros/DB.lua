@@ -151,15 +151,38 @@ local function updateHistory(m, itemID, rec, day)
     end
 end
 
+-- Escaneos en bruto para analizar franjas horarias fuera del juego (docs/franjas-horarias.md).
+-- Se guardan los últimos SCAN_BUFFER; el exportador (--archive) los pasa a un SQLite permanente.
+local SCAN_BUFFER = 12
+local CHEAP = 1.25        -- barato = a ≤ mínimo × 1,25
+
+function DB.ScanCount(mk)
+    local scans = DB.Market(mk).scans
+    return scans and #scans or 0, SCAN_BUFFER
+end
+
+local function fmt(x) return x and string.format("%.0f", x) or "" end
+
 -- byItem: { [itemID] = { {unitPrice, qty}, ... } }
 -- full = true si es un escaneo completo: lo que no aparezca queda con qty 0
 function DB.RecordPrices(byItem, full, mk)
     local m = DB.Market(mk)
     local now, day = time(), ns.Today()
     local count = 0
+    local lines = full and {} or nil
     for itemID, listings in pairs(byItem) do
+        local prev = m.prices[itemID]
         local min, mv, qty, n, depth = DB.Aggregate(listings)
         if min then
+            if lines then
+                -- bp: unidades a ≤ el umbral barato del escaneo anterior (mismo umbral en los dos)
+                local ref = ((prev and prev.min and prev.qty and prev.qty > 0) and prev.min or min) * CHEAP
+                local bp = 0
+                for i = 1, #listings do
+                    if listings[i][1] <= ref then bp = bp + listings[i][2] end
+                end
+                lines[#lines + 1] = string.format("%d,%s,%s,%d,%d,%d", itemID, fmt(min), fmt(mv), qty, depth[2], bp)
+            end
             local rec = { min = min, mv = mv, qty = qty, n = n, t = now, d = depth }
             m.prices[itemID] = rec
             updateHistory(m, itemID, rec, day)
@@ -168,9 +191,17 @@ function DB.RecordPrices(byItem, full, mk)
     end
     if full then
         for itemID, rec in pairs(m.prices) do
-            if not byItem[itemID] then rec.qty, rec.n, rec.t = 0, 0, now end
+            if not byItem[itemID] then
+                if rec.qty and rec.qty > 0 then     -- se ha agotado desde el último escaneo
+                    lines[#lines + 1] = string.format("%d,,,0,0,0", itemID)
+                end
+                rec.qty, rec.n, rec.t = 0, 0, now
+            end
         end
         m.lastFull = now
+        m.scans = m.scans or {}
+        table.insert(m.scans, { t = now, data = table.concat(lines, ";") })
+        while #m.scans > SCAN_BUFFER do table.remove(m.scans, 1) end
     end
     return count
 end
@@ -327,6 +358,9 @@ function DB.PrintStats()
         for _ in pairs(m.prices) do n = n + 1 end
         ns.Print(string.format("  mercado %s: %d precios, último completo %s", mk, n,
             m.lastFull > 0 and date("%d/%m %H:%M", m.lastFull) or "nunca"))
+        local ns_, cap = DB.ScanCount(mk)
+        ns.Print(string.format("  escaneos guardados: %d/%d%s", ns_, cap,
+            ns_ >= cap and " (lleno: exporta antes del siguiente escaneo o se pierde el más antiguo)" or ""))
     end
     if nMk == 0 then ns.Print("  sin mercados escaneados") end
 end

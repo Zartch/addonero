@@ -85,6 +85,33 @@ check(ns.Scanner.CanFullScan() is False or ns.Scanner.CanFullScan()[0] is False,
 lua.execute("Auctionator = nil; AUCTIONATOR_SAVEDVARS = nil")
 check(ns.Scanner.AuctionatorReplicates() is False, "sin Auctionator: escaneo propio")
 
+# Buffer de escaneos (franjas horarias): cada escaneo completo se guarda en bruto, los 12 últimos
+lin = lambda: [[30, 20], [35, 20], [50, 200]]
+def _scan(by, mk="TEST-MK"):
+    tbl = lua.eval("{}")
+    for k, v in by.items():
+        lst = lua.eval("{}")
+        for i, (pr, q) in enumerate(v, 1):
+            row = lua.eval("{}"); row[1], row[2] = pr, q; lst[i] = row
+        tbl[k] = lst
+    ns.DB.RecordPrices(tbl, True, mk)
+    sc = G.OroborosDB.markets[mk].scans
+    return sc, dict(e.split(",", 1) for e in sc[len(sc)].data.split(";"))
+sc, last = _scan({2589: lin()})
+check(len(sc) == 1 and last["2589"] == "30,32,240,40,40", f"buffer: primer escaneo {last.get('2589')}")
+sc, last = _scan({2589: [[35, 20], [50, 200]]})
+check(last["2589"] == "35,41,220,20,20", f"buffer: sube el mínimo, lo barato se mide con el umbral anterior {last.get('2589')}")
+sc, last = _scan({4306: [[4000, 20]]})
+check(last["2589"] == ",,0,0,0", f"buffer: objeto agotado cuenta como 0 {last.get('2589')}")
+for _ in range(11):
+    sc, last = _scan({2589: lin()})
+check(len(sc) == 12, f"buffer: como mucho 12 escaneos ({len(sc)})")
+n, cap = ns.DB.ScanCount("TEST-MK")
+check((n, cap) == (12, 12), "buffer: ScanCount")
+lua.execute("LOG = {}"); ns.DB.PrintStats()
+check(any("escaneos guardados: 12/12 (lleno" in l for l in G.LOG.values()), "/oro stats avisa con el buffer lleno")
+G.OroborosDB.markets["TEST-MK"] = None
+
 # Banco
 c = G.OroborosDB.chars["Zartch-ForeverNormal"]
 check(c.bank is None, "banco no se lee con el banco cerrado")
