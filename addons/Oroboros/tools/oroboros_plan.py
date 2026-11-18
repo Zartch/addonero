@@ -62,6 +62,30 @@ def short_char(ck):
 
 # ----------------------------------------------------------------------
 # Carga de datos
+DROP_MIN_DAYS, DROP_MAX_DAYS = 0.5, 3   # separación válida entre dos datos para medir ventas/día
+
+
+def daily_drops(hist):
+    """Bajadas de lo publicado por día entre datos seguidos del histórico.
+
+    Cada bajada se divide por el tiempo real entre los dos datos (la hora del escaneo si está;
+    si no, los días de calendario). Separaciones de menos de medio día (eso lo miden las franjas
+    horarias) o de más de 3 días (demasiado vagas) no cuentan. Una subida cuenta 0.
+    """
+    import datetime as _d
+    pts = [x for x in hist if x.get("qty") is not None]
+    out = []
+    for a, b in zip(pts, pts[1:]):
+        if a.get("t") and b.get("t"):
+            gap = (b["t"] - a["t"]) / 86400
+        else:
+            gap = (_d.date.fromisoformat(b["day"]) - _d.date.fromisoformat(a["day"])).days
+        if DROP_MIN_DAYS <= gap <= DROP_MAX_DAYS:
+            drop = max(0, a["qty"] - b["qty"]) / gap
+            out.append(int(drop) if drop == int(drop) else drop)
+    return out
+
+
 # ----------------------------------------------------------------------
 class Data:
     def __init__(self, db_path, catalog_path, now=None, archive=None):
@@ -148,8 +172,7 @@ class Data:
         med7 = statistics.median(last7) if len(last7) >= 3 else None
         mvs = [x["mv"] for x in h[-14:] if x["mv"]]
         cv = statistics.pstdev(mvs) / statistics.mean(mvs) if len(mvs) >= 4 else None
-        qtys = [x["qty"] for x in h if x["qty"] is not None]
-        drops = [max(0, a - b) for a, b in zip(qtys, qtys[1:])]
+        drops = daily_drops(h)
         vol = statistics.mean(drops) if len(drops) >= 3 else None
         vol_est = vol is None          # sin días suficientes: ventas/día supuestas, no medidas
         qty = p["qty"] if p else 0
@@ -561,6 +584,10 @@ def find_flips(data, horizon_h, char):
         if not p["qty"] or not st["med7"] or not st["vol"] or not st["depth"]:
             continue
         if p["min"] >= st["med7"] * 0.75 or st["vol"] < 0.5:
+            continue
+        # si ayer ya estaba a este precio, es su precio nuevo y no una bajada puntual
+        past = [x for x in data.history.get(item_id, []) if x["day"] < data.today and x["mv"]]
+        if past and past[-1]["mv"] <= p["min"] * 1.10:
             continue
         qty = max(1, min(st["depth"][0], int(st["vol"] * horizon_h / 24)))
         if st["vol_est"]:

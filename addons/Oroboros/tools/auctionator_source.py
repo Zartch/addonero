@@ -183,8 +183,8 @@ def merge(con, atr, market, today=None):
             if (item_id, day) in have_hist:
                 continue
             low = rec["l"].get(day, high)
-            con.execute("INSERT INTO history VALUES (?,?,?,?,?,?,?)",
-                        (market, item_id, day, low, high, rec["a"].get(day), "atr"))
+            con.execute("INSERT INTO history VALUES (?,?,?,?,?,?,?,?)",
+                        (market, item_id, day, low, high, rec["a"].get(day), "atr", None))
             n_hist += 1
         if not rec["m"] or not rec["h"]:
             continue

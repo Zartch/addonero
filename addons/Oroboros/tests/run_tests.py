@@ -466,6 +466,37 @@ check(not any("/h barato" in w for o in plan["opportunities"] for w in o.get("wh
 check(p4["items"][str(X)]["hours"][5]["ok"] is True, "plan: las franjas del objeto van al JSON")
 check('["horas", "Horas"]' in open(os.path.join(tmp, "p4.html"), encoding="utf-8").read(), "página: pestaña Horas")
 
+# Ventas por día: cada bajada se divide por el tiempo real entre datos (0,5 a 3 días)
+from oroboros_plan import daily_drops, find_flips
+hh = [{"day": "2026-11-01", "qty": 1000}, {"day": "2026-11-05", "qty": 600}, {"day": "2026-11-06", "qty": 590},
+      {"day": "2026-11-07", "qty": 580}, {"day": "2026-11-08", "qty": 570}]
+check(daily_drops(hh) == [10, 10, 10], f"ventas/día: un hueco de 4 días no cuenta ({daily_drops(hh)})")
+hh2 = [{"day": "2026-11-14", "qty": 3833}, {"day": "2026-11-16", "qty": 4560}, {"day": "2026-11-17", "qty": 3000}]
+check(daily_drops(hh2) == [0, 1560], "ventas/día: subida = 0; un día = la bajada entera")
+hh3 = [{"day": "2026-11-18", "qty": 2800, "t": 1795033080}, {"day": "2026-11-19", "qty": 1018, "t": 1795033080 + 12600}]
+check(daily_drops(hh3) == [], "ventas/día: dos escaneos a 3,5 h no son un día (eso lo miden las franjas)")
+hh4 = [{"day": "2026-11-17", "qty": 300, "t": 1000}, {"day": "2026-11-19", "qty": 200, "t": 1000 + 2 * 86400}]
+check(daily_drops(hh4) == [50], "ventas/día: con hora real, 100 en 2 días = 50/día")
+
+# Reventa: no si el precio ya estaba ayer a ese nivel (es su precio nuevo, no una bajada puntual)
+import shutil as _sh
+from oroboros_plan import Data as _Data
+fdb = os.path.join(tmp, "flip.sqlite"); _sh.copy(os.path.join(tmp, "a.sqlite"), fdb)
+_now = int(_dt.datetime.fromisoformat(NOW).timestamp())
+_day = lambda k: (_dt.date.fromtimestamp(_now) - _dt.timedelta(days=k)).isoformat()
+def _flip_case(mv_yesterday):
+    _sh.copy(os.path.join(tmp, "a.sqlite"), fdb)
+    _f = sqlite3.connect(fdb); mk = plan["market"]
+    _f.execute("INSERT INTO items (item_id, name) VALUES (777777, 'Gema de prueba')")
+    _f.execute("INSERT INTO prices VALUES (?,777777,300,300,200,10,?,60,120,180,200,'oro')", (mk, _now))
+    for k, (mv, q) in zip((4, 3, 2, 1), ((1000, 300), (1000, 280), (1000, 260), (mv_yesterday, 240))):
+        _f.execute("INSERT INTO history VALUES (?,777777,?,?,?,?,'oro',NULL)", (mk, _day(k), mv, mv, q))
+    _f.commit(); _f.close()
+    dd = _Data(fdb, os.path.join(ROOT, "tools", "catalog.json"), now=_now)
+    return [f for f in find_flips(dd, 48, next(iter(dd.chars))) if f["out_item"] == 777777]
+check(len(_flip_case(1000)) == 1, "reventa: bajada puntual frente a su mediana")
+check(len(_flip_case(310)) == 0, "reventa: no si ayer ya estaba a ese precio")
+
 # Sin histórico (primer día con datos reales): lotes de prueba y tope para la confianza baja
 import shutil
 nh = os.path.join(tmp, "nohist.sqlite")

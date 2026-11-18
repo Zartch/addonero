@@ -151,7 +151,7 @@ CREATE TABLE prices     (market TEXT, item_id INTEGER, min REAL, mv REAL, qty IN
                          src TEXT DEFAULT 'oro',               -- oro = Oroboros | atr = Auctionator
                          PRIMARY KEY (market, item_id));
 CREATE TABLE history    (market TEXT, item_id INTEGER, day TEXT, min REAL, mv REAL, qty INTEGER,
-                         src TEXT DEFAULT 'oro', PRIMARY KEY (market, item_id, day));
+                         src TEXT DEFAULT 'oro', t INTEGER, PRIMARY KEY (market, item_id, day));
 CREATE TABLE characters (char TEXT PRIMARY KEY, market TEXT, money INTEGER, level INTEGER, class TEXT, t INTEGER);
 CREATE TABLE inventory  (char TEXT, location TEXT, item_id INTEGER, count INTEGER,
                          PRIMARY KEY (char, location, item_id));   -- location: bags | bank | warband
@@ -203,8 +203,8 @@ def write_sqlite(db, path):
                          *d[:4]))
         for item_id, days in as_dict(m.get("history")).items():
             for day, h in as_dict(days).items():
-                con.execute("INSERT INTO history VALUES (?,?,?,?,?,?,'oro')",
-                            (market, int(item_id), day, h.get("min"), h.get("mv"), h.get("qty")))
+                con.execute("INSERT INTO history VALUES (?,?,?,?,?,?,'oro',?)",
+                            (market, int(item_id), day, h.get("min"), h.get("mv"), h.get("qty"), h.get("t")))
 
     seen_reagents = set()
     for char, c in as_dict(db.get("chars")).items():

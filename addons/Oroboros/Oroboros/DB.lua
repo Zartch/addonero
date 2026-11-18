@@ -143,11 +143,12 @@ local function updateHistory(m, itemID, rec, day)
     local h = m.history[itemID]
     if not h then h = {}; m.history[itemID] = h end
     local d = h[day]
+    -- t: hora del último escaneo del día (las ventas por día se miden con el tiempo real)
     if not d then
-        h[day] = { min = rec.min, mv = rec.mv, qty = rec.qty }
+        h[day] = { min = rec.min, mv = rec.mv, qty = rec.qty, t = rec.t }
     else
         if rec.min and (not d.min or rec.min < d.min) then d.min = rec.min end
-        d.mv, d.qty = rec.mv, rec.qty
+        d.mv, d.qty, d.t = rec.mv, rec.qty, rec.t
     end
 end
 
