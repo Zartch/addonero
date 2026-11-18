@@ -309,6 +309,36 @@ check(st_["depth_est"] and st_["src"] == "atr" and st_["conf"] != "alta", f"plan
 check(dd.stats(2589)["depth_est"] is False, "planificador: profundidad real de Oroboros")
 
 from oroboros_export import LuaParser
+# Análisis por franjas: dos cuentas de lo que desaparece (total y baratas)
+from oroboros_archive import SCHEMA as ARCH_SCHEMA
+import oroboros_hours as H
+import tempfile as _tf
+def _ts(day, hh, mm=0): return int(datetime.datetime(2026, 11, day, hh, mm).timestamp())
+arch3 = os.path.join(_tf.mkdtemp(), "a3.sqlite")
+_c3 = sqlite3.connect(arch3); _c3.executescript(ARCH_SCHEMA)
+rows = [  # (item, t, min, qty, cheap, cheap_prev)
+    (1, _ts(10, 10), 30, 100, 30, 30), (1, _ts(10, 14), 34, 60, 50, 10),          # 4 h: -40 total, -20 baratas
+    (2, _ts(10, 10), 30, 100, 30, 30), (2, _ts(10, 17), 30, 0, 0, 0),             # 7 h: no cuenta
+    (3, _ts(10, 10), 30, 50, 10, 10), (3, _ts(10, 12), 30, 80, 25, 20),           # sube: 0
+    (4, _ts(10, 8, 30), 20, 90, 9, 9), (4, _ts(10, 9, 30), 20, 80, 9, 9), (4, _ts(10, 10, 30), 22, 70, 9, 9), (4, _ts(10, 11, 30), 24, 60, 9, 9),
+    (5, _ts(10, 8, 30), 20, 90, 9, 9), (5, _ts(10, 9, 30), 20, 80, 9, 9), (5, _ts(10, 10, 30), 20, 70, 9, 9),
+    (5, _ts(11, 8, 30), 20, 90, 9, 9), (5, _ts(11, 9, 30), 20, 80, 9, 9),
+    (6, _ts(10, 22), 50, 100, 40, 40), (6, _ts(11, 2), 50, 60, 20, 20),          # cruza la medianoche
+]
+_c3.executemany("INSERT INTO scans VALUES ('M',?,?,?,?,?,?,?)", [(t, i, mn, mn, q, c, cp) for i, t, mn, q, c, cp in rows])
+_c3.commit(); _c3.close()
+A = H.analyze(arch3, "M")
+b1 = A[1]
+check((b1[2]["gone_total_h"], b1[2]["gone_cheap_h"], b1[3]["gone_total_h"], b1[3]["gone_cheap_h"]) == (10, 5, 10, 5),
+      f"franjas: reparto a mano (10/h total, 5/h baratas en 8–12 y 12–16) {[(x['gone_total_h'], x['gone_cheap_h']) for x in b1]}")
+check(all(x["gone_total_h"] is None for x in A.get(2, [{"gone_total_h": None}])), "franjas: un intervalo de más de 6 h no cuenta")
+check(A[3][2]["gone_total_h"] == 0 and A[3][2]["gone_cheap_h"] == 0, "franjas: si lo publicado sube, cuenta 0")
+check(A[4][2]["n"] == 3 and A[4][2]["ok"] is False, "franjas: 3 mediciones en un solo día no son fiables")
+check(A[5][2]["n"] == 3 and A[5][2]["days"] == 2 and A[5][2]["ok"] is True, "franjas: 3 mediciones en 2 días sí")
+check(A[4][2]["price_med"] == 21, f"franjas: precio típico = mediana del mínimo en la franja ({A[4][2]['price_med']})")
+check(A[6][5]["gone_total_h"] == 10 and A[6][0]["gone_total_h"] == 10, "franjas: un intervalo que cruza la medianoche se reparte en 20–24 y 0–4")
+check(H.summary(A[1]) is None and H.summary(A[5]) is not None, "franjas: resumen solo con franjas fiables")
+
 # Archivo permanente de escaneos (--archive): no duplica y detecta huecos
 import tempfile as _tf
 from oroboros_export import load_savedvariables
