@@ -48,8 +48,8 @@ Para probar el addon en el juego, enlaza la carpeta en vez de copiarla (así los
 
 ## Estado
 
-- Nada se ha probado todavía en el cliente real: solo con la simulación y con datos sintéticos.
-- Lo primero que hay que validar en el juego: carga del addon y número de interfaz, lectura del banco (¿pestañas o clásico?), libro de compras (compra de equipo, facturas del correo), tooltip.
+- Probado en el cliente real: carga del addon, interfaz 16001 y escaneo completo propio. El resto solo con la simulación y datos sintéticos.
+- Lo siguiente que hay que validar en el juego: lectura del banco (¿pestañas o clásico?), libro de compras (compra de equipo, facturas del correo), tooltip.
 
 ## Fuente de precios: Auctionator (hecho, sin probar en el juego)
 
@@ -59,7 +59,9 @@ El usuario usa **Auctionator** con su escaneo completo activado. Detalle y refer
 - Fuera del juego: `oroboros_export.py --auctionator` mezcla su base (precio, histórico de 21 días y cantidad). Gana Oroboros si tiene dato del mismo día.
 - Sin profundidad real, el planificador la estima y no da confianza alta (`stats()["depth_est"]`).
 
-Por validar en el juego: que la lectura pasiva funciona con el escaneo de Auctionator; el número de interfaz; si la subasta es única por reglas regionales (Auctionator usa la clave `"PvE"`, Oroboros `Reino-Facción`; si es única, pasar a esa clave); duraciones de publicación (Auctionator usa 2/8/24 h en Forever, `postDuration` asume 12/24/48 h).
+Comprobado en el cliente real (18/11/2026): el addon carga con interfaz 16001 (cliente 1.60.1.70959) y el escaneo completo propio guarda ~6900 objetos con profundidad. `/oro cliente` dio: reino interno `CAMWOWEU5Realm5PvE`, nombres regionales `true`, `GetRegionalRulesetName()` = `nil`, sin reinos conectados. Clave de mercado actual: `CAMWOWEU5Realm5PvE-<Facción>` (se mantiene).
+
+Por validar en el juego: la lectura pasiva con el escaneo completo de Auctionator (el usuario no lo tiene activado; escanea con Oroboros); si la subasta se comparte entre facciones (comparar `/oro price` con un personaje de cada facción; si se comparte, quitar la facción de `ns.MarketKey`); duraciones de publicación (Auctionator usa 2/8/24 h en Forever, `postDuration` asume 12/24/48 h).
 
 Goblinomics (instalado) es contabilidad y patrimonio sobre precios de TSM/Auctionator: no escanea, no ejecuta acciones ni planifica. Se solapa con el libro de compras e inventario de Oroboros, no con el escaneo, la cola ni el planificador.
 

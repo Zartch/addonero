@@ -79,7 +79,7 @@ Precios en cobre o `1g23s45c`. `#` = comentario.
 
 ## Pendiente
 - Validar en el juego la lectura pasiva del escaneo de Auctionator.
-- Clave de mercado: si la subasta de Forever es única por reglas regionales (Auctionator usa `"PvE"`), cambiar `ns.MarketKey`.
+- Clave de mercado: Forever tiene un único reino interno (`CAMWOWEU5Realm5PvE`, sin reinos conectados; `GetRegionalRulesetName()` devuelve `nil`). Falta saber si la subasta se comparte entre facciones; si es así, quitar la facción de `ns.MarketKey`.
 - Duraciones de publicación en Forever (Auctionator usa 2/8/24 h).
 - Búsqueda puntual de los objetos de la ruta para tener profundidad real cuando los precios vengan solo de Auctionator.
 - Validar en el cliente real (escaneo, banco, compra pequeña, publicación, libro de compras y facturas del correo, tooltip).

@@ -8,7 +8,9 @@
 > - TOC: `## Interface: 16001, 120105` y `## OptionalDeps: Auctionator`.
 > - Pruebas en Windows sin `PYTHONUTF8`.
 >
-> Pendiente: validar en el juego; la clave de mercado (`"PvE"`) cuando se confirme; la búsqueda puntual de los objetos de la ruta (apartado 6c) solo hace falta si no hay escaneo completo.
+> Comprobado el 18/11 en el cliente real: interfaz 16001 (cliente 1.60.1.70959), carga y escaneo completo propio (~6900 objetos con profundidad). `/oro cliente`: reino interno `CAMWOWEU5Realm5PvE`, nombres regionales `true`, `GetRegionalRulesetName()` = `nil`, sin reinos conectados. La clave `"PvE"` de Auctionator no se puede reproducir con esos datos; Oroboros mantiene `Reino-Facción`.
+>
+> Pendiente: validar en el juego la lectura pasiva; la clave de mercado (`"PvE"`) cuando se confirme; la búsqueda puntual de los objetos de la ruta (apartado 6c) solo hace falta si no hay escaneo completo.
 
 Informe del 16/11/2026. Todo lo de abajo está comprobado en los archivos de la instalación (solo lectura), salvo lo marcado como **sin verificar**. Las rutas de Auctionator son relativas a `Interface/AddOns/Auctionator/`.
 
