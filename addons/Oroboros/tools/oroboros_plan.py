@@ -1070,9 +1070,11 @@ def main():
     ap.add_argument("--spec", type=float, default=0.15, help="fracción del oro total para ideas de especulación")
     ap.add_argument("--brief", help="guardar un resumen del mercado en Markdown para pedir más ideas a un LLM")
     ap.add_argument("--synthetic", action="store_true", help="marcar el plan como datos sintéticos")
+    ap.add_argument("--now", help="hora de referencia (ISO o segundos); por defecto, ahora. Para pruebas")
     a = ap.parse_args()
 
-    data = Data(a.db, a.catalog)
+    from make_synthetic import parse_now
+    data = Data(a.db, a.catalog, now=parse_now(a.now))
     plan = build_plan(data, a.horizon, a.budget, a.synthetic, a.spec, a.banker)
     if a.brief:
         with open(a.brief, "w", encoding="utf-8") as fh:

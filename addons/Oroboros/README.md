@@ -144,6 +144,7 @@ El tooltip de cada objeto muestra el precio guardado y qué personaje tuyo lo fa
 | `/oro show` | Muestra u oculta la ventana. |
 | `/oro scan` | Escaneo completo (con la subasta abierta). Con Auctionator escaneando, avisa y no lanza otro. |
 | `/oro scan forzar` | Escaneo propio aunque Auctionator haga el suyo (respeta el límite de 15 minutos de los dos). |
+| `/oro cliente` | Versión, interfaz, reino, conjunto de reglas y clave de mercado. También se guarda al entrar en `OroborosDB.client`. |
 | `/oro price <itemID o enlace>` | Precio guardado: mínimo, valor de mercado, cantidad y hora. |
 | `/oro prof` | Profesiones de todos tus personajes, con recetas aprendidas y vistas. |
 | `/oro quien <itemID o enlace>` | Qué personaje tuyo lo fabrica. |
@@ -250,6 +251,7 @@ python tools/oroboros_plan.py --db oroboros.sqlite --html plan.html --routes rut
 | `--brief <archivo>` | — | Resumen del mercado en Markdown para pedir más ideas a un LLM. |
 | `--catalog <archivo>` | `tools/catalog.json` | Catálogo con lo que el juego no da. |
 | `--synthetic` | — | Marca el plan como hecho con datos inventados. |
+| `--now` | ahora | Hora de referencia (ISO o segundos). Sirve para pruebas reproducibles; `make_synthetic.py` también la acepta. |
 
 Cómo decide:
 

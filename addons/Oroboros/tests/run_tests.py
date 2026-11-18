@@ -31,6 +31,9 @@ def check(cond, msg):
 
 fire("ADDON_LOADED", "Oroboros"); fire("PLAYER_LOGIN"); fire("BAG_UPDATE_DELAYED")
 check(G.OroborosDB is not None, "BD inicializada")
+cl = G.OroborosDB.client
+check(cl is not None and cl.realm == "Forever Normal" and cl.faction == "Horde" and cl.t,
+      "datos del cliente guardados al entrar (reino, facción)")
 
 # Escaneo completo
 fire("AUCTION_HOUSE_SHOW")
@@ -52,7 +55,7 @@ Auctionator = { API = { v1 = {} }, Config = { Options = { REPLICATE_SCAN = "repl
                 Get = function(k) return k == "replicate_scan_3" end } }
 AUCTIONATOR_SAVEDVARS = {}
 """)
-ns.Scanner.lastReplicate = 0; ns.Scanner.lastRead = 0
+ns.Scanner.lastReplicate = 0; ns.Scanner.lastRead = 0; G.OroborosDB.lastReplicate = 0
 check(ns.Scanner.AuctionatorReplicates() is True, "Auctionator: detecta su escaneo completo")
 ns.Scanner.FullScan()
 check(len(calls()) == 0, "Auctionator: Oroboros no llama a ReplicateItems")
@@ -65,7 +68,7 @@ check(p is not None and p.mv == 32 and p.d[1] == 20, "Auctionator: leemos su esc
 mprices[2589] = None
 fire("REPLICATE_ITEM_LIST_UPDATE"); G.RunTimers()
 check(ns.DB.GetPrice(2589) is None, "Auctionator: el mismo escaneo no se lee dos veces")
-ns.Scanner.lastReplicate = 0
+ns.Scanner.lastReplicate = 0; G.OroborosDB.lastReplicate = 0
 can, left = ns.Scanner.CanFullScan()
 check(can is False and left > 14 * 60, "Auctionator: respetamos su límite de 15 min")
 ns.Scanner.FullScan(True)
@@ -75,6 +78,10 @@ ns.Scanner.FullScan(True)
 check(calls() == [("ReplicateItems",)], "/oro scan forzar lanza nuestro escaneo")
 fire("REPLICATE_ITEM_LIST_UPDATE"); G.RunTimers()
 check(ns.DB.GetPrice(2589) is not None, "escaneo forzado leído")
+ns.Scanner.lastReplicate = 0          # como tras un /reload
+lua.execute("AUCTIONATOR_SAVEDVARS = {}")
+check(ns.Scanner.CanFullScan() is False or ns.Scanner.CanFullScan()[0] is False,
+      "el límite de 15 min sobrevive a /reload (OroborosDB.lastReplicate)")
 lua.execute("Auctionator = nil; AUCTIONATOR_SAVEDVARS = nil")
 check(ns.Scanner.AuctionatorReplicates() is False, "sin Auctionator: escaneo propio")
 
@@ -281,10 +288,13 @@ check(extra["Extra"] == ["a", [2589, 2]] and extra["S"] == 'ñand"u', f"parser: 
 # --- Planificador con datos sintéticos: SavedVariables → SQLite → plan → rutas que el addon entiende
 import json, tempfile
 tmp = tempfile.mkdtemp()
-subprocess.run([sys.executable, os.path.join(ROOT, "tools", "make_synthetic.py"), "--out", os.path.join(tmp, "A.lua")], check=True, capture_output=True)
+# Hora fija: los datos sintéticos (ciclo semanal) y las fechas de catalog.json dependen del día;
+# sin esto el resultado de las ideas cambiaría según el día en que se pasen las pruebas.
+NOW = "2026-11-16T19:30"
+subprocess.run([sys.executable, os.path.join(ROOT, "tools", "make_synthetic.py"), "--out", os.path.join(tmp, "A.lua"), "--now", NOW], check=True, capture_output=True)
 subprocess.run([sys.executable, os.path.join(ROOT, "tools", "oroboros_export.py"), os.path.join(tmp, "A.lua"), "--sqlite", os.path.join(tmp, "a.sqlite")], check=True, capture_output=True)
 r = subprocess.run([sys.executable, os.path.join(ROOT, "tools", "oroboros_plan.py"), "--db", os.path.join(tmp, "a.sqlite"),
-                    "--json", os.path.join(tmp, "p.json"), "--html", os.path.join(tmp, "p.html"), "--synthetic"], capture_output=True, text=True, encoding="utf-8", errors="replace")
+                    "--json", os.path.join(tmp, "p.json"), "--html", os.path.join(tmp, "p.html"), "--synthetic", "--now", NOW], capture_output=True, text=True, encoding="utf-8", errors="replace")
 check(r.returncode == 0, "planificador se ejecuta " + r.stderr[-300:])
 plan = json.load(open(os.path.join(tmp, "p.json"), encoding="utf-8"))
 s_ = plan["summary"]
@@ -341,7 +351,7 @@ for ck, t in list(parts.items()) + [(p.char, p.text) for p in ns.Queue.Split(I["
     n, nerr = ns.Queue.Parse(t)
     check(len(list(nerr.values())) == 0 and len(list(n.values())) > 0, f"ruta única: el addon entiende la parte de {ck.split('-')[0]}")
 r2 = subprocess.run([sys.executable, os.path.join(ROOT, "tools", "oroboros_plan.py"), "--db", os.path.join(tmp, "a.sqlite"),
-                     "--json", os.path.join(tmp, "p2.json"), "--banker", "none"], capture_output=True, text=True, encoding="utf-8", errors="replace")
+                     "--json", os.path.join(tmp, "p2.json"), "--banker", "none", "--now", NOW], capture_output=True, text=True, encoding="utf-8", errors="replace")
 p2 = json.load(open(os.path.join(tmp, "p2.json"), encoding="utf-8"))
 check(p2["banker"] is None and any("BUY " in rt["text"] for rt in p2["routes"].values() if rt["short"] == "Zarthrin"),
       "sin banquero, cada personaje compra lo suyo")

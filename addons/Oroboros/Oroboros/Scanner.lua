@@ -52,6 +52,10 @@ end
 -- último ReplicateItems pedido por nosotros o por Auctionator
 local function lastReplicateAny()
     local t = Scanner.lastReplicate
+    -- el límite del servidor sobrevive a /reload: guardamos la hora en la BD
+    if OroborosDB and type(OroborosDB.lastReplicate) == "number" and OroborosDB.lastReplicate > t then
+        t = OroborosDB.lastReplicate
+    end
     local sv = AUCTIONATOR_SAVEDVARS
     if type(sv) == "table" and type(sv.TimeOfLastReplicateScan) == "number" and sv.TimeOfLastReplicateScan > t then
         t = sv.TimeOfLastReplicateScan
@@ -80,6 +84,7 @@ function Scanner.FullScan(force)
     end
     Scanner.state = "waiting"
     Scanner.lastReplicate = time()
+    OroborosDB.lastReplicate = Scanner.lastReplicate
     setStatus("Escaneo completo: esperando datos del servidor…")
     C_AuctionHouse.ReplicateItems()
 end
@@ -132,6 +137,7 @@ ns.On("REPLICATE_ITEM_LIST_UPDATE", function()
     elseif Scanner.state == "idle" and Scanner.ahOpen and time() - Scanner.lastRead > PASSIVE_GAP then
         -- ReplicateItems pedido por otro addon: leemos el mismo resultado sin pedir otro
         Scanner.lastReplicate = math.max(Scanner.lastReplicate, time())
+        OroborosDB.lastReplicate = Scanner.lastReplicate
         readReplicate(true)
     end
 end)

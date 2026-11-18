@@ -146,9 +146,9 @@ def day_str(ts):
     return time.strftime("%Y-%m-%d", time.localtime(ts))
 
 
-def build(seed=7):
+def build(seed=7, now=None):
     rnd = random.Random(seed)
-    now = int(time.time())
+    now = now or int(time.time())
     db = {"schema": 1, "config": {"banker": BANK}, "items": {}, "vendor": dict(VENDOR), "chars": {}, "route": {},
           "markets": {MARKET: {"lastFull": now - 40 * 60, "prices": {}, "history": {}}}}
     m = db["markets"][MARKET]
@@ -269,6 +269,16 @@ def to_lua(v, ind=""):
     return str(v)
 
 
+def parse_now(s):
+    """--now: segundos desde 1970 o fecha ISO (AAAA-MM-DD[THH:MM]). Para pruebas reproducibles."""
+    if s is None:
+        return None
+    if str(s).isdigit():
+        return int(s)
+    import datetime
+    return int(datetime.datetime.fromisoformat(s).timestamp())
+
+
 if __name__ == "__main__":
     for _s in (sys.stdout, sys.stderr):
         try:
@@ -278,7 +288,8 @@ if __name__ == "__main__":
     ap = argparse.ArgumentParser()
     ap.add_argument("--out", default="Oroboros.lua")
     ap.add_argument("--seed", type=int, default=7)
+    ap.add_argument("--now", help="hora de referencia (ISO o segundos); por defecto, ahora")
     a = ap.parse_args()
     with open(a.out, "w", encoding="utf-8") as fh:
-        fh.write("\nOroborosDB = " + to_lua(build(a.seed)) + "\n")
+        fh.write("\nOroborosDB = " + to_lua(build(a.seed, parse_now(a.now))) + "\n")
     print("SavedVariables sintético →", a.out)

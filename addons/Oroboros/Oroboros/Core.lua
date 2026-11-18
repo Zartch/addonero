@@ -86,8 +86,34 @@ ns.On("ADDON_LOADED", function(name)
     ns.Print("v" .. ns.version .. " cargado. /oroboros para ayuda.")
 end)
 
+-- Datos del cliente para decidir la clave de mercado y la interfaz (se leen del
+-- SavedVariables). Cada llamada va protegida: alguna función puede no existir en Forever.
+function ns.ClientInfo()
+    local function try(fn, ...)
+        if type(fn) ~= "function" then return nil end
+        local ok, a = pcall(fn, ...)
+        if ok then return a end
+    end
+    local info = {
+        realm = try(GetRealmName),
+        normRealm = try(GetNormalizedRealmName),
+        regionalUnique = try(RegionalUniqueNamesEnabled),
+        ruleset = try(GetRegionalRulesetName),
+        faction = try(UnitFactionGroup, "player"),
+        t = time(),
+    }
+    if type(GetBuildInfo) == "function" then
+        local ok, version, build, _, iface = pcall(GetBuildInfo)
+        if ok then info.version, info.build, info.interface = version, build, iface end
+    end
+    local connected = try(GetAutoCompleteRealms)
+    if type(connected) == "table" and #connected > 0 then info.connected = connected end
+    return info
+end
+
 ns.On("PLAYER_LOGIN", function()
     ns.DB.SnapshotCharacter()
+    OroborosDB.client = ns.ClientInfo()
 end)
 
 ns.On("PLAYER_MONEY", function()
@@ -120,6 +146,7 @@ SlashCmdList.OROBOROS = function(msg)
         ns.Print("  /oro show     – mostrar/ocultar la ventana")
         ns.Print("  /oro scan     – escaneo completo (con la subasta abierta)")
         ns.Print("  /oro scan forzar – escaneo propio aunque Auctionator haga el suyo")
+        ns.Print("  /oro cliente  – versión, interfaz, reino y conjunto de reglas")
         ns.Print("  /oro price <itemID|link> – ver precio guardado")
         ns.Print("  /oro prof     – profesiones de todos tus personajes")
         ns.Print("  /oro quien <itemID|link> – qué personaje lo fabrica")
@@ -131,6 +158,14 @@ SlashCmdList.OROBOROS = function(msg)
         ns.Print("Los datos se escriben a disco al hacer /reload o salir.")
     elseif cmd == "show" then
         ns.UI.Toggle()
+    elseif cmd == "cliente" then
+        local c = ns.ClientInfo()
+        OroborosDB.client = c
+        ns.Print(string.format("versión %s (%s), interfaz %s", tostring(c.version), tostring(c.build), tostring(c.interface)))
+        ns.Print(string.format("reino %s / %s · reglas %s (nombres regionales: %s) · facción %s",
+            tostring(c.realm), tostring(c.normRealm), tostring(c.ruleset), tostring(c.regionalUnique), tostring(c.faction)))
+        ns.Print("clave de mercado de Oroboros: " .. ns.MarketKey() ..
+            (c.connected and (" · reinos conectados: " .. table.concat(c.connected, ", ")) or ""))
     elseif cmd == "scan" then
         ns.Scanner.FullScan(rest:lower() == "forzar")
     elseif cmd == "price" then
