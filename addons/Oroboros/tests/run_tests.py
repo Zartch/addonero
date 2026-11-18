@@ -435,6 +435,37 @@ r2 = subprocess.run([sys.executable, os.path.join(ROOT, "tools", "oroboros_plan.
                      "--json", os.path.join(tmp, "p2.json"), "--banker", "none", "--now", NOW], capture_output=True, text=True, encoding="utf-8", errors="replace")
 p2 = json.load(open(os.path.join(tmp, "p2.json"), encoding="utf-8"))
 
+# Franjas en el plan: con --archive, la venta dice en qué franja desaparece más
+import datetime as _dt, tempfile as _tf2
+from oroboros_archive import SCHEMA as _AS
+opp_x = next(o for o in plan["opportunities"] if o.get("included") and o["kind"] == "craft")
+X = opp_x["out_item"]
+arch_p = os.path.join(_tf2.mkdtemp(), "arch.sqlite")
+_cx = sqlite3.connect(arch_p); _cx.executescript(_AS)
+qty_, rows_ = 10000, []
+for k in range(36):                                   # cada 2 h durante 3 días
+    t = int(_dt.datetime(2026, 11, 10, 0, 0).timestamp()) + k * 7200
+    hr = _dt.datetime.fromtimestamp(t).hour
+    drop = 40 if hr >= 20 else 2                       # el intervalo que empieza aquí
+    mn = 80 if 4 <= hr < 8 else 100
+    rows_.append((plan["market"], t, X, mn, mn, qty_, 500))
+    qty_ -= drop
+# cheap_prev de cada escaneo = cheap anterior − lo barato desaparecido en el intervalo previo
+fixed = []
+for j, r_ in enumerate(rows_):
+    prev_drop = (40 if _dt.datetime.fromtimestamp(rows_[j - 1][1]).hour >= 20 else 2) if j else 0
+    fixed.append(r_ + (500 - prev_drop,))
+_cx.executemany("INSERT INTO scans VALUES (?,?,?,?,?,?,?,?)", fixed); _cx.commit(); _cx.close()
+r4 = subprocess.run([sys.executable, os.path.join(ROOT, "tools", "oroboros_plan.py"), "--db", os.path.join(tmp, "a.sqlite"),
+                     "--json", os.path.join(tmp, "p4.json"), "--html", os.path.join(tmp, "p4.html"), "--synthetic",
+                     "--now", NOW, "--archive", arch_p], capture_output=True, text=True, encoding="utf-8", errors="replace")
+p4 = json.load(open(os.path.join(tmp, "p4.json"), encoding="utf-8"))
+why_x = [w for o in p4["opportunities"] if o["out_item"] == X for w in o.get("why", [])]
+check(any("de 20 a 24 h" in w and "/h barato" in w for w in why_x), f"plan: la venta dice en qué franja desaparece más ({X})")
+check(not any("/h barato" in w for o in plan["opportunities"] for w in o.get("why", [])), "plan sin --archive: sin textos de franja")
+check(p4["items"][str(X)]["hours"][5]["ok"] is True, "plan: las franjas del objeto van al JSON")
+check('["horas", "Horas"]' in open(os.path.join(tmp, "p4.html"), encoding="utf-8").read(), "página: pestaña Horas")
+
 # Sin histórico (primer día con datos reales): lotes de prueba y tope para la confianza baja
 import shutil
 nh = os.path.join(tmp, "nohist.sqlite")

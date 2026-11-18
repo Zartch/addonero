@@ -190,6 +190,7 @@ input[type="search"], select { font: inherit; padding: 6px 10px; border: 1px sol
   <section class="view" id="v-cartera"></section>
   <section class="view" id="v-inventario"></section>
   <section class="view" id="v-mercado"></section>
+  <section class="view" id="v-horas"></section>
 </main>
 <div class="tip" id="tip"></div>
 <script>
@@ -197,7 +198,7 @@ const PLAN = /*__PLAN__*/null;
 
 const VIEWS = [
   ["resumen", "Resumen"], ["ruta", "Ruta"], ["recetas", "Qué ganas y por qué"],
-  ["transformar", "Transformaciones"], ["aprender", "Qué aprender"], ["ideas", "Ideas"], ["cartera", "Cartera"], ["inventario", "Qué tienes"], ["mercado", "Mercado"],
+  ["transformar", "Transformaciones"], ["aprender", "Qué aprender"], ["ideas", "Ideas"], ["cartera", "Cartera"], ["inventario", "Qué tienes"], ["mercado", "Mercado"], ["horas", "Horas"],
 ];
 const $ = (s, el = document) => el.querySelector(s);
 const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
@@ -534,6 +535,31 @@ function renderInventario() {
 }
 
 let mkItem = null, mkQuery = "";
+function renderHoras() {
+  const BANDS = ["0–4", "4–8", "8–12", "12–16", "16–20", "20–24"];
+  const ids = Object.keys(PLAN.items).filter(id => PLAN.items[id].hours)
+    .sort((a, b) => PLAN.items[a].name.localeCompare(PLAN.items[b].name));
+  if (!ids.length) {
+    $("#v-horas").innerHTML = `<div class="panel"><header><h2>Franjas horarias</h2></header>
+      <p class="lead">Sin datos de franjas. Escanea varias veces al día (con <code>/reload</code> después), exporta con <code>--archive work/archivo.sqlite</code> y genera el plan con <code>--archive work/archivo.sqlite</code>.</p></div>`;
+    return;
+  }
+  const row = id => {
+    const h = PLAN.items[id].hours, max = Math.max(1, ...h.map(b => b.gone_cheap_h || 0));
+    const cells = h.map(b => {
+      if (b.gone_cheap_h === null) return `<td class="n" style="color:var(--muted)">—</td>`;
+      const a = (b.gone_cheap_h / max) * 0.55;
+      return `<td class="n" style="background:rgba(214,170,60,${a.toFixed(2)})" title="${b.n} mediciones en ${b.days} días">
+        ${fmtN(b.gone_cheap_h)}/h${b.ok ? "" : " ?"}<div class="sub">${fmtN(b.gone_total_h)}/h total · ${b.price_med ? money(b.price_med) : "—"}</div></td>`;
+    }).join("");
+    return `<tr><td>${esc(PLAN.items[id].name)}</td>${cells}</tr>`;
+  };
+  $("#v-horas").innerHTML = `<div class="panel"><header><h2>Franjas horarias</h2></header>
+    <p class="lead">Unidades baratas que desaparecen por hora en cada franja (debajo: el total y el precio típico). Más color = se vende más. «?» = menos de 3 mediciones en 2 días: todavía no es fiable.</p>
+    <div class="tablewrap"><table><thead><tr><th>Objeto</th>${BANDS.map(b => `<th class="n">${b} h</th>`).join("")}</tr></thead>
+    <tbody>${ids.map(row).join("")}</tbody></table></div></div>`;
+}
+
 function renderMercado() {
   const ids = Object.keys(PLAN.items).filter(id => PLAN.items[id].hist && PLAN.items[id].hist.length)
     .sort((a, b) => PLAN.items[a].name.localeCompare(PLAN.items[b].name));
@@ -554,7 +580,7 @@ function renderMercado() {
   wireChart(mkItem);
 }
 
-const RENDER = { resumen: renderResumen, ruta: renderRuta, recetas: renderRecetas, transformar: renderTransformar, aprender: renderAprender, ideas: renderIdeas, cartera: renderCartera, inventario: renderInventario, mercado: renderMercado };
+const RENDER = { resumen: renderResumen, ruta: renderRuta, recetas: renderRecetas, transformar: renderTransformar, aprender: renderAprender, ideas: renderIdeas, cartera: renderCartera, inventario: renderInventario, mercado: renderMercado, horas: renderHoras };
 function show() {
   const h = location.hash.replace("#", "");
   const v = RENDER[h] ? h : "resumen";

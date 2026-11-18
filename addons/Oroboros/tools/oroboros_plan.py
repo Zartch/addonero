@@ -23,6 +23,7 @@ import time
 from collections import defaultdict
 
 import oroboros_ideas
+import oroboros_hours
 
 AH_CUT = 0.05
 TIERS = (1.10, 1.25, 1.5, 2.0)
@@ -63,7 +64,7 @@ def short_char(ck):
 # Carga de datos
 # ----------------------------------------------------------------------
 class Data:
-    def __init__(self, db_path, catalog_path, now=None):
+    def __init__(self, db_path, catalog_path, now=None, archive=None):
         con = sqlite3.connect(db_path)
         con.row_factory = sqlite3.Row
         q = lambda sql, *a: con.execute(sql, a).fetchall()
@@ -74,6 +75,9 @@ class Data:
         markets = [c["market"] for c in self.chars.values() if c["market"]]
         self.market = max(set(markets), key=markets.count) if markets else None
         self.other_markets = sorted(set(markets) - {self.market})
+        # franjas horarias desde el archivo de escaneos (docs/franjas-horarias.md); vacío sin --archive
+        self.hours = (oroboros_hours.analyze(archive, self.market)
+                      if archive and os.path.exists(archive) else {})
         self.prices = {r["item_id"]: dict(r) for r in q("SELECT * FROM prices WHERE market=?", self.market)}
         self.history = defaultdict(list)
         for r in q("SELECT * FROM history WHERE market=? ORDER BY day", self.market):
@@ -249,6 +253,32 @@ class Data:
         return best
 
 
+HOUR_MIN_DIFF = 0.10      # una franja se menciona si se aparta ≥ 10 % de la media
+
+
+def _band_txt(i):
+    a, b = oroboros_hours.BANDS[i]
+    return f"de {a} a {b} h"
+
+
+def hour_sell_note(data, item):
+    """Franja en la que más desaparece lo barato del objeto, si hay datos fiables."""
+    s = oroboros_hours.summary(data.hours.get(item) or [])
+    if not s or not s["avg_rate"] or s["sell_rate"] < s["avg_rate"] * (1 + HOUR_MIN_DIFF):
+        return []
+    return [f"Desaparece sobre todo {_band_txt(s['sell_band'])} (≈{s['sell_rate']:.0f}/h barato, frente a "
+            f"{s['avg_rate']:.0f}/h de media): publica antes de esa franja."]
+
+
+def hour_buy_note(data, item, name):
+    """Franja en la que el objeto suele estar más barato, si hay datos fiables."""
+    s = oroboros_hours.summary(data.hours.get(item) or [])
+    if not s or s["cheap_band"] is None or (s["cheap_pct"] or 0) < HOUR_MIN_DIFF:
+        return []
+    return [f"{name}: suele estar más barato {_band_txt(s['cheap_band'])} "
+            f"(−{s['cheap_pct'] * 100:.0f} % frente a la media)."]
+
+
 # ----------------------------------------------------------------------
 # Paso 2: evaluar una receta
 # ----------------------------------------------------------------------
@@ -342,6 +372,10 @@ def evaluate(data, r, horizon_h, crafts_override=None):
                        f"({money(n['alts']['fabricar'])}).")
     if cd_note:
         why.append(cd_note)
+    why += hour_sell_note(data, r["out"])
+    for n in nodes:
+        if n["method"] == "subasta":
+            why += hour_buy_note(data, n["item"], n["name"])
     if st["cv"] is not None and st["cv"] > 0.12:
         why.append(f"Ojo: el precio se mueve mucho (±{st['cv'] * 100:.0f} % en 14 días).")
     if st["trend"] is not None and abs(st["trend"]) > 0.05:
@@ -551,7 +585,7 @@ def find_flips(data, horizon_h, char):
                 f"Compras {qty} y las vuelves a poner a ~{money(sell)}: ganas {money(profit)} cada una.",
                 f"Solo hay {st['depth'][0]}{' (estimado: sin búsqueda propia)' if st['depth_est'] else ''} a ese precio y se venden unas {st['vol']:.0f} al día: "
                 "es una oportunidad puntual y con riesgo (puede que el precio no vuelva).",
-            ],
+            ] + hour_buy_note(data, item_id, "Para comprar") + hour_sell_note(data, item_id),
         })
     return flips
 
@@ -1063,7 +1097,8 @@ def build_plan(data, horizon_h=48, budget_pct=0.8, synthetic=False, spec_pct=0.1
         items[i] = {"name": data.name(i), "min": st["min"], "mv": st["mv"], "med7": st["med7"], "qty": st["qty"],
                     "vol": st["vol"], "conf": st["conf"], "cv": st["cv"], "trend": st["trend"],
                     "vendor_buy": data.vendor_buy.get(i),
-                    "hist": [[h["day"], h["mv"], h["qty"]] for h in data.history.get(i, [])]}
+                    "hist": [[h["day"], h["mv"], h["qty"]] for h in data.history.get(i, [])],
+                    "hours": data.hours.get(i)}
 
     profit = sum(o["profit_total"] for o in chosen)
     invest = sum(o["investment"] or 0 for o in chosen)
@@ -1115,11 +1150,12 @@ def main():
     ap.add_argument("--spec", type=float, default=0.15, help="fracción del oro total para ideas de especulación")
     ap.add_argument("--brief", help="guardar un resumen del mercado en Markdown para pedir más ideas a un LLM")
     ap.add_argument("--synthetic", action="store_true", help="marcar el plan como datos sintéticos")
+    ap.add_argument("--archive", help="archivo de escaneos (work/archivo.sqlite) para las franjas horarias")
     ap.add_argument("--now", help="hora de referencia (ISO o segundos); por defecto, ahora. Para pruebas")
     a = ap.parse_args()
 
     from make_synthetic import parse_now
-    data = Data(a.db, a.catalog, now=parse_now(a.now))
+    data = Data(a.db, a.catalog, now=parse_now(a.now), archive=a.archive)
     plan = build_plan(data, a.horizon, a.budget, a.synthetic, a.spec, a.banker)
     if a.brief:
         with open(a.brief, "w", encoding="utf-8") as fh:
