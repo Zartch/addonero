@@ -309,6 +309,30 @@ check(st_["depth_est"] and st_["src"] == "atr" and st_["conf"] != "alta", f"plan
 check(dd.stats(2589)["depth_est"] is False, "planificador: profundidad real de Oroboros")
 
 from oroboros_export import LuaParser
+# Archivo permanente de escaneos (--archive): no duplica y detecta huecos
+import tempfile as _tf
+from oroboros_export import load_savedvariables
+from oroboros_archive import append_scans
+arch = os.path.join(_tf.mkdtemp(), "archivo.sqlite")
+svdb = load_savedvariables(sv)["OroborosDB"]
+n_buf = sum(len(m.get("scans") or []) for m in svdb["markets"].values())
+r1, r2 = append_scans(arch, svdb), append_scans(arch, svdb)
+check(n_buf > 0 and r1["added"] > 0 and r2["added"] == 0 and r2["already"] >= r1["added"],
+      f"archivo: añade {r1['added']} filas y no duplica al exportar otra vez")
+_ac = sqlite3.connect(arch)
+check(_ac.execute("SELECT qty, cheap, cheap_prev FROM scans WHERE item_id=2589 ORDER BY t LIMIT 1").fetchone() == (240, 40, 40),
+      "archivo: columnas total, baratas y baratas con el umbral anterior")
+_ac.close()
+fake = {"markets": {"M": {"scans": [{"t": 1000 + i, "data": "2589,30,32,240,40,40"} for i in range(12)]}}}
+arch2 = os.path.join(_tf.mkdtemp(), "a2.sqlite")
+append_scans(arch2, {"markets": {"M": {"scans": [{"t": 10, "data": "2589,30,32,240,40,40"}]}}})
+check(append_scans(arch2, fake)["gap"] is True, "archivo: avisa si se han perdido escaneos (buffer lleno sin solape)")
+fake["markets"]["M"]["scans"][0]["t"] = 10
+check(append_scans(arch2, fake)["gap"] is False, "archivo: sin hueco si hay solape")
+r = subprocess.run([sys.executable, os.path.join(ROOT, "tools", "oroboros_export.py"), sv, "--archive", arch],
+                   capture_output=True, text=True, encoding="utf-8", errors="replace")
+check(r.returncode == 0 and "Archivo" in r.stdout, "exportador: --archive " + (r.stdout + r.stderr)[-200:])
+
 extra = LuaParser('Extra = {\n\t"a", -- [1]\n\t{\n\t\t2589, -- [1]\n\t\t2, -- [2]\n\t}, -- [2]\n}\nS = "\\195\\177and\\"u"').assignments()
 check(extra["Extra"] == ["a", [2589, 2]] and extra["S"] == 'ñand"u', f"parser: arrays estilo WoW y escapes {extra}")
 

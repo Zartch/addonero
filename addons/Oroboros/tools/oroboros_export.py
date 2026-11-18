@@ -303,6 +303,8 @@ def main():
     ap.add_argument("--json", help="fichero JSON de salida")
     ap.add_argument("--auctionator", nargs="?", const="auto", metavar="RUTA",
                     help="añadir los precios de Auctionator (sin ruta: Auctionator.lua junto a Oroboros.lua)")
+    ap.add_argument("--archive", metavar="RUTA",
+                    help="añadir los escaneos guardados en el juego a un SQLite permanente (p. ej. work/archivo.sqlite)")
     args = ap.parse_args()
 
     path = args.path or (find_file(args.find) if args.find else None)
@@ -322,7 +324,15 @@ def main():
         print(f"SQLite → {args.sqlite}  " + ", ".join(f"{k}: {v}" for k, v in counts.items()))
         if args.auctionator:
             add_auctionator(args.sqlite, args.auctionator, path)
-    if not args.json and not args.sqlite:
+    if args.archive:
+        from oroboros_archive import append_scans
+        res = append_scans(args.archive, db)
+        print(f"Archivo → {args.archive}: {res['scans']} escaneos nuevos ({res['added']} filas), "
+              f"{res['already']} filas ya estaban.")
+        if res["gap"]:
+            print("Aviso: se han perdido escaneos entre el último archivado y los guardados en el juego "
+                  "(más de 12 sin exportar).")
+    if not args.json and not args.sqlite and not args.archive:
         print(json.dumps({k: (len(v) if hasattr(v, "__len__") else v) for k, v in db.items()}, indent=1))
 
 
