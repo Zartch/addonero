@@ -434,6 +434,29 @@ after = H.analyze(arch_r, "M")
 check(before == after, "retención: las franjas dan lo mismo antes y después de resumir"
       + ("" if before == after else f" {before.get(2589)} != {after.get(2589)}"))
 
+# Resumen por objeto (Camel) y Resumen.lua para el juego
+from oroboros_summary import item_summary, write_resumen
+_today = datetime.date(2026, 11, 19)
+_rows = [("2026-09-01", 150, 140, 150), ("2026-11-12", 200, 190, 210), ("2026-11-18", 80, 75, 85), ("2026-11-19", 100, 95, 105)]
+_weeks = [""] * 13; _weeks[1] = "150"; _weeks[11] = "200"; _weeks[12] = "90"
+_days = [""] * 14; _days[6] = "200"; _days[12] = "80"; _days[13] = "100"
+_exp = "100;90;127;133;80;20261118;200;20261112;;;" + ",".join(_weeks) + ";" + ",".join(_days) + ";20261119"
+_got = item_summary(_rows, None, _today)
+check(_got == _exp, f"resumen: medias 7/30/90, mínimo y máximo con fecha, 13 semanas y 14 días | {_got} | {_exp}")
+check(item_summary([("2026-07-01", 100, 90, 110)], None, _today) is None, "resumen: sin datos en 90 días no hay resumen")
+arch_s = os.path.join(_tf.mkdtemp(), "s.sqlite")
+_cs = open_archive(arch_s)
+_RARO = 'Reino"raro' + chr(92) + '-Horde'          # comillas y una barra invertida en la clave
+_mid = __import__("oroboros_archive").market_id(_cs, _RARO)
+_cs.executemany("INSERT INTO daily VALUES (?,2589,?,?,?,?,1,'obs',NULL)", [(_mid, d, lo, hi, mv) for d, mv, lo, hi in _rows])
+_cs.commit(); _cs.close()
+_out = os.path.join(_tf.mkdtemp(), "Resumen.lua")
+_res = write_resumen(arch_s, _out, _today)
+_lr = LuaRuntime(unpack_returned_tuples=True); _lr.execute(open(_out, encoding="utf-8").read())
+_mk_tbl = _lr.globals().OroborosResumen.markets[_RARO]
+check(_res["items"] == 1 and _lr.eval("OroborosResumen.v") == 1 and _mk_tbl is not None and _mk_tbl[2589] == _exp,
+      "Resumen.lua: Lua válido (con comillas y barras en la clave) y la misma cadena")
+
 # Migración desde la tabla plana del 19/11 (esquema 1)
 arch_v1 = os.path.join(_tf.mkdtemp(), "v1.sqlite")
 _v1 = sqlite3.connect(arch_v1)
