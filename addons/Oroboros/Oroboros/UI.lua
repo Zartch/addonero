@@ -1,21 +1,17 @@
--- Oroboros: ventana junto a la casa de subastas + diálogo de importación
+-- Oroboros: ventana junto a la casa de subastas + diálogo de importación (estilo de Style.lua)
 local _, ns = ...
 local UI = {}
 ns.UI = UI
 
-local f, statusText, queueText, footerText, importFrame
-
-local function button(parent, label, w, h)
-    local b = CreateFrame("Button", nil, parent, "UIPanelButtonTemplate")
-    b:SetSize(w, h or 22)
-    b:SetText(label)
-    return b
-end
+local f, statusText, queueText, importFrame
+local W, PAD = 330, 12
+local QUEUE_TOP = -176          -- donde empieza el texto de la ruta
 
 local function build()
     if f then return end
-    f = CreateFrame("Frame", "OroborosFrame", UIParent, "BasicFrameTemplateWithInset")
-    f:SetSize(330, 360)
+    local S = ns.Style
+    f = CreateFrame("Frame", "OroborosFrame", UIParent, "BackdropTemplate")
+    f:SetSize(W, 300)
     f:SetPoint("CENTER")
     f:SetMovable(true)
     f:EnableMouse(true)
@@ -27,46 +23,56 @@ local function build()
     table.insert(UISpecialFrames, "OroborosFrame")   -- se cierra con Escape
     UI.frame = f
 
-    f.title = f:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
-    f.title:SetPoint("TOP", 0, -5)
-    f.title:SetText("Oroboros")
+    local h = S.Panel(f, "Oroboros  " .. S.Hex("muted", "v" .. (ns.version or "")))
+    f.gold = S.Text(h, "small")
+    f.gold:SetPoint("RIGHT", h.close, "LEFT", -6, 0)
+    f.gold:SetJustifyH("RIGHT")
+    S.Color(f.gold, "accent")
 
-    local scan = button(f, "Escaneo completo", 150)
-    scan:SetPoint("TOPLEFT", 12, -32)
+    local scan = S.Button(f, "Escaneo completo", 150, 26, "neutral")
+    scan:SetPoint("TOPLEFT", PAD, -38)
     scan:SetScript("OnClick", function() ns.Scanner.FullScan() end)
     f.scanButton = scan
 
-    local imp = button(f, "Importar ruta", 150)
-    imp:SetPoint("TOPRIGHT", -12, -32)
+    local imp = S.Button(f, "Importar ruta", 150, 26, "neutral")
+    imp:SetPoint("TOPRIGHT", -PAD, -38)
     imp:SetScript("OnClick", UI.ShowImport)
 
-    statusText = f:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    statusText:SetPoint("TOPLEFT", 14, -62)
-    statusText:SetPoint("TOPRIGHT", -14, -62)
-    statusText:SetHeight(42)
-    statusText:SetJustifyH("LEFT")
+    local stLabel = S.Text(f, "label")
+    stLabel:SetPoint("TOPLEFT", PAD, -74)
+    stLabel:SetText("ESTADO")
+    statusText = S.Text(f, "small")
+    statusText:SetPoint("TOPLEFT", PAD, -88)
+    statusText:SetWidth(W - 2 * PAD)
     statusText:SetJustifyV("TOP")
-    statusText:SetWordWrap(true)
-    statusText:SetText("Abre la subasta y pulsa Escaneo completo.")
+    if statusText.SetMaxLines then statusText:SetMaxLines(2) end
+    statusText:SetText("Abre la subasta: el escaneo se lanza solo si toca.")
 
-    local nextB = button(f, "Siguiente >", 200, 30)
-    nextB:SetPoint("TOPLEFT", 12, -108)
+    local nextB = S.Button(f, "Siguiente  >", 200, 30, "accent")
+    nextB:SetPoint("TOPLEFT", PAD, -122)
     nextB:SetScript("OnClick", function() ns.Queue.Next() end)   -- clic = evento de hardware
 
-    local skip = button(f, "Saltar", 96, 30)
-    skip:SetPoint("TOPRIGHT", -12, -108)
+    local skip = S.Button(f, "Saltar", 98, 30, "neutral")
+    skip:SetPoint("TOPRIGHT", -PAD, -122)
     skip:SetScript("OnClick", function() ns.Queue.Skip() end)
 
-    queueText = f:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    queueText:SetPoint("TOPLEFT", 14, -148)
-    queueText:SetPoint("BOTTOMRIGHT", -14, 34)
-    queueText:SetJustifyH("LEFT")
+    local qLabel = S.Text(f, "label")
+    qLabel:SetPoint("TOPLEFT", PAD, -162)
+    qLabel:SetText("RUTA")
+    queueText = S.Text(f, "small")
+    queueText:SetPoint("TOPLEFT", PAD, QUEUE_TOP)
+    queueText:SetWidth(W - 2 * PAD)
     queueText:SetJustifyV("TOP")
+    if queueText.SetSpacing then queueText:SetSpacing(3) end
 
-    footerText = f:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
-    footerText:SetPoint("BOTTOMLEFT", 14, 12)
-    footerText:SetPoint("BOTTOMRIGHT", -14, 12)
-    footerText:SetJustifyH("LEFT")
+    -- Pie: tres datos con etiqueta y valor
+    f.footDiv = S.Divider(f)
+    f.foot = {}
+    for k, label in ipairs({ "PRÓXIMO ESCANEO", "ÚLTIMO", "GUARDADOS" }) do
+        local cell = { label = S.Text(f, "label"), value = S.Text(f, "value") }
+        cell.label:SetText(label)
+        f.foot[k] = cell
+    end
 
     local elapsed = 0
     f:SetScript("OnUpdate", function(_, dt)
@@ -77,20 +83,42 @@ local function build()
     end)
 end
 
+-- Coloca el pie debajo de la ruta y ajusta la altura de la ventana
+local function layout(queueLines)
+    local qh = math.max(28, queueLines * 16 + 4)
+    local y = QUEUE_TOP - qh - 6
+    f.footDiv:ClearAllPoints()
+    f.footDiv:SetPoint("TOPLEFT", PAD, y)
+    f.footDiv:SetPoint("TOPRIGHT", -PAD, y)
+    local colW = (W - 2 * PAD) / 3
+    for k, cell in ipairs(f.foot) do
+        cell.label:ClearAllPoints(); cell.label:SetPoint("TOPLEFT", PAD + (k - 1) * colW, y - 10)
+        cell.value:ClearAllPoints(); cell.value:SetPoint("TOPLEFT", PAD + (k - 1) * colW, y - 24)
+    end
+    f:SetHeight(-(y - 46) + 4)
+end
+
 function UI.UpdateFooter()
     if not f then return end
+    local S = ns.Style
     local ok, left = ns.Scanner.CanFullScan()
     local m = ns.DB.Market()
-    local last = m.lastFull > 0 and date("%d/%m %H:%M", m.lastFull) or "nunca"
-    local scanTxt
-    if ns.Scanner.AuctionatorReplicates() then
-        scanTxt = "escaneo: lo hace Auctionator"
+    local nextTxt, nextTone
+    if ns.Scanner.state ~= "idle" then
+        nextTxt, nextTone = "escaneando", "accent"
+    elseif ns.Scanner.AuctionatorReplicates() then
+        nextTxt, nextTone = "Auctionator", "label"
+    elseif ok then
+        nextTxt, nextTone = "listo", "good"
     else
-        scanTxt = ok and "escaneo listo" or string.format("escaneo en %d:%02d", math.floor(left / 60), left % 60)
+        nextTxt, nextTone = string.format("en %d:%02d", math.floor(left / 60), left % 60), "value"
     end
+    f.foot[1].value:SetText(nextTxt); S.Color(f.foot[1].value, nextTone)
+    f.foot[2].value:SetText(m.lastFull > 0 and date("%d/%m %H:%M", m.lastFull) or "nunca")
     local nScans, cap = ns.DB.ScanCount()
-    footerText:SetText(string.format("%s  ·  último completo: %s  ·  escaneos guardados: %d/%d%s  ·  %s",
-        scanTxt, last, nScans, cap, nScans >= cap and " (exporta)" or "", ns.Money(GetMoney())))
+    f.foot[3].value:SetText(string.format("%d/%d%s", nScans, cap, nScans >= cap and "  exporta" or ""))
+    S.Color(f.foot[3].value, nScans >= cap and "bad" or "value")
+    f.gold:SetText(ns.Money(GetMoney()))
 end
 
 -- Botón de escaneo: pulsado y desactivado mientras se escanea, sea a mano o automático
@@ -106,6 +134,7 @@ function UI.SetScanning(on)
         if b.SetButtonState then b:SetButtonState("NORMAL") end
         if b.Enable then b:Enable() end
     end
+    UI.UpdateFooter()
 end
 
 function UI.SetStatus(text)
@@ -116,33 +145,38 @@ end
 
 function UI.Refresh()
     if not f then return end
+    local S = ns.Style
     local items = ns.Queue.Items()
     local _, idx = ns.Queue.Current()
     local pend = ns.Queue.Pending()
-    local others = ""
-    if #pend > 0 then
-        local t = {}
-        for _, p in ipairs(pend) do t[#t + 1] = p.name .. " (" .. p.left .. ")" end
-        others = "\n|cffaaaaaaPendiente en otros personajes: " .. table.concat(t, ", ") .. "|r"
-    end
+    local lines = {}
     if #items == 0 then
-        queueText:SetText("Sin ruta para este personaje. Pulsa |cffffd100Importar ruta|r y pega la que genere el planificador." .. others)
+        lines[1] = "Sin ruta para este personaje."
+        lines[2] = S.Hex("label", "Pulsa ") .. S.Hex("accent", "Importar ruta") .. S.Hex("label", " y pega la del planificador.")
     else
-        local lines = {}
+        local done = 0
+        for _, a in ipairs(items) do if a.done >= a.qty then done = done + 1 end end
+        lines[1] = S.Hex("label", string.format("%d de %d hechas", done, #items))
         local first = math.max(1, (idx or #items) - 2)
         for i = first, math.min(#items, first + 11) do
             local a = items[i]
-            local mark
-            if a.done >= a.qty then mark = "|TInterface\\RaidFrame\\ReadyCheck-Ready:12|t "
-            elseif i == idx then mark = "|cffffd100>|r "
-            else mark = "   " end
-            lines[#lines + 1] = mark .. ns.Queue.Describe(a)
+            local txt = ns.Queue.Describe(a)
+            if a.done >= a.qty then
+                lines[#lines + 1] = "|TInterface\RaidFrame\ReadyCheck-Ready:12|t " .. S.Hex("muted", txt)
+            elseif i == idx then
+                lines[#lines + 1] = S.Hex("accent", "> " .. txt)
+            else
+                lines[#lines + 1] = "   " .. txt
+            end
         end
-        local done = 0
-        for _, a in ipairs(items) do if a.done >= a.qty then done = done + 1 end end
-        table.insert(lines, 1, string.format("|cffaaaaaaRuta: %d/%d hechas|r", done, #items))
-        queueText:SetText(table.concat(lines, "\n") .. others)
     end
+    if #pend > 0 then
+        local t = {}
+        for _, p in ipairs(pend) do t[#t + 1] = p.name .. " (" .. p.left .. ")" end
+        lines[#lines + 1] = S.Hex("label", "Pendiente en otros personajes: " .. table.concat(t, ", "))
+    end
+    queueText:SetText(table.concat(lines, "\n"))
+    layout(#lines)
     UI.UpdateFooter()
 end
 
@@ -172,9 +206,10 @@ end
 -- Importar ruta
 ----------------------------------------------------------------------
 function UI.ShowImport()
+    local S = ns.Style
     if not importFrame then
-        importFrame = CreateFrame("Frame", "OroborosImportFrame", UIParent, "BasicFrameTemplateWithInset")
-        importFrame:SetSize(460, 380)
+        importFrame = CreateFrame("Frame", "OroborosImportFrame", UIParent, "BackdropTemplate")
+        importFrame:SetSize(480, 400)
         importFrame:SetPoint("CENTER")
         importFrame:SetFrameStrata("DIALOG")
         importFrame:SetMovable(true)
@@ -183,33 +218,35 @@ function UI.ShowImport()
         importFrame:SetScript("OnDragStart", importFrame.StartMoving)
         importFrame:SetScript("OnDragStop", importFrame.StopMovingOrSizing)
         table.insert(UISpecialFrames, "OroborosImportFrame")
+        S.Panel(importFrame, "Pegar ruta  " .. S.Hex("muted", "Ctrl+V"))
 
-        local title = importFrame:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
-        title:SetPoint("TOP", 0, -5)
-        title:SetText("Pegar ruta (Ctrl+V)")
+        local box = CreateFrame("Frame", nil, importFrame, "BackdropTemplate")
+        box:SetPoint("TOPLEFT", PAD, -38)
+        box:SetPoint("BOTTOMRIGHT", -PAD, 50)
+        S.Backdrop(box, S.C.section, S.C.border)
 
-        local scroll = CreateFrame("ScrollFrame", nil, importFrame, "UIPanelScrollFrameTemplate")
-        scroll:SetPoint("TOPLEFT", 14, -32)
-        scroll:SetPoint("BOTTOMRIGHT", -34, 44)
+        local scroll = CreateFrame("ScrollFrame", nil, box, "UIPanelScrollFrameTemplate")
+        scroll:SetPoint("TOPLEFT", 8, -8)
+        scroll:SetPoint("BOTTOMRIGHT", -28, 8)
 
         local edit = CreateFrame("EditBox", nil, scroll)
         edit:SetMultiLine(true)
         edit:SetAutoFocus(false)
         edit:SetFontObject(ChatFontNormal)
-        edit:SetWidth(400)
+        edit:SetWidth(410)
         edit:SetScript("OnEscapePressed", edit.ClearFocus)
         scroll:SetScrollChild(edit)
         importFrame.edit = edit
 
-        local load = button(importFrame, "Cargar ruta", 140)
-        load:SetPoint("BOTTOMRIGHT", -14, 12)
+        local load = S.Button(importFrame, "Cargar ruta", 140, 28, "accent")
+        load:SetPoint("BOTTOMRIGHT", -PAD, 12)
         load:SetScript("OnClick", function()
             ns.Queue.Import(edit:GetText() or "")
             importFrame:Hide()
             if f then f:Show() end
         end)
 
-        local add = button(importFrame, "Añadir a la ruta", 130)
+        local add = S.Button(importFrame, "Añadir a la ruta", 140, 28, "neutral")
         add:SetPoint("RIGHT", load, "LEFT", -8, 0)
         add:SetScript("OnClick", function()
             ns.Queue.Import(edit:GetText() or "", true)
@@ -217,7 +254,7 @@ function UI.ShowImport()
             if f then f:Show() end
         end)
 
-        local clear = button(importFrame, "Vaciar", 90)
+        local clear = S.Button(importFrame, "Vaciar", 90, 28, "neutral")
         clear:SetPoint("RIGHT", add, "LEFT", -8, 0)
         clear:SetScript("OnClick", function() edit:SetText("") edit:SetFocus() end)
     end

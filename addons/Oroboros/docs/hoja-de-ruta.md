@@ -84,6 +84,10 @@ El usuario quiere ganar oro con la subasta de WoW Forever sabiendo **cuándo** c
 2. Que no choca con el autoescaneo resumen de Auctionator, que también arranca al abrir la subasta.
 3. Que el panel de precios queda debajo de la ventana de Oroboros.
 
+## Rediseño de las ventanas (20/11)
+
+Hecho fuera del juego: estilo propio oscuro y plano (`Style.lua`), gráficas con escala, leyenda y detalle al pasar el ratón (`Chart.lua`), precio en vivo corregido y ventana principal con el mismo estilo. Diseño en `docs/rediseno-ventanas.md`. Falta comprobarlo en el juego: fuente, caracteres «×» y «…», gráficas y detalle al pasar el ratón.
+
 ## Fase 4: cálculos avanzados
 
 **Qué esperamos:** sacar más de los mismos datos. Cada cálculo tiene su propio diseño corto antes de programarlo, cuando haya datos suficientes para comprobar que funciona:

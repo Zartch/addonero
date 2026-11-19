@@ -140,6 +140,14 @@ Lo que hace queda en `work/vigilante.log`. Para quitarla: `schtasks /Delete /TN 
   - las franjas en las que más se vende y en las que está más barato, si hay datos fiables.
 
   Funciona con la subasta de Blizzard y con Auctionator. `/oro precio <id o enlace>` lo abre en cualquier sitio.
+
+  Desde la 0.8.0, el panel es oscuro y plano:
+  - cabecera con el icono del objeto;
+  - el precio de hoy en grande, en verde si está barato o en rojo si está caro;
+  - cifras con su etiqueta;
+  - gráficas con escala, fechas, leyenda y detalle al pasar el ratón.
+
+  El precio en vivo es el más barato de otros vendedores. `/oro precio debug` muestra en el chat lo que devolvió el juego en la última búsqueda.
 - **De dónde salen los datos**: el exportador con `--archive` escribe `Oroboros/Resumen.lua` (unos 0,8 MB; git lo ignora). El juego lo carga al entrar o con `/reload` y solo lo lee, sin engordar `Oroboros.lua`. Con `--resumen RUTA` se cambia el destino y con `--resumen no` no se escribe. A mano: `python tools/oroboros_summary.py work/archivo.sqlite`. Si no existe, el panel muestra solo el precio de hoy.
 - **En la página del plan**: la pestaña **Mercado** muestra el historial completo con rangos de 1 mes, 3 meses, 6 meses, 1 año y todo, y una tabla con el mínimo y el máximo del rango e históricos (con fecha) y las medias de 7, 30 y 90 días.
 - **Nombres**: tras cada escaneo completo, el addon pide en tandas los nombres de los objetos que el juego aún no le ha dado.

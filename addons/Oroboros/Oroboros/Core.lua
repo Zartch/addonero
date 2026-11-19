@@ -1,7 +1,7 @@
 -- Oroboros: núcleo, utilidades, eventos y comandos
 local ADDON, ns = ...
 ns.name = ADDON
-ns.version = "0.7.0"
+ns.version = "0.8.0"
 
 local DEFAULTS = {
     historyDays   = 14,     -- días de histórico diario en el juego (el completo vive en work/archivo.sqlite)
