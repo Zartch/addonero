@@ -17,8 +17,8 @@ El usuario quiere ganar oro con la subasta de WoW Forever sabiendo **cuándo** c
 | Fase | Qué | Estado |
 |---|---|---|
 | — | Franjas horarias (dos cuentas: total y baratas) | ✅ Hecho (19/11), ver `docs/franjas-horarias.md` |
-| 1 | Modelo de datos | ⏳ Siguiente |
-| 2 | Seguimiento de precios al estilo Camel | Pendiente |
+| 1 | Modelo de datos | ✅ Hecho (19/11), plan en `docs/planes/2026-11-19-fase1-modelo-de-datos.md` |
+| 2 | Seguimiento de precios al estilo Camel | ⏳ Siguiente |
 | 3 | Automatización | Pendiente |
 | 4 | Cálculos avanzados | Pendiente (cuando haya datos) |
 
@@ -33,11 +33,18 @@ El usuario quiere ganar oro con la subasta de WoW Forever sabiendo **cuándo** c
 - El plan sale del archivo y propone lo mismo que antes con los mismos datos.
 - El histórico dentro del juego baja de 30 a 14 días, **solo después** de pasar los datos reales al archivo nuevo, y `Oroboros.lua` pesa menos que hoy.
 
+**Hecho (19/11).** Lo aprendido:
+- Datos reales migrados: 3 escaneos (21 088 observaciones), 7305 productos, 21 410 días de histórico (Auctionator desde el 8/11, juego el 18/11, escaneos el 19/11). Exportar tarda unos 3,5 s. Copia del archivo anterior en `work/archivo.sqlite.bak`.
+- Al resumir, las franjas dan exactamente lo mismo que con los datos en bruto (hay una prueba que lo garantiza).
+- **Solo 2382 de 7305 productos tienen nombre**: el escaneo completo no siempre trae el nombre del objeto. La fase 2 lo necesita (panel y página): el addon tendrá que pedir los nombres que falten.
+- El histórico del juego se recorta a 14 días en el siguiente `/reload`; `Oroboros.lua` bajará de tamaño entonces.
+
 ## Fase 2: seguimiento de precios (Camel)
 
 **Qué esperamos:** al seleccionar un objeto en la subasta, un panel a su lado con su historial resumido. En la página del plan, el historial completo.
 
 **Hecho cuando:**
+- Los objetos tienen nombre (aprendido en la fase 1: hoy faltan dos tercios). El addon pide los nombres que no tiene y el exportador los guarda en `items`.
 - Fuera del juego se genera `Oroboros/Resumen.lua` (ignorado en git, con un apartado por mercado). Por objeto lleva: hoy, medias de 7/30/90 días, mínimo y máximo históricos con fecha, 13 semanas y 14 días de gráfica, y las franjas.
 - El panel aparece con la subasta de Blizzard y con Auctionator sin taparlos, muestra el precio de hoy en vivo y funciona aunque falte el resumen.
 - `/oro precio <objeto>` abre el panel en cualquier sitio.

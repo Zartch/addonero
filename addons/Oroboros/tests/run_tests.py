@@ -31,6 +31,7 @@ def check(cond, msg):
 
 fire("ADDON_LOADED", "Oroboros"); fire("PLAYER_LOGIN"); fire("BAG_UPDATE_DELAYED")
 check(G.OroborosDB is not None, "BD inicializada")
+check(ns.Cfg("historyDays") == 14, "el juego guarda 14 días de histórico (el resto, en el archivo)")
 cl = G.OroborosDB.client
 check(cl is not None and cl.realm == "Forever Normal" and cl.faction == "Horde" and cl.t,
       "datos del cliente guardados al entrar (reino, facción)")

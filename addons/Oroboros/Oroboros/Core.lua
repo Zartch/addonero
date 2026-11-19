@@ -4,7 +4,7 @@ ns.name = ADDON
 ns.version = "0.5.0"
 
 local DEFAULTS = {
-    historyDays   = 30,     -- días de histórico diario por objeto
+    historyDays   = 14,     -- días de histórico diario en el juego (el completo vive en work/archivo.sqlite)
     mvPercent     = 0.15,   -- % más barato de la cantidad usado para el "valor de mercado"
     postDuration  = 2,      -- 1 = 12h, 2 = 24h, 3 = 48h
     undercut      = 1,      -- cobre que se rebaja respecto al más barato ajeno

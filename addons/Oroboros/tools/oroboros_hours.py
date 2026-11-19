@@ -164,14 +164,14 @@ def main():
     print(f"{n_scans} escaneos archivados, {len(data)} objetos.")
     items = [a.item] if a.item else sorted(
         data, key=lambda i: -sum(b["gone_cheap_h"] or 0 for b in data[i]))[:a.top]
-    print("objeto     " + "".join(f"{band_label(i):>12}" for i in range(len(BANDS))))
+    print("objeto     " + "".join(f"{band_label(i):>18}" for i in range(len(BANDS))))
     for i in items:
         bands = data.get(i)
         if not bands:
             continue
-        cell = lambda b: (f"{b['gone_total_h']:.1f}/{b['gone_cheap_h']:.1f}{'' if b['ok'] else '?'}"
+        cell = lambda b: (f"{b['gone_total_h']:.0f}/{b['gone_cheap_h']:.0f}{'' if b['ok'] else '?'}"
                           if b["gone_total_h"] is not None else "—")
-        print(f"{i:<10} " + "".join(f"{cell(b):>12}" for b in bands))
+        print(f"{i:<10} " + "".join(f"{cell(b):>18}" for b in bands))
     print("celdas: desaparecidas por hora total/baratas; «?» = menos de 3 mediciones en 2 días.")
 
 

@@ -101,6 +101,8 @@ Para saber a qué horas se vende más cada objeto (diseño en `docs/franjas-hora
 3. **Genera el plan con el archivo**: `python tools/oroboros_plan.py --db work/oroboros.sqlite --archive work/archivo.sqlite --html work/plan.html --routes work/rutas`. Las ventas dirán en qué franja desaparece más el objeto, las compras en cuál está más barato, y la pestaña **Horas** muestra todas las franjas.
 4. Para mirarlo por consola: `python tools/oroboros_hours.py work/archivo.sqlite` (o `--item <id>`).
 
+**El archivo** (`work/archivo.sqlite`) es la única fuente de verdad de los precios: productos, mercados, escaneos y observaciones relacionados entre sí, sin repetir nombres. Guarda los escaneos en bruto 8 semanas; después los resume por semana y franja y los borra. El histórico diario de cada producto se guarda para siempre (de los escaneos; si no hay, del histórico del juego, y si no, de Auctionator). Con `--archive` y `--sqlite`, el plan toma su histórico del archivo. El juego guarda solo 14 días. Si el archivo es de antes del 19/11, se convierte solo la primera vez y deja una copia `.bak`.
+
 Se cuentan dos cosas entre escaneos seguidos (como mucho 6 h): lo que desaparece en total y lo que desaparece **barato** (a ≤ mínimo × 1,25, con el mismo umbral en los dos escaneos), que es lo que más probablemente se ha vendido. Una franja necesita 3 mediciones en 2 días distintos para darse por fiable.
 
 ## Varios personajes y banquero
