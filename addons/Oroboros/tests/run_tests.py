@@ -367,6 +367,29 @@ check(_it and _it[0] == "Linen Cloth" and _it[1] and _it[2] >= _it[1], f"archivo
 check(_ac.execute("SELECT value FROM meta WHERE key='schema'").fetchone() == ("2",), "archivo: versión del esquema")
 _ac.close()
 
+# Histórico diario: observaciones > histórico del juego > Auctionator
+from oroboros_archive import update_daily
+import auctionator_source as _atrs
+arch_d = os.path.join(_tf.mkdtemp(), "d.sqlite")
+D, D1, D2 = "2026-11-10", "2026-11-09", "2026-11-08"
+_tsd = lambda d, hh: int(datetime.datetime.fromisoformat(d).replace(hour=hh).timestamp())
+arch_write(arch_d, [("M", _tsd(D, 10), 2589, 30, 32, 240, 40, 40), ("M", _tsd(D, 18), 2589, 28, 31, 200, 30, 35)])
+_hist_db = {"markets": {"M": {"history": {2589: {D: {"min": 99, "mv": 99, "qty": 9, "t": _tsd(D, 9)},
+                                                  D1: {"min": 27, "mv": 29, "qty": 300, "t": _tsd(D1, 20)}}}}}}
+_atr = {"markets": {"PvE": {2589: {"m": 26, "h": {D: 77, D1: 77, D2: 50}, "l": {D2: 45}, "a": {D2: 500}}}}, "last_scan": None}
+_cd = open_archive(arch_d)
+update_daily(_cd, _hist_db)
+_atrs.to_daily(_cd, _atr, "M")
+_q = lambda: _cd.execute("""SELECT day, min_low, min_high, mv, qty_max, src FROM daily d JOIN markets m USING (market_id)
+                            WHERE m.key='M' AND item_id=2589 ORDER BY day""").fetchall()
+got = _q()
+check(got == [(D2, 45, 50, 50, 500, "atr"), (D1, 27, 27, 29, 300, "oro"), (D, 28, 30, 31, 240, "obs")],
+      f"diario: gana la observación, luego el juego, luego Auctionator {got}")
+update_daily(_cd, _hist_db); _atrs.to_daily(_cd, _atr, "M")
+check(_q() == got, "diario: repetir no cambia nada")
+check(_cd.execute("SELECT t FROM daily WHERE day=?", (D,)).fetchone()[0] == _tsd(D, 18), "diario: hora del último escaneo del día")
+_cd.close()
+
 # Migración desde la tabla plana del 19/11 (esquema 1)
 arch_v1 = os.path.join(_tf.mkdtemp(), "v1.sqlite")
 _v1 = sqlite3.connect(arch_v1)

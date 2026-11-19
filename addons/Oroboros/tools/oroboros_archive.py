@@ -190,3 +190,47 @@ def append_scans(archive_path, db):
     con.commit()
     con.close()
     return {"added": added, "already": already, "scans": new_scans, "gap": gap}
+
+
+# ----------------------------------------------------------------------
+# Histórico diario (para siempre)
+# ----------------------------------------------------------------------
+def _day(t):
+    import datetime
+    return datetime.datetime.fromtimestamp(t).date().isoformat()
+
+
+def update_daily(con, db=None):
+    """Recalcula `daily` desde las observaciones (src 'obs') y añade el histórico diario del juego
+    (src 'oro') donde no haya observación. Auctionator ('atr') entra con auctionator_source.to_daily."""
+    rows = con.execute("""SELECT s.market_id, o.item_id, s.t, o.min, o.mv, o.qty
+                          FROM observations o JOIN scans s USING (scan_id)
+                          ORDER BY s.market_id, o.item_id, s.t""")
+    acc = {}
+    for mid, item, t, mn, mv, qty in rows:
+        k = (mid, item, _day(t))
+        a = acc.get(k)
+        if a is None:
+            a = acc[k] = {"low": None, "high": None, "mv": None, "qty": 0, "t": t}
+        if mn is not None:
+            a["low"] = mn if a["low"] is None else min(a["low"], mn)
+            a["high"] = mn if a["high"] is None else max(a["high"], mn)
+        if mv is not None:
+            a["mv"] = mv
+        a["qty"] = max(a["qty"], qty or 0)
+        a["t"] = t
+    con.executemany("INSERT OR REPLACE INTO daily VALUES (?,?,?,?,?,?,?,'obs',?)",
+                    [(m, i, d, a["low"], a["high"], a["mv"], a["qty"], a["t"]) for (m, i, d), a in acc.items()])
+    for market, m in (_as_dict((db or {}).get("markets")).items()):
+        mid = market_id(con, market)
+        for item, days in _as_dict((m or {}).get("history")).items():
+            for day, h in _as_dict(days).items():
+                if not isinstance(h, dict):
+                    continue
+                cur = con.execute("SELECT src FROM daily WHERE market_id=? AND item_id=? AND day=?",
+                                  (mid, int(item), day)).fetchone()
+                if cur and cur[0] == "obs":
+                    continue
+                con.execute("INSERT OR REPLACE INTO daily VALUES (?,?,?,?,?,?,?,'oro',?)",
+                            (mid, int(item), day, h.get("min"), h.get("min"), h.get("mv"), h.get("qty"), h.get("t")))
+    con.commit()

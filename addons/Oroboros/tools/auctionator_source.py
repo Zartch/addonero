@@ -211,3 +211,24 @@ def _day_ts(day, last_scan):
         return last_scan
     d = datetime.date.fromisoformat(day)
     return int(datetime.datetime(d.year, d.month, d.day, 12).timestamp())
+
+
+# ----------------------------------------------------------------------
+# Archivo permanente (esquema 2): Auctionator solo entra en el histórico diario
+# ----------------------------------------------------------------------
+def to_daily(con, atr, market):
+    """Mete la base de Auctionator en `daily` del archivo como 'atr', sin pisar 'obs' ni 'oro'.
+    Devuelve los días añadidos."""
+    from oroboros_archive import market_id
+    key = pick_market(atr["markets"])
+    if key is None:
+        return 0
+    mid = market_id(con, market)
+    n = 0
+    for item_id, rec in atr["markets"][key].items():
+        for day, high in rec["h"].items():
+            cur = con.execute("INSERT OR IGNORE INTO daily VALUES (?,?,?,?,?,?,?,'atr',NULL)",
+                              (mid, item_id, day, rec["l"].get(day, high), high, high, rec["a"].get(day)))
+            n += cur.rowcount
+    con.commit()
+    return n
