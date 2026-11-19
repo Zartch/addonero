@@ -234,3 +234,51 @@ def update_daily(con, db=None):
                 con.execute("INSERT OR REPLACE INTO daily VALUES (?,?,?,?,?,?,?,'oro',?)",
                             (mid, int(item), day, h.get("min"), h.get("min"), h.get("mv"), h.get("qty"), h.get("t")))
     con.commit()
+
+
+# ----------------------------------------------------------------------
+# Resumen semanal y retención de los escaneos en bruto
+# ----------------------------------------------------------------------
+def _week_end_ts(week):
+    import datetime
+    y, w = week.split("-W")
+    last = datetime.date.fromisocalendar(int(y), int(w), 7)
+    return int(datetime.datetime.combine(last, datetime.time(23, 59, 59)).timestamp())
+
+
+def rollup(con, now, keep_days=KEEP_DAYS):
+    """Resume en `weekly_band` las semanas ISO completas anteriores a now − keep_days y borra sus
+    escaneos en bruto. Antes recalcula `daily` para no perder esos días. Devuelve los escaneos borrados.
+    Un intervalo cuenta en la semana de su escaneo inicial; el precio, en la semana del escaneo."""
+    import statistics
+    from oroboros_hours import contributions, week_of, OBS_SQL
+    cutoff = now - keep_days * 86400
+    old = con.execute("SELECT scan_id, market_id, t FROM scans WHERE t < ?", (cutoff,)).fetchall()
+    weeks = {(mid, week_of(t)) for _, mid, t in old if _week_end_ts(week_of(t)) < cutoff}
+    if not weeks:
+        return 0
+    update_daily(con)
+    for mid in {m for m, _ in weeks}:
+        key = con.execute("SELECT key FROM markets WHERE market_id=?", (mid,)).fetchone()[0]
+        mine = {w for m, w in weeks if m == mid}
+        agg = {}
+        for c in contributions(con.execute(OBS_SQL, (key,))):
+            if c[2] not in mine:
+                continue
+            a = agg.setdefault((c[1], c[2], c[3]), {"gt": 0.0, "gc": 0.0, "secs": 0.0, "n": 0, "days": set(), "prices": []})
+            if c[0] == "price":
+                a["prices"].append(c[4])
+            else:
+                a["gt"] += c[4]; a["gc"] += c[5]; a["secs"] += c[6]; a["n"] += 1; a["days"].add(c[7])
+        con.executemany("INSERT OR REPLACE INTO weekly_band VALUES (?,?,?,?,?,?,?,?,?,?,?,?)", [
+            (mid, item, wk, band, a["gt"], a["gc"], a["secs"] / 3600, a["n"], len(a["days"]),
+             statistics.median(a["prices"]) if a["prices"] else None, sum(a["prices"]), len(a["prices"]))
+            for (item, wk, band), a in agg.items()])
+    ids = [sid for sid, mid, t in old if (mid, week_of(t)) in weeks]
+    for i in range(0, len(ids), 500):
+        chunk = ids[i:i + 500]
+        marks = ",".join("?" * len(chunk))
+        con.execute(f"DELETE FROM observations WHERE scan_id IN ({marks})", chunk)
+        con.execute(f"DELETE FROM scans WHERE scan_id IN ({marks})", chunk)
+    con.commit()
+    return len(ids)

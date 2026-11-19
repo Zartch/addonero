@@ -390,6 +390,36 @@ check(_q() == got, "diario: repetir no cambia nada")
 check(_cd.execute("SELECT t FROM daily WHERE day=?", (D,)).fetchone()[0] == _tsd(D, 18), "diario: hora del último escaneo del día")
 _cd.close()
 
+# Resumen semanal y retención de 8 semanas: resumir no cambia las franjas
+from oroboros_archive import rollup
+arch_r = os.path.join(_tf.mkdtemp(), "r.sqlite")
+_now_r = int(datetime.datetime(2026, 11, 19, 12, 0).timestamp())
+_flat = []
+for base_day, weeks_ago in ((datetime.date(2026, 9, 7), 10), (datetime.date(2026, 11, 16), 0)):
+    for dd_ in range(3):                                  # 3 días seguidos, escaneos cada 3 h
+        q_, c_ = 1000, 300
+        for hh in range(0, 24, 3):
+            t_ = int(datetime.datetime.combine(base_day + datetime.timedelta(days=dd_), datetime.time(hh)).timestamp())
+            drop = 30 if hh >= 18 else 6
+            _flat.append(("M", t_, 2589, 20 + (hh % 7), 25, q_, c_, c_ - drop))
+            q_, c_ = q_ - drop, c_ - drop
+arch_write(arch_r, _flat)
+_cr = open_archive(arch_r); update_daily(_cr); _cr.close()
+before = H.analyze(arch_r, "M")
+_cr = open_archive(arch_r)
+n_old = _cr.execute("SELECT COUNT(*) FROM scans WHERE t < ?", (_now_r - 56 * 86400,)).fetchone()[0]
+n_daily = _cr.execute("SELECT COUNT(*) FROM daily").fetchone()[0]
+rolled = rollup(_cr, _now_r)
+check(rolled == n_old > 0 and _cr.execute("SELECT COUNT(*) FROM scans WHERE t < ?", (_now_r - 56 * 86400,)).fetchone()[0] == 0,
+      f"retención: los escaneos de más de 8 semanas se resumen y se borran ({rolled})")
+check(_cr.execute("SELECT COUNT(*) FROM weekly_band").fetchone()[0] > 0 and
+      _cr.execute("SELECT COUNT(*) FROM daily").fetchone()[0] == n_daily, "retención: queda el resumen semanal y el histórico diario intacto")
+check(rollup(_cr, _now_r) == 0, "retención: resumir otra vez no hace nada")
+_cr.close()
+after = H.analyze(arch_r, "M")
+check(before == after, "retención: las franjas dan lo mismo antes y después de resumir"
+      + ("" if before == after else f" {before.get(2589)} != {after.get(2589)}"))
+
 # Migración desde la tabla plana del 19/11 (esquema 1)
 arch_v1 = os.path.join(_tf.mkdtemp(), "v1.sqlite")
 _v1 = sqlite3.connect(arch_v1)

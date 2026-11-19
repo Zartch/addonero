@@ -52,46 +52,71 @@ OBS_SQL = """SELECT o.item_id, s.t, o.min, o.qty, o.cheap, o.cheap_prev
              WHERE m.key=? ORDER BY o.item_id, s.t"""
 
 
-def analyze(archive_path, market=None):
-    """{item_id: [6 dicts por franja]} con gone_total_h, gone_cheap_h, price_med, n, days, ok."""
-    con = sqlite3.connect(archive_path)
-    market = market or pick_market(con)
-    if market is None:
-        return {}
-    acc = defaultdict(lambda: [{"total": 0.0, "cheap": 0.0, "secs": 0, "n": 0, "days": set(), "prices": []}
-                               for _ in BANDS])
+def week_of(ts):
+    y, w, _ = datetime.datetime.fromtimestamp(ts).isocalendar()
+    return f"{y}-W{w:02d}"
+
+
+def contributions(rows):
+    """Lo que aporta cada escaneo a las franjas. rows: (item, t, min, qty, cheap, cheap_prev) ordenadas
+    por objeto y hora. Produce dos tipos de tuplas:
+      ("gone", item, week, band, gone_total, gone_cheap, secs, day)  por cada trozo de intervalo válido
+      ("price", item, week, band, min)                               por cada escaneo con precio
+    `week` es la semana ISO del escaneo inicial del intervalo (o del escaneo, para el precio)."""
     prev = {}
-    for item, t, mn, qty, cheap, cheap_prev in con.execute(OBS_SQL, (market,)):
-        a = acc[item]
+    for item, t, mn, qty, cheap, cheap_prev in rows:
         if mn is not None:
-            a[band_of(t)]["prices"].append(mn)
+            yield ("price", item, week_of(t), band_of(t), mn)
         p = prev.get(item)
         prev[item] = (t, qty, cheap)
         if not p or t - p[0] > MAX_GAP_H * 3600 or t <= p[0]:
             continue
         gone_total = max(0, (p[1] or 0) - (qty or 0))
         gone_cheap = max(0, (p[2] or 0) - (cheap_prev or 0))
-        span = t - p[0]
+        span, wk = t - p[0], week_of(p[0])
         for b, secs, day in _split(p[0], t):
             f = secs / span
-            a[b]["total"] += gone_total * f
-            a[b]["cheap"] += gone_cheap * f
-            a[b]["secs"] += secs
-            a[b]["n"] += 1
-            a[b]["days"].add(day)
+            yield ("gone", item, wk, b, gone_total * f, gone_cheap * f, secs, day)
+
+
+def analyze(archive_path, market=None):
+    """{item_id: [6 dicts por franja]} con gone_total_h, gone_cheap_h, price_med, n, days, ok.
+    Junta los escaneos en bruto (8 semanas) con los resúmenes semanales (`weekly_band`)."""
+    con = sqlite3.connect(archive_path)
+    market = market or pick_market(con)
+    if market is None:
+        return {}
+    acc = defaultdict(lambda: [{"total": 0.0, "cheap": 0.0, "secs": 0.0, "n": 0, "days": set(), "days_old": 0,
+                                "week_prices": defaultdict(list), "week_meds": []} for _ in BANDS])
+    for c in contributions(con.execute(OBS_SQL, (market,))):
+        a = acc[c[1]][c[3]]
+        if c[0] == "price":
+            a["week_prices"][c[2]].append(c[4])
+        else:
+            a["total"] += c[4]; a["cheap"] += c[5]; a["secs"] += c[6]; a["n"] += 1; a["days"].add(c[7])
+    for item, band, gt, gc, hours, n, days, pmed in con.execute(
+            """SELECT w.item_id, w.band, w.gone_total, w.gone_cheap, w.hours, w.n, w.days, w.price_med
+               FROM weekly_band w JOIN markets m USING (market_id) WHERE m.key=?""", (market,)):
+        a = acc[item][band]
+        a["total"] += gt or 0; a["cheap"] += gc or 0; a["secs"] += (hours or 0) * 3600
+        a["n"] += n or 0; a["days_old"] += days or 0
+        if pmed is not None:
+            a["week_meds"].append(pmed)
     con.close()
     out = {}
     for item, bands in acc.items():
         res = []
         for i, x in enumerate(bands):
             hours = x["secs"] / 3600
+            meds = x["week_meds"] + [statistics.median(v) for v in x["week_prices"].values()]
+            days = len(x["days"]) + x["days_old"]
             res.append({
                 "band": i,
                 "gone_total_h": round(x["total"] / hours, 2) if hours else None,
                 "gone_cheap_h": round(x["cheap"] / hours, 2) if hours else None,
-                "price_med": statistics.median(x["prices"]) if x["prices"] else None,
-                "n": x["n"], "days": len(x["days"]),
-                "ok": x["n"] >= MIN_N and len(x["days"]) >= MIN_DAYS,
+                "price_med": statistics.median(meds) if meds else None,
+                "n": x["n"], "days": days,
+                "ok": x["n"] >= MIN_N and days >= MIN_DAYS,
             })
         out[item] = res
     return out
