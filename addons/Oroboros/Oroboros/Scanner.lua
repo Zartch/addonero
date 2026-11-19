@@ -19,6 +19,7 @@ end
 ns.On("AUCTION_HOUSE_SHOW", function()
     Scanner.ahOpen = true
     if ns.UI then ns.UI.OnAuctionHouse(true) end
+    C_Timer.After(1, function() Scanner.TryAutoScan() end)
 end)
 
 ns.On("AUCTION_HOUSE_CLOSED", function()
@@ -68,8 +69,20 @@ function Scanner.CanFullScan()
     return left <= 0, math.max(0, left)
 end
 
+-- Escaneo automático al abrir la subasta (fase 3): solo si toca y si Auctionator no hace el suyo.
+-- Se ve igual que si se hubiera pulsado el botón: botón pulsado, avance en la línea de estado y aviso en el chat.
+function Scanner.TryAutoScan()
+    if tonumber(ns.Cfg("autoscan")) == 0 then return false end
+    if not Scanner.ahOpen or Scanner.state ~= "idle" then return false end
+    if Scanner.AuctionatorReplicates() then return false end
+    if not Scanner.CanFullScan() then return false end
+    Scanner.FullScan(false, true)
+    return Scanner.state == "waiting"
+end
+
 -- force = true lanza nuestro ReplicateItems aunque Auctionator escanee (/oro scan forzar)
-function Scanner.FullScan(force)
+-- auto = true si lo lanza TryAutoScan
+function Scanner.FullScan(force, auto)
     if not Scanner.ahOpen then ns.Print("abre la casa de subastas primero.") return end
     if Scanner.state ~= "idle" then ns.Print("ya hay un escaneo en curso.") return end
     if not force and Scanner.AuctionatorReplicates() then
@@ -83,9 +96,16 @@ function Scanner.FullScan(force)
         return
     end
     Scanner.state = "waiting"
+    Scanner.auto = auto and true or false
     Scanner.lastReplicate = time()
     OroborosDB.lastReplicate = Scanner.lastReplicate
-    setStatus("Escaneo completo: esperando datos del servidor…")
+    if ns.UI then ns.UI.SetScanning(true) end
+    if auto then
+        ns.Print("escaneo automático: empieza (han pasado 15 min desde el último). Se apaga con /oro set autoscan 0.")
+        setStatus("Escaneo automático: esperando datos del servidor…")
+    else
+        setStatus("Escaneo completo: esperando datos del servidor…")
+    end
     C_AuctionHouse.ReplicateItems()
 end
 
@@ -93,13 +113,18 @@ end
 local function readReplicate(passive)
     Scanner.state = "reading"
     Scanner.lastRead = time()
-    local label = passive and "Escaneo de Auctionator" or "Escaneo completo"
+    local label = passive and "Escaneo de Auctionator" or (Scanner.auto and "Escaneo automático" or "Escaneo completo")
+    if ns.UI then ns.UI.SetScanning(true) end
     local total = C_AuctionHouse.GetNumReplicateItems()
     local byItem, idx = {}, 0
     local seenInfo = {}
 
     local function step()
-        if not Scanner.ahOpen then Scanner.state = "idle" return end
+        if not Scanner.ahOpen then
+            Scanner.state, Scanner.auto = "idle", false
+            if ns.UI then ns.UI.SetScanning(false) end
+            return
+        end
         local last = math.min(idx + CHUNK, total)
         for i = idx, last - 1 do                      -- índices base 0
             local name, _, count, quality, _, _, _, _, _, buyout, _, _, _, _, _, _, itemID =
@@ -121,7 +146,8 @@ local function readReplicate(passive)
         else
             local n = ns.DB.RecordPrices(byItem, true)
             ns.DB.QueueMissingNames()
-            Scanner.state = "idle"
+            Scanner.state, Scanner.auto = "idle", false
+            if ns.UI then ns.UI.SetScanning(false) end
             setStatus(string.format("%s leído: %d objetos, %d subastas.", label, n, total))
             ns.Print(string.format("%s: %d objetos (%d subastas). Haz /reload para guardar a disco.", label:lower(), n, total))
             if ns.UI then ns.UI.Refresh() end

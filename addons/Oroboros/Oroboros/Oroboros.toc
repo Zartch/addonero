@@ -2,7 +2,7 @@
 ## Title: Oroboros
 ## Notes: Escaneo de subasta, base de datos de precios, recetas y cola de compra/venta (un clic por acción).
 ## Author: Zartch
-## Version: 0.6.0
+## Version: 0.7.0
 ## SavedVariables: OroborosDB
 ## OptionalDeps: Auctionator
 ## IconTexture: Interface\Icons\INV_Misc_Coin_02

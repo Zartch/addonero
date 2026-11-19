@@ -1,7 +1,7 @@
 -- Oroboros: núcleo, utilidades, eventos y comandos
 local ADDON, ns = ...
 ns.name = ADDON
-ns.version = "0.5.0"
+ns.version = "0.7.0"
 
 local DEFAULTS = {
     historyDays   = 14,     -- días de histórico diario en el juego (el completo vive en work/archivo.sqlite)
@@ -9,6 +9,7 @@ local DEFAULTS = {
     postDuration  = 2,      -- 1 = 12h, 2 = 24h, 3 = 48h
     undercut      = 1,      -- cobre que se rebaja respecto al más barato ajeno
     ahCut         = 0.05,   -- comisión de la casa de subastas
+    autoscan      = 1,      -- 1 = escaneo completo automático al abrir la subasta (si han pasado 15 min)
 }
 
 ----------------------------------------------------------------------
@@ -215,7 +216,7 @@ SlashCmdList.OROBOROS = function(msg)
     elseif cmd == "set" then
         local k, v = rest:match("^(%S+)%s+(%S+)$")
         if not k or DEFAULTS[k] == nil then
-            ns.Print("claves: historyDays, mvPercent, postDuration, undercut, ahCut")
+            ns.Print("claves: historyDays, mvPercent, postDuration, undercut, ahCut, autoscan")
             return
         end
         OroborosDB.config[k] = tonumber(v) or v

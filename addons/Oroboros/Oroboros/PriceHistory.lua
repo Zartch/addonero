@@ -151,9 +151,20 @@ local function build()
     return f
 end
 
+-- Debajo de la ventana de Oroboros si está abierta (las dos van a la derecha de la subasta);
+-- si no, a la derecha de la subasta; si tampoco, en el centro.
+function PH.AnchorTarget()
+    if ns.UI and ns.UI.frame and ns.UI.frame:IsShown() then return "OroborosFrame" end
+    if AuctionHouseFrame and AuctionHouseFrame.IsShown and AuctionHouseFrame:IsShown() then return "AuctionHouseFrame" end
+    return nil
+end
+
 local function anchor(f)
     f:ClearAllPoints()
-    if AuctionHouseFrame and AuctionHouseFrame.IsShown and AuctionHouseFrame:IsShown() then
+    local target = PH.AnchorTarget()
+    if target == "OroborosFrame" then
+        f:SetPoint("TOPLEFT", ns.UI.frame, "BOTTOMLEFT", 0, -4)
+    elseif target == "AuctionHouseFrame" then
         f:SetPoint("TOPLEFT", AuctionHouseFrame, "TOPRIGHT", 4, 0)
     else
         f:SetPoint("CENTER")

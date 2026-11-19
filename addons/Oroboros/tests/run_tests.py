@@ -86,6 +86,40 @@ check(ns.Scanner.CanFullScan() is False or ns.Scanner.CanFullScan()[0] is False,
 lua.execute("Auctionator = nil; AUCTIONATOR_SAVEDVARS = nil")
 check(ns.Scanner.AuctionatorReplicates() is False, "sin Auctionator: escaneo propio")
 
+# Escaneo automático al abrir la subasta, bien visible (fase 3)
+def _auto_reset():
+    ns.Scanner.lastReplicate = 0; G.OroborosDB.lastReplicate = 0; ns.Scanner.lastRead = 0
+    fire("AUCTION_HOUSE_CLOSED"); calls(); lua.execute("LOG = {}")
+_auto_reset()
+fire("AUCTION_HOUSE_SHOW"); G.RunTimers()
+btn = ns.UI.frame.scanButton
+log_txt = " ".join(G.LOG.values())
+check(calls() == [("ReplicateItems",)] and btn.text == "Escaneando…" and "escaneo automático" in log_txt.lower(),
+      f"automático: al abrir la subasta lanza el escaneo, el botón dice «Escaneando…» y el chat avisa ({btn.text})")
+fire("REPLICATE_ITEM_LIST_UPDATE"); G.RunTimers()
+check(btn.text == "Escaneo completo" and "Escaneo automático leído" in (G.OroborosFrame_status or ns.UI.lastStatus or ""),
+      f"automático: al acabar, el botón vuelve y el estado lo dice ({ns.UI.lastStatus})")
+fire("AUCTION_HOUSE_CLOSED"); fire("AUCTION_HOUSE_SHOW"); G.RunTimers()
+check(len(calls()) == 0, "automático: no repite antes de 15 minutos")
+_auto_reset(); G.OroborosDB.config.autoscan = 0
+fire("AUCTION_HOUSE_SHOW"); G.RunTimers()
+check(len(calls()) == 0, "automático: /oro set autoscan 0 lo apaga")
+G.OroborosDB.config.autoscan = None
+_auto_reset()
+lua.execute("""Auctionator = { API = { v1 = {} }, Config = { Options = { REPLICATE_SCAN = "r" }, Get = function(k) return k == "r" end } }""")
+fire("AUCTION_HOUSE_SHOW"); G.RunTimers()
+check(len(calls()) == 0, "automático: con el escaneo completo de Auctionator no lanza el propio")
+lua.execute("Auctionator = nil")
+_auto_reset()
+fire("AUCTION_HOUSE_SHOW"); G.RunTimers(); calls()
+fire("AUCTION_HOUSE_CLOSED")
+check(btn.text == "Escaneo completo", "automático: cerrar la subasta a mitad devuelve el botón")
+fire("AUCTION_HOUSE_SHOW")
+ns.UI.frame.shown = True
+check(ns.PriceHistory.AnchorTarget() == "OroborosFrame", "panel de precios: va debajo de la ventana de Oroboros, sin taparla")
+ns.Scanner.state = "idle"; ns.Scanner.lastReplicate = __import__("time").time(); G.OroborosDB.lastReplicate = ns.Scanner.lastReplicate
+calls()
+
 # Buffer de escaneos (franjas horarias): cada escaneo completo se guarda en bruto, los 12 últimos
 lin = lambda: [[30, 20], [35, 20], [50, 200]]
 def _scan(by, mk="TEST-MK"):

@@ -25,6 +25,7 @@ local function build()
     f:SetClampedToScreen(true)
     f:Hide()
     table.insert(UISpecialFrames, "OroborosFrame")   -- se cierra con Escape
+    UI.frame = f
 
     f.title = f:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
     f.title:SetPoint("TOP", 0, -5)
@@ -92,7 +93,23 @@ function UI.UpdateFooter()
         scanTxt, last, nScans, cap, nScans >= cap and " (exporta)" or "", ns.Money(GetMoney())))
 end
 
+-- Botón de escaneo: pulsado y desactivado mientras se escanea, sea a mano o automático
+function UI.SetScanning(on)
+    build()
+    local b = f.scanButton
+    if on then
+        b:SetText("Escaneando…")
+        if b.SetButtonState then b:SetButtonState("PUSHED", true) end
+        if b.Disable then b:Disable() end
+    else
+        b:SetText("Escaneo completo")
+        if b.SetButtonState then b:SetButtonState("NORMAL") end
+        if b.Enable then b:Enable() end
+    end
+end
+
 function UI.SetStatus(text)
+    UI.lastStatus = text
     build()
     statusText:SetText(text)
 end
@@ -146,6 +163,7 @@ function UI.OnAuctionHouse(open)
         f:Show()
         UI.Refresh()
     else
+        UI.SetScanning(false)
         f:Hide()
     end
 end
