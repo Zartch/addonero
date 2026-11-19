@@ -608,6 +608,9 @@ check(any("de 20 a 24 h" in w and "/h barato" in w for w in why_x), f"plan: la v
 check(not any("/h barato" in w for o in plan["opportunities"] for w in o.get("why", [])), "plan sin --archive: sin textos de franja")
 check(p4["items"][str(X)]["hours"][5]["ok"] is True, "plan: las franjas del objeto van al JSON")
 check('["horas", "Horas"]' in open(os.path.join(tmp, "p4.html"), encoding="utf-8").read(), "página: pestaña Horas")
+_html = open(os.path.join(tmp, "p4.html"), encoding="utf-8").read()
+check(all(f'[{d}, "{t}"]' in _html for d, t in ((30, "1 mes"), (90, "3 meses"), (180, "6 meses"), (365, "1 año"), (0, "Todo")))
+      and 'id="mk-stats"' in _html, "página: Mercado con rangos (1 mes a todo) y tabla de mínimos, máximos y medias")
 
 # Ventas por día: cada bajada se divide por el tiempo real entre datos (0,5 a 3 días)
 from oroboros_plan import daily_drops, find_flips

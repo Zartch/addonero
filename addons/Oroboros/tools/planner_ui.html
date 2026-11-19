@@ -232,8 +232,36 @@ function spark(id) {
   return `<svg class="spark" viewBox="0 0 ${w} ${h}" aria-hidden="true"><path d="${d}"/><circle cx="${x(v.length - 1)}" cy="${y(v[v.length - 1])}" r="2.5"/></svg>`;
 }
 
+// Rango del historial en Mercado (días; 0 = todo), al estilo CamelCamelCamel
+const RANGES = [[30, "1 mes"], [90, "3 meses"], [180, "6 meses"], [365, "1 año"], [0, "Todo"]];
+let mkRange = 90;
+function dayDiff(a, b) { return Math.round((new Date(b) - new Date(a)) / 86400000); }
+function rangeHist(it, days) {
+  const h = it.hist || []; if (!h.length) return h;
+  const d = days === undefined ? mkRange : days; if (!d) return h;
+  const last = h[h.length - 1][0];
+  return h.filter(x => dayDiff(x[0], last) < d);
+}
+function priceStats(it) {
+  const all = (it.hist || []).filter(h => h[1]), rng = rangeHist(it).filter(h => h[1]);
+  const ext = (arr, f) => arr.length ? arr.reduce((a, b) => f(b[1], a[1]) ? b : a) : null;
+  const avg = d => { const v = rangeHist(it, d).filter(h => h[1]).map(h => h[1]); return v.length ? v.reduce((a, b) => a + b, 0) / v.length : null; };
+  return { lowR: ext(rng, (x, y) => x < y), highR: ext(rng, (x, y) => x > y), lowA: ext(all, (x, y) => x < y), highA: ext(all, (x, y) => x > y),
+           avg7: avg(7), avg30: avg(30), avg90: avg(90), first: all.length ? all[0][0] : null };
+}
+const fmtDay = d => d ? `${d.slice(8)}/${d.slice(5, 7)}/${d.slice(2, 4)}` : "—";
+function statsTable(it) {
+  const s = priceStats(it), cell = h => h ? `${money(h[1])} <span class="sub">(${fmtDay(h[0])})</span>` : "—";
+  const lbl = RANGES.find(r => r[0] === mkRange)[1];
+  return `<table id="mk-stats"><tbody>
+    <tr><th>Mínimo (${esc(lbl.toLowerCase())})</th><td>${cell(s.lowR)}</td><th>Mínimo histórico</th><td>${cell(s.lowA)}</td></tr>
+    <tr><th>Máximo (${esc(lbl.toLowerCase())})</th><td>${cell(s.highR)}</td><th>Máximo histórico</th><td>${cell(s.highA)}</td></tr>
+    <tr><th>Media 7 / 30 / 90 días</th><td colspan="3">${money(s.avg7)} · ${money(s.avg30)} · ${money(s.avg90)} <span class="sub">· datos desde ${fmtDay(s.first)}</span></td></tr>
+  </tbody></table>`;
+}
+
 function lineChart(id) {
-  const it = PLAN.items[id]; const hist = (it.hist || []).filter(h => h[1]);
+  const it = PLAN.items[id]; const hist = rangeHist(it).filter(h => h[1]);
   if (hist.length < 2) return '<p class="sub">Sin histórico suficiente.</p>';
   const W = 720, H = 240, L = 64, R = 16, T = 14, B = 28;
   const vals = hist.map(h => h[1]); const refs = [it.med7].filter(Boolean);
@@ -245,13 +273,14 @@ function lineChart(id) {
     const v = lo + (hi - lo) * k / ticks, yy = y(v);
     g += `<line class="grid" x1="${L}" x2="${W - R}" y1="${yy}" y2="${yy}"/><text x="${L - 6}" y="${yy + 4}" text-anchor="end">${(v / 10000).toFixed(v < 100000 ? 2 : 1)}g</text>`;
   }
-  hist.forEach((h, i) => { if (i % 3 === 0 || i === hist.length - 1) g += `<text x="${x(i)}" y="${H - 8}" text-anchor="middle">${h[0].slice(8)}/${h[0].slice(5, 7)}</text>`; });
+  const step = Math.max(1, Math.ceil(hist.length / 10));
+  hist.forEach((h, i) => { if (i % step === 0 || i === hist.length - 1) g += `<text x="${x(i)}" y="${H - 8}" text-anchor="middle">${h[0].slice(8)}/${h[0].slice(5, 7)}</text>`; });
   const d = vals.map((v, i) => `${i ? "L" : "M"}${x(i).toFixed(1)},${y(v).toFixed(1)}`).join("");
   const area = d + `L${x(vals.length - 1)},${H - B}L${x(0)},${H - B}Z`;
   let ref = "";
   if (it.med7) ref = `<line class="ref" x1="${L}" x2="${W - R}" y1="${y(it.med7)}" y2="${y(it.med7)}"/><text x="${W - R}" y="${y(it.med7) - 5}" text-anchor="end">mediana 7 días</text>`;
   const last = vals.length - 1;
-  return `<svg class="chart" id="lc" viewBox="0 0 ${W} ${H}" role="img" aria-label="Precio de ${esc(it.name)} en 14 días">
+  return `<svg class="chart" id="lc" viewBox="0 0 ${W} ${H}" role="img" aria-label="Precio de ${esc(it.name)}">
     ${g}<path class="ar" d="${area}"/><path class="ln" d="${d}"/>${ref}
     <line class="hair" id="hair" x1="0" x2="0" y1="${T}" y2="${H - B}" style="display:none"/>
     <circle class="dot" cx="${x(last)}" cy="${y(vals[last])}" r="5"/>
@@ -260,7 +289,7 @@ function lineChart(id) {
 }
 
 function qtyChart(id) {
-  const it = PLAN.items[id]; const hist = (it.hist || []).filter(h => h[2] !== null);
+  const it = PLAN.items[id]; const hist = rangeHist(it).filter(h => h[2] !== null);
   if (hist.length < 2) return "";
   const W = 720, H = 120, L = 64, R = 16, T = 10, B = 24;
   const hi = Math.max(...hist.map(h => h[2])) * 1.1 || 1;
@@ -275,7 +304,7 @@ function qtyChart(id) {
 
 function wireChart(id) {
   const svg = $("#lc"); if (!svg) return;
-  const it = PLAN.items[id]; const hist = (it.hist || []).filter(h => h[1]);
+  const it = PLAN.items[id]; const hist = rangeHist(it).filter(h => h[1]);
   const tip = $("#tip"), hair = $("#hair"), hit = $("#hit");
   const L = 64, R = 16, W = 720;
   hit.addEventListener("mousemove", ev => {
@@ -572,10 +601,13 @@ function renderMercado() {
     <div style="display:grid;gap:12px;min-width:0">
       <header style="display:flex;gap:10px;align-items:center;flex-wrap:wrap"><h2>${esc(it.name)}</h2>${confPill(it.conf)}</header>
       <div class="stats"><span>Mínimo <b>${money(it.min)}</b></span><span>Valor de mercado <b>${money(it.mv)}</b></span><span>Mediana 7 días <b>${money(it.med7)}</b></span><span>Publicadas <b>${it.qty}</b></span><span>Ventas/día ≈ <b>${fmtN(it.vol)}</b></span>${it.vendor_buy ? `<span>Vendedor <b>${money(it.vendor_buy)}</b></span>` : ""}${it.trend !== null ? `<span>Tendencia <b>${it.trend > 0 ? "+" : ""}${pct(it.trend)}</b></span>` : ""}</div>
-      <h3>Valor de mercado, últimos 14 días</h3>${lineChart(mkItem)}
+      <div class="ranges" role="group" aria-label="Rango">${RANGES.map(([d, t]) => `<button class="seg" data-range="${d}" aria-pressed="${d === mkRange}">${t}</button>`).join("")}</div>
+      ${statsTable(it)}
+      <h3>Valor de mercado</h3>${lineChart(mkItem)}
       <h3>Cantidad publicada</h3>${qtyChart(mkItem)}
     </div></div>`;
   $("#v-mercado").querySelectorAll("[data-id]").forEach(b => b.onclick = () => { mkItem = b.dataset.id; renderMercado(); });
+  $("#v-mercado").querySelectorAll("[data-range]").forEach(b => b.onclick = () => { mkRange = +b.dataset.range; renderMercado(); });
   const q = $("#mkq"); q.oninput = e => { mkQuery = e.target.value; const pos = e.target.selectionStart; renderMercado(); const n = $("#mkq"); n.focus(); n.setSelectionRange(pos, pos); };
   wireChart(mkItem);
 }
