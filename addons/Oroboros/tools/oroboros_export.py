@@ -285,6 +285,43 @@ def add_auctionator(sqlite_path, atr_path, oroboros_path):
     print(f"Auctionator → mercado {market}: {total} objetos leídos, {n_price} precios y {n_hist} días de histórico añadidos.")
 
 
+def _main_market(db):
+    """Mercado de la mayoría de personajes (el mismo criterio que el planificador)."""
+    markets = [c.get("market") for c in as_dict(db.get("chars")).values() if isinstance(c, dict) and c.get("market")]
+    return max(set(markets), key=markets.count) if markets else None
+
+
+def update_archive(archive_path, db, atr_arg, oroboros_path):
+    """Escaneos → histórico diario (+ Auctionator) → resumen de lo viejo, en el archivo permanente."""
+    import time
+    import oroboros_archive as A
+    res = A.append_scans(archive_path, db)
+    con = A.open_archive(archive_path)
+    A.update_daily(con, db)
+    n_atr = 0
+    if atr_arg:
+        import auctionator_source
+        atr_path = atr_arg
+        if atr_arg == "auto":
+            atr_path = os.path.join(os.path.dirname(os.path.abspath(oroboros_path)), "Auctionator.lua")
+        if os.path.exists(atr_path):
+            atr = auctionator_source.load(atr_path)
+            market = _main_market(db) or auctionator_source.pick_market(atr["markets"])
+            n_atr = auctionator_source.to_daily(con, atr, market)
+        else:
+            print(f"Auctionator: no encuentro {atr_path}; sigo sin sus datos.")
+    rolled = A.rollup(con, int(time.time()))
+    n_daily = con.execute("SELECT COUNT(*) FROM daily").fetchone()[0]
+    n_scans = con.execute("SELECT COUNT(*) FROM scans").fetchone()[0]
+    con.close()
+    print(f"Archivo → {archive_path}: {res['scans']} escaneos nuevos ({res['added']} filas), "
+          f"{res['already']} filas ya estaban; {n_scans} escaneos en bruto, histórico diario: {n_daily} filas"
+          f"{f' ({n_atr} nuevas de Auctionator)' if n_atr else ''}; resumidos y borrados: {rolled}.")
+    if res["gap"]:
+        print("Aviso: se han perdido escaneos entre el último archivado y los guardados en el juego "
+              "(más de 12 sin exportar).")
+
+
 def utf8_output():
     """La consola de Windows usa cp1252: sin esto, «→» rompe la salida."""
     for stream in (sys.stdout, sys.stderr):
@@ -319,19 +356,19 @@ def main():
         with open(args.json, "w", encoding="utf-8") as fh:
             json.dump(db, fh, ensure_ascii=False, indent=1, default=str)
         print(f"JSON → {args.json}")
+    if args.archive:
+        update_archive(args.archive, db, args.auctionator, path)
     if args.sqlite:
         counts = write_sqlite(db, args.sqlite)
         print(f"SQLite → {args.sqlite}  " + ", ".join(f"{k}: {v}" for k, v in counts.items()))
-        if args.auctionator:
+        if args.archive:
+            import oroboros_archive as A
+            con = A.open_archive(args.archive)
+            r = A.plan_from_archive(con, args.sqlite)
+            con.close()
+            print(f"Plan desde el archivo: {r['history']} días de histórico, {r['prices_added']} precios completados.")
+        elif args.auctionator:
             add_auctionator(args.sqlite, args.auctionator, path)
-    if args.archive:
-        from oroboros_archive import append_scans
-        res = append_scans(args.archive, db)
-        print(f"Archivo → {args.archive}: {res['scans']} escaneos nuevos ({res['added']} filas), "
-              f"{res['already']} filas ya estaban.")
-        if res["gap"]:
-            print("Aviso: se han perdido escaneos entre el último archivado y los guardados en el juego "
-                  "(más de 12 sin exportar).")
     if not args.json and not args.sqlite and not args.archive:
         print(json.dumps({k: (len(v) if hasattr(v, "__len__") else v) for k, v in db.items()}, indent=1))
 

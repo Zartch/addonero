@@ -282,3 +282,41 @@ def rollup(con, now, keep_days=KEEP_DAYS):
         con.execute(f"DELETE FROM scans WHERE scan_id IN ({marks})", chunk)
     con.commit()
     return len(ids)
+
+
+# ----------------------------------------------------------------------
+# Del archivo al SQLite del plan
+# ----------------------------------------------------------------------
+def plan_from_archive(con, plan_path):
+    """El histórico del plan sale de `daily`; los precios, de Oroboros.lua (traen profundidad), y los
+    objetos sin precio en el juego se completan con su último día del archivo. Devuelve los recuentos."""
+    import datetime
+    plan = sqlite3.connect(plan_path)
+    n_hist = n_price = 0
+    have = {(r[0], r[1]) for r in plan.execute("SELECT market, item_id FROM prices")}
+    for mid, key in con.execute("SELECT market_id, key FROM markets").fetchall():
+        rows = con.execute("""SELECT item_id, day, min_low, mv, qty_max, src, t FROM daily
+                              WHERE market_id=? ORDER BY item_id, day""", (mid,)).fetchall()
+        plan.execute("DELETE FROM history WHERE market=?", (key,))
+        plan.executemany("INSERT INTO history VALUES (?,?,?,?,?,?,?,?)",
+                         [(key, i, d, mn, mv, q, "atr" if src == "atr" else "oro", t) for i, d, mn, mv, q, src, t in rows])
+        n_hist += len(rows)
+        last = {}
+        for i, d, mn, mv, q, src, t in rows:
+            last[i] = (d, mn, mv, q, src, t)
+        for i, (d, mn, mv, q, src, t) in last.items():
+            if (key, i) in have or mn is None:
+                continue
+            if t is None:
+                day = datetime.date.fromisoformat(d)
+                t = int(datetime.datetime(day.year, day.month, day.day, 12).timestamp())
+            plan.execute("INSERT INTO prices VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
+                         (key, i, mn, mv or mn, q, None, t, None, None, None, None, "atr" if src == "atr" else "oro"))
+            plan.execute("INSERT OR IGNORE INTO items (item_id) VALUES (?)", (i,))
+            n_price += 1
+    names = {r[0]: r[1:] for r in con.execute("SELECT item_id, name, quality FROM items WHERE name IS NOT NULL")}
+    for i, (name, q) in names.items():
+        plan.execute("UPDATE items SET name = COALESCE(name, ?), quality = COALESCE(quality, ?) WHERE item_id=?", (name, q, i))
+    plan.commit()
+    plan.close()
+    return {"history": n_hist, "prices_added": n_price}

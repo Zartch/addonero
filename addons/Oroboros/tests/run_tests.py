@@ -576,6 +576,30 @@ def _flip_case(mv_yesterday):
 check(len(_flip_case(1000)) == 1, "reventa: bajada puntual frente a su mediana")
 check(len(_flip_case(310)) == 0, "reventa: no si ayer ya estaba a ese precio")
 
+# El plan sale del archivo (--archive) y propone lo mismo que sin él
+arch_e = os.path.join(tmp, "arch_e.sqlite")
+_cpre = open_archive(arch_e)        # un día viejo que solo está en el archivo (como uno que el juego ya olvidó)
+_cpre.execute("INSERT INTO daily VALUES (?,2589,'2026-09-01',11,12,12,999,'atr',NULL)",
+              (__import__("oroboros_archive").market_id(_cpre, "ForeverPvE-Horde"),))
+_cpre.commit(); _cpre.close()
+r5 = subprocess.run([sys.executable, os.path.join(ROOT, "tools", "oroboros_export.py"), os.path.join(tmp, "A.lua"),
+                     "--sqlite", os.path.join(tmp, "e.sqlite"), "--archive", arch_e],
+                    capture_output=True, text=True, encoding="utf-8", errors="replace")
+check(r5.returncode == 0 and "histórico diario" in r5.stdout, "exportador con archivo: " + (r5.stdout + r5.stderr)[-250:])
+_ce = sqlite3.connect(os.path.join(tmp, "e.sqlite"))
+_ca = sqlite3.connect(os.path.join(tmp, "a.sqlite"))
+_hq = "SELECT market, item_id, day, min, mv, qty FROM history WHERE day > '2026-09-01' ORDER BY market, item_id, day"
+check(_ce.execute(_hq).fetchall() == _ca.execute(_hq).fetchall(), "exportador con archivo: mismos valores del histórico que sin archivo")
+check(_ce.execute("SELECT qty, src FROM history WHERE item_id=2589 AND day='2026-09-01'").fetchone() == (999, "atr"),
+      "exportador con archivo: el histórico del plan sale del diario (incluye días que el juego ya no tiene)")
+_ce.close(); _ca.close()
+r6 = subprocess.run([sys.executable, os.path.join(ROOT, "tools", "oroboros_plan.py"), "--db", os.path.join(tmp, "e.sqlite"),
+                     "--json", os.path.join(tmp, "p6.json"), "--synthetic", "--now", NOW],
+                    capture_output=True, text=True, encoding="utf-8", errors="replace")
+p6 = json.load(open(os.path.join(tmp, "p6.json"), encoding="utf-8"))
+_sel = lambda pl: sorted((o["name"], o["units"]) for o in pl["opportunities"] if o.get("included"))
+check(_sel(p6) == _sel(plan), "plan desde el archivo: mismas oportunidades que sin archivo")
+
 # Sin histórico (primer día con datos reales): lotes de prueba y tope para la confianza baja
 import shutil
 nh = os.path.join(tmp, "nohist.sqlite")
