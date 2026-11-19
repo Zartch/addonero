@@ -11,7 +11,7 @@ ADDON = os.path.join(ROOT, "Oroboros")
 lua = LuaRuntime(unpack_returned_tuples=True)
 lua.execute(open(os.path.join(ROOT, "tests", "mock_wow.lua"), encoding="utf-8").read())
 ns = lua.eval("{}")
-for f in ["Core.lua", "DB.lua", "Scanner.lua", "Professions.lua", "Ledger.lua", "Queue.lua", "UI.lua"]:
+for f in ["Core.lua", "DB.lua", "Scanner.lua", "Professions.lua", "Ledger.lua", "Queue.lua", "UI.lua", "PriceHistory.lua"]:
     chunk = lua.execute("return function(src, name) return assert(loadstring(src, name)) end")(
         open(os.path.join(ADDON, f), encoding="utf-8").read(), "@" + f)
     chunk("Oroboros", ns)
@@ -125,6 +125,33 @@ lua.execute('ITEMS[900001] = { "Gema de prueba", 2, 20 }')
 fire("GET_ITEM_INFO_RECEIVED", 900001, True)
 check(lua.eval("OroborosDB.items[900001].n") == "Gema de prueba", "nombres: se rellenan al llegar la ficha del objeto")
 lua.execute("for k = 0, 249 do OroborosDB.items[900000 + k] = nil end")
+
+# Panel de historial de precios (Camel) en la subasta
+PH = ns.PriceHistory
+_S = ("120;130;136;141;95;20261112;210;20261105;5;1;100,,110,120,130,125,140,150,160,155,150,140,130;"
+      + "120,,,,,,,,,,,,125,120;20261119")
+lua.execute("OroborosResumen = { v = 1, t = 0, markets = { [\"" + ns.MarketKey() + "\"] = { [2589] = [[" + _S + "]] } } }")
+ps = PH.Parse(_S)
+check((ps.today, ps.avg30, ps.low, ps.lowDay, ps.sellBand, ps.weeks[1], ps.weeks[2], ps.weeks[13], ps.days[14]) ==
+      (120, 136, 95, 20261112, 5, 100, None, 130, 120), "panel: descomprime la cadena con huecos")
+L = list(PH.Lines(2589, 120).values())
+check(L == ["Linen Cloth", "Hoy 1s 20c · un 12 % por debajo de su media de 30 días", "Mínimo 95c (12/11) · Máximo 2s 10c (05/11)",
+            "Media 7 d 1s 30c · 30 d 1s 36c · 90 d 1s 41c", "Se vende más de 20 a 24 h · más barato de 4 a 8 h"], f"panel: textos {L}")
+check(list(PH.Lines(2996, 450).values()) == ["Bolt of Linen Cloth", "Hoy 4s 50c", "Sin historial: genera el plan."],
+      "panel: sin resumen, solo el precio de hoy")
+fire("AUCTION_HOUSE_SHOW")
+fire("COMMODITY_SEARCH_RESULTS_UPDATED", 2589)
+check(PH.frame is not None and PH.frame.shown and PH.current == 2589 and PH.live == 30, "panel: se abre al buscar un objeto en la subasta, con el precio en vivo")
+fire("AUCTION_HOUSE_CLOSED")
+check(not PH.frame.shown, "panel: se cierra con la subasta")
+G.SlashCmdList.OROBOROS("precio 2589")
+check(PH.frame.shown and PH.current == 2589, "/oro precio abre el panel")
+lua.execute('OroborosResumen = { v = 1, t = 0, markets = { ["Otro-Alliance"] = { [2589] = "1;;;;;;;;;;;;20261119" } } }')
+check(PH.Get(2589) is None, "panel: el resumen de otro mercado no se usa")
+lua.execute("OroborosResumen = nil")
+check(PH.Get(2589) is None and list(PH.Lines(2589, None).values())[-1] == "Sin historial: genera el plan.", "panel: sin Resumen.lua funciona igual")
+PH.Hide(); fire("AUCTION_HOUSE_SHOW")      # las pruebas siguientes cuentan con la subasta abierta
+calls()
 
 # Banco
 c = G.OroborosDB.chars["Zartch-ForeverNormal"]

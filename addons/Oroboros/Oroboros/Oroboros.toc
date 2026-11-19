@@ -14,3 +14,6 @@ Professions.lua
 Ledger.lua
 Queue.lua
 UI.lua
+PriceHistory.lua
+# Generado fuera del juego (tools/oroboros_summary.py); si falta, el addon funciona igual
+Resumen.lua

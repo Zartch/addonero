@@ -150,6 +150,7 @@ SlashCmdList.OROBOROS = function(msg)
         ns.Print("  /oro price <itemID|link> – ver precio guardado")
         ns.Print("  /oro prof     – profesiones de todos tus personajes")
         ns.Print("  /oro quien <itemID|link> – qué personaje lo fabrica")
+        ns.Print("  /oro precio <itemID|link> – historial de precios del objeto")
         ns.Print("  /oro banquero – marcar este personaje como el que compra y vende")
         ns.Print("  /oro import   – pegar una ruta generada fuera del juego")
         ns.Print("  /oro compras  – últimas compras y ventas registradas")
@@ -176,6 +177,11 @@ SlashCmdList.OROBOROS = function(msg)
         ns.Print(string.format("%s  min %s  valor %s  cantidad %d  (%s)",
             ns.DB.ItemName(id), ns.Money(p.min), ns.Money(p.mv), p.qty or 0,
             date("%d/%m %H:%M", p.t or 0)))
+    elseif cmd == "precio" then
+        local id = tonumber(rest) or tonumber((rest or ""):match("item:(%d+)"))
+        if not id then ns.Print("uso: /oro precio <itemID|link>") return end
+        local p = ns.DB.GetPrice(id)
+        ns.PriceHistory.Show(id, p and p.qty and p.qty > 0 and p.min or nil)
     elseif cmd == "quien" then
         local id = tonumber(rest) or tonumber((rest or ""):match("item:(%d+)"))
         if not id then ns.Print("uso: /oro quien <itemID|link>") return end
