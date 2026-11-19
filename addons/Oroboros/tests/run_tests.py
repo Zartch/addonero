@@ -113,6 +113,19 @@ lua.execute("LOG = {}"); ns.DB.PrintStats()
 check(any("escaneos guardados: 12/12 (lleno" in l for l in G.LOG.values()), "/oro stats avisa con el buffer lleno")
 G.OroborosDB.markets["TEST-MK"] = None
 
+# Nombres que faltan: se piden en tandas de 100 y se rellenan al llegar
+calls()
+lua.execute("for k = 0, 249 do OroborosDB.items[900000 + k] = {} end")
+ns.DB.QueueMissingNames()
+first = [c for c in calls() if c[0] == "RequestLoadItemDataByID"]
+G.RunTimers()
+rest = [c for c in calls() if c[0] == "RequestLoadItemDataByID"]
+check(len(first) == 100 and len(first) + len(rest) == 250, f"nombres: se piden en tandas de 100 ({len(first)} + {len(rest)})")
+lua.execute('ITEMS[900001] = { "Gema de prueba", 2, 20 }')
+fire("GET_ITEM_INFO_RECEIVED", 900001, True)
+check(lua.eval("OroborosDB.items[900001].n") == "Gema de prueba", "nombres: se rellenan al llegar la ficha del objeto")
+lua.execute("for k = 0, 249 do OroborosDB.items[900000 + k] = nil end")
+
 # Banco
 c = G.OroborosDB.chars["Zartch-ForeverNormal"]
 check(c.bank is None, "banco no se lee con el banco cerrado")

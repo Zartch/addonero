@@ -365,3 +365,39 @@ function DB.PrintStats()
     end
     if nMk == 0 then ns.Print("  sin mercados escaneados") end
 end
+
+----------------------------------------------------------------------
+-- Nombres que faltan: el escaneo completo no trae el nombre de los objetos que el cliente
+-- aún no tiene cargados. Se piden en tandas para no congelar el juego y se guardan al llegar.
+----------------------------------------------------------------------
+local NAME_BATCH, NAME_DELAY = 100, 0.2
+local nameQueue, nameBusy = {}, false
+
+local function nameStep()
+    local n = 0
+    while n < NAME_BATCH and #nameQueue > 0 do
+        local id = table.remove(nameQueue)
+        local it = OroborosDB.items[id]
+        if it and not it.n and C_Item and C_Item.RequestLoadItemDataByID then
+            C_Item.RequestLoadItemDataByID(id)
+            n = n + 1
+        end
+    end
+    if #nameQueue > 0 then C_Timer.After(NAME_DELAY, nameStep) else nameBusy = false end
+end
+
+function DB.QueueMissingNames()
+    if not OroborosDB then return end
+    wipe(nameQueue)
+    for id, it in pairs(OroborosDB.items) do
+        if not it.n then nameQueue[#nameQueue + 1] = id end
+    end
+    if #nameQueue > 0 and not nameBusy then
+        nameBusy = true
+        nameStep()
+    end
+end
+
+ns.On("GET_ITEM_INFO_RECEIVED", function(itemID, ok)
+    if ok and itemID and OroborosDB and OroborosDB.items[itemID] then DB.SetItemInfo(itemID) end
+end)

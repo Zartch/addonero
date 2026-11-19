@@ -120,6 +120,7 @@ local function readReplicate(passive)
             C_Timer.After(0, step)
         else
             local n = ns.DB.RecordPrices(byItem, true)
+            ns.DB.QueueMissingNames()
             Scanner.state = "idle"
             setStatus(string.format("%s leído: %d objetos, %d subastas.", label, n, total))
             ns.Print(string.format("%s: %d objetos (%d subastas). Haz /reload para guardar a disco.", label:lower(), n, total))

@@ -67,7 +67,7 @@ ITEMS = { [14047] = { "Runecloth", 1, 20 }, [2589] = { "Linen Cloth", 1, 20 }, [
 C_Item = { GetItemInfo = function(id)
     local it = ITEMS[id]; if not it then return nil end
     return it[1], nil, it[2], it[4] or 25, nil, nil, nil, it[3], nil, nil, 5
-end }
+end, RequestLoadItemDataByID = function(id) call("RequestLoadItemDataByID", id) end }
 
 -- Bolsas
 BAGS = { [-1] = { [1] = { itemID = 14047, stackCount = 20 }, [2] = { itemID = 14047, stackCount = 20 } },
