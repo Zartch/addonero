@@ -6,7 +6,6 @@ local PH = {}
 ns.PriceHistory = PH
 
 local WEEKS, DAYS = 13, 14
-local BAR = { 0.84, 0.67, 0.24, 0.9 }
 
 ----------------------------------------------------------------------
 -- Datos
@@ -86,40 +85,58 @@ function PH.Lines(itemID, live)
 end
 
 ----------------------------------------------------------------------
+-- Modelo del panel (lo que se dibuja, sin dibujarlo)
+----------------------------------------------------------------------
+local function dayTime(d)    -- AAAAMMDD → hora (mediodía) de ese día
+    if not d then return nil end
+    return time({ year = math.floor(d / 10000), month = math.floor(d / 100) % 100, day = d % 100, hour = 12 })
+end
+
+function PH.Model(itemID, live)
+    local s = PH.Get(itemID)
+    local it = OroborosDB and OroborosDB.items and OroborosDB.items[itemID] or {}
+    local m = { name = ns.DB.ItemName(itemID), quality = it.q, hasHistory = s ~= nil }
+    m.today = live or (s and s.today)
+    if not s then return m end
+    if m.today and s.avg30 and s.avg30 > 0 then
+        local d = (m.today / s.avg30 - 1) * 100
+        m.diffPct = d >= 0 and math.floor(d + 0.5) or -math.floor(-d + 0.5)
+        m.tone = (m.diffPct <= -2 and "good") or (m.diffPct >= 2 and "bad") or "neutral"
+    end
+    m.stats = {
+        { label = "MEDIA 7 D", value = ns.Money(s.avg7) },
+        { label = "MEDIA 30 D", value = ns.Money(s.avg30) },
+        { label = "MEDIA 90 D", value = ns.Money(s.avg90) },
+        { label = "MÍNIMO", value = ns.Money(s.low), sub = ddmm(s.lowDay) },
+        { label = "MÁXIMO", value = ns.Money(s.high), sub = ddmm(s.highDay) },
+    }
+    local last = dayTime(s.lastDay)
+    m.days, m.weeks = {}, {}
+    for k = 1, DAYS do
+        m.days[k] = { label = last and date("%d/%m", last - (DAYS - k) * 86400) or "", value = s.days[k] }
+    end
+    local monday = last and (last - ((tonumber(date("%w", last)) + 6) % 7) * 86400)
+    for k = 1, WEEKS do
+        m.weeks[k] = { label = monday and ("semana del " .. date("%d/%m", monday - (WEEKS - k) * 7 * 86400)) or "", value = s.weeks[k] }
+    end
+    local bands = {}
+    if s.sellBand then bands[#bands + 1] = "Se vende más " .. bandTxt(s.sellBand) end
+    if s.cheapBand then bands[#bands + 1] = (#bands > 0 and "más barato " or "Más barato ") .. bandTxt(s.cheapBand) end
+    m.bandsText = #bands > 0 and table.concat(bands, " · ") or nil
+    m.avg30 = s.avg30
+    return m
+end
+
+----------------------------------------------------------------------
 -- Ventana
 ----------------------------------------------------------------------
-local W, H = 300, 230
-
-local function bars(f, n, x0, y0, w, gap, hmax)
-    local t = { hmax = hmax }
-    for k = 1, n do
-        local b = f:CreateTexture(nil, "ARTWORK")
-        b:SetColorTexture(BAR[1], BAR[2], BAR[3], BAR[4])
-        b:SetPoint("BOTTOMLEFT", f, "BOTTOMLEFT", x0 + (k - 1) * (w + gap), y0)
-        b:SetWidth(w)
-        t[k] = b
-    end
-    return t
-end
-
-local function fill(t, values)
-    local hi = 0
-    for k = 1, #t do if values[k] and values[k] > hi then hi = values[k] end end
-    for k = 1, #t do
-        local v = values[k]
-        if v and hi > 0 then
-            t[k]:SetHeight(math.max(2, t.hmax * v / hi))
-            t[k]:Show()
-        else
-            t[k]:Hide()
-        end
-    end
-end
+local W, PAD = 330, 12
 
 local function build()
     if PH.frame then return PH.frame end
-    local f = CreateFrame("Frame", "OroborosPriceFrame", UIParent, "BasicFrameTemplateWithInset")
-    f:SetSize(W, H)
+    local S = ns.Style
+    local f = CreateFrame("Frame", "OroborosPriceFrame", UIParent, "BackdropTemplate")
+    f:SetSize(W, 200)
     f:SetFrameStrata("HIGH")
     f:SetMovable(true)
     f:EnableMouse(true)
@@ -129,26 +146,119 @@ local function build()
     f:SetClampedToScreen(true)
     f:Hide()
     table.insert(UISpecialFrames, "OroborosPriceFrame")   -- se cierra con Escape
-    f.title = f:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
-    f.title:SetPoint("TOP", 0, -5)
-    f.lines = {}
-    for k = 1, 4 do
-        local fs = f:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-        fs:SetPoint("TOPLEFT", 12, -30 - (k - 1) * 16)
-        fs:SetWidth(W - 24)
-        fs:SetJustifyH("LEFT")
-        f.lines[k] = fs
+    local h = S.Panel(f, "")
+    f.icon = h:CreateTexture(nil, "ARTWORK")
+    f.icon:SetSize(18, 18)
+    f.icon:SetPoint("LEFT", 8, 0)
+    h.title:ClearAllPoints()
+    h.title:SetPoint("LEFT", f.icon, "RIGHT", 6, 0)
+    h.title:SetPoint("RIGHT", -30, 0)
+
+    f.todayLabel = S.Text(f, "label"); f.todayLabel:SetText("HOY")
+    f.today = S.Text(f, "big")
+    f.diff = S.Text(f, "small")
+    f.stat = {}
+    for k = 1, 5 do
+        f.stat[k] = { label = S.Text(f, "label"), value = S.Text(f, "value"), sub = S.Text(f, "muted") }
     end
-    f.weekLabel = f:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
-    f.weekLabel:SetPoint("BOTTOMLEFT", 12, 92)
-    f.weekLabel:SetText("13 semanas")
-    f.weekBars = bars(f, WEEKS, 12, 50, 18, 3, 40)
-    f.dayLabel = f:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
-    f.dayLabel:SetPoint("BOTTOMLEFT", 12, 38)
-    f.dayLabel:SetText("14 días")
-    f.dayBars = bars(f, DAYS, 12, 10, 16, 3, 24)
+    f.div1 = S.Divider(f)
+    f.dayTitle = S.Text(f, "label"); f.dayTitle:SetText("PRECIO · 14 DÍAS")
+    f.legend = S.Text(f, "muted")
+    f.legend:SetText(S.Hex("accent", "— precio") .. "   " .. S.Hex("label", "- - media 30 d"))
+    f.legend:SetJustifyH("RIGHT")
+    f.dayChart = ns.Chart.New(f, W - 2 * PAD, 96, "line")
+    f.weekTitle = S.Text(f, "label"); f.weekTitle:SetText("PRECIO · 13 SEMANAS")
+    f.weekChart = ns.Chart.New(f, W - 2 * PAD, 76, "bar")
+    f.bands = S.Text(f, "small")
+    f.noHistory = S.Text(f, "small")
+    f.noHistory:SetText("Sin historial todavía: genera el plan (o deja que lo haga el vigilante) y haz /reload.")
+    S.Color(f.noHistory, "label")
     PH.frame = f
     return f
+end
+
+-- Coloca un elemento debajo del anterior; devuelve la nueva posición vertical
+local function place(f, region, y, x, h)
+    region:ClearAllPoints()
+    region:SetPoint("TOPLEFT", f, "TOPLEFT", x or PAD, y)
+    if region.SetWidth and not region.SetData then region:SetWidth(W - 2 * PAD - (x and x - PAD or 0)) end
+    region:Show()
+    return y - (h or 16)
+end
+
+local function render(f, m)
+    local S = ns.Style
+    f.header.title:SetText(m.name or "")
+    local r, g, b = 1, 1, 1
+    if m.quality and C_Item and C_Item.GetItemQualityColor then
+        local ok, qr, qg, qb = pcall(C_Item.GetItemQualityColor, m.quality)
+        if ok and qr then r, g, b = qr, qg, qb end
+    elseif m.quality and ITEM_QUALITY_COLORS and ITEM_QUALITY_COLORS[m.quality] then
+        local q = ITEM_QUALITY_COLORS[m.quality]; r, g, b = q.r, q.g, q.b
+    end
+    f.header.title:SetTextColor(r, g, b)
+    local icon = C_Item and C_Item.GetItemIconByID and C_Item.GetItemIconByID(PH.current) or (GetItemIcon and GetItemIcon(PH.current))
+    if icon then f.icon:SetTexture(icon); f.icon:Show() else f.icon:Hide() end
+
+    local y = -38
+    y = place(f, f.todayLabel, y, nil, 14)
+    f.today:ClearAllPoints(); f.today:SetPoint("TOPLEFT", PAD, y)
+    f.today:SetText(m.today and ns.Money(m.today) or "sin precio")
+    S.Color(f.today, m.tone == "good" and "good" or (m.tone == "bad" and "bad" or "value"))
+    f.diff:ClearAllPoints(); f.diff:SetPoint("BOTTOMLEFT", f.today, "BOTTOMRIGHT", 10, 2)
+    if m.diffPct then
+        f.diff:SetText(string.format("%s%d %% frente a su media de 30 días", m.diffPct > 0 and "+" or "", m.diffPct))
+        S.Color(f.diff, m.tone == "good" and "good" or (m.tone == "bad" and "bad" or "label"))
+        f.diff:Show()
+    else
+        f.diff:Hide()
+    end
+    y = y - 32
+
+    local parts = { f.div1, f.dayTitle, f.legend, f.dayChart, f.weekTitle, f.weekChart, f.bands }
+    if not m.hasHistory then
+        for _, s in ipairs(f.stat) do s.label:Hide(); s.value:Hide(); s.sub:Hide() end
+        for _, p in ipairs(parts) do p:Hide() end
+        y = place(f, f.noHistory, y - 4, nil, 34)
+        f:SetHeight(-y + PAD)
+        return
+    end
+    f.noHistory:Hide()
+
+    -- Cifras: 3 columnas (medias) y 2 columnas (mínimo y máximo)
+    local colW3, colW2 = (W - 2 * PAD) / 3, (W - 2 * PAD) / 2
+    for k, st in ipairs(m.stats) do
+        local cell = f.stat[k]
+        local row, col, cw = (k <= 3) and 0 or 1, (k <= 3) and (k - 1) or (k - 4), (k <= 3) and colW3 or colW2
+        local cx, cy = PAD + col * cw, y - row * 38
+        cell.label:ClearAllPoints(); cell.label:SetPoint("TOPLEFT", f, "TOPLEFT", cx, cy); cell.label:SetText(st.label); cell.label:Show()
+        cell.value:ClearAllPoints(); cell.value:SetPoint("TOPLEFT", f, "TOPLEFT", cx, cy - 13); cell.value:SetText(st.value); cell.value:Show()
+        cell.sub:ClearAllPoints(); cell.sub:SetPoint("BOTTOMLEFT", cell.value, "BOTTOMRIGHT", 6, 1)
+        cell.sub:SetText(st.sub or ""); cell.sub:Show()
+    end
+    y = y - 82
+
+    f.div1:ClearAllPoints(); f.div1:SetPoint("TOPLEFT", PAD, y); f.div1:SetPoint("TOPRIGHT", -PAD, y); f.div1:Show()
+    y = y - 10
+    f.dayTitle:ClearAllPoints(); f.dayTitle:SetPoint("TOPLEFT", PAD, y); f.dayTitle:Show()
+    f.legend:ClearAllPoints(); f.legend:SetPoint("TOPRIGHT", -PAD, y); f.legend:Show()
+    y = y - 16
+    local money = function(p) return p.label, p.value and ns.Money(p.value) or "sin datos" end
+    f.dayChart:ClearAllPoints(); f.dayChart:SetPoint("TOPLEFT", PAD, y); f.dayChart:Show()
+    f.dayChart:SetData(m.days, m.avg30, money)
+    y = y - 96 - 10
+    f.weekTitle:ClearAllPoints(); f.weekTitle:SetPoint("TOPLEFT", PAD, y); f.weekTitle:Show()
+    y = y - 16
+    f.weekChart:ClearAllPoints(); f.weekChart:SetPoint("TOPLEFT", PAD, y); f.weekChart:Show()
+    f.weekChart:SetData(m.weeks, m.avg30, money)
+    y = y - 76 - 8
+    if m.bandsText then
+        y = place(f, f.bands, y, nil, 18)
+        f.bands:SetText("Franjas: " .. m.bandsText)
+    else
+        f.bands:Hide()
+    end
+    f:SetHeight(-y + PAD)
 end
 
 -- Debajo de la ventana de Oroboros si está abierta (las dos van a la derecha de la subasta);
@@ -175,12 +285,7 @@ function PH.Show(itemID, live)
     if not itemID then return end
     local f = build()
     PH.current, PH.live = itemID, live
-    local L = PH.Lines(itemID, live)
-    f.title:SetText(L[1] or ("item:" .. itemID))
-    for k = 1, 4 do f.lines[k]:SetText(L[k + 1] or "") end
-    local s = PH.Get(itemID)
-    fill(f.weekBars, s and s.weeks or {})
-    fill(f.dayBars, s and s.days or {})
+    render(f, PH.Model(itemID, live))
     anchor(f)
     f:Show()
 end

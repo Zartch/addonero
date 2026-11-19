@@ -11,7 +11,7 @@ ADDON = os.path.join(ROOT, "Oroboros")
 lua = LuaRuntime(unpack_returned_tuples=True)
 lua.execute(open(os.path.join(ROOT, "tests", "mock_wow.lua"), encoding="utf-8").read())
 ns = lua.eval("{}")
-for f in ["Core.lua", "DB.lua", "Scanner.lua", "Professions.lua", "Ledger.lua", "Queue.lua", "Style.lua", "UI.lua", "PriceHistory.lua"]:
+for f in ["Core.lua", "DB.lua", "Scanner.lua", "Professions.lua", "Ledger.lua", "Queue.lua", "Style.lua", "Chart.lua", "UI.lua", "PriceHistory.lua"]:
     chunk = lua.execute("return function(src, name) return assert(loadstring(src, name)) end")(
         open(os.path.join(ADDON, f), encoding="utf-8").read(), "@" + f)
     chunk("Oroboros", ns)
@@ -184,6 +184,19 @@ lua.execute('OroborosResumen = { v = 1, t = 0, markets = { ["Otro-Alliance"] = {
 check(PH.Get(2589) is None, "panel: el resumen de otro mercado no se usa")
 lua.execute("OroborosResumen = nil")
 check(PH.Get(2589) is None and list(PH.Lines(2589, None).values())[-1] == "Sin historial: genera el plan.", "panel: sin Resumen.lua funciona igual")
+# Modelo del panel rediseñado (cifras, tono, fechas de días y semanas)
+lua.execute("OroborosResumen = { v = 1, t = 0, markets = { [\"" + ns.MarketKey() + "\"] = { [2589] = [[" + _S + "]], [2318] = [[50;50;50;50;50;20261119;50;20261119;;;50,50,50,50,50,50,50,50,50,50,50,50,50;50,50,50,50,50,50,50,50,50,50,50,50,50,50;20261119]] } } }")
+M = PH.Model(2589, 120)
+_st = [(x.label, x.value, x.sub) for x in M.stats.values()]
+check((M.diffPct, M.tone, M.hasHistory) == (-12, "good", True) and len(_st) == 5 and _st[3] == ("MÍNIMO", "95c", "12/11"),
+      f"panel: modelo con diferencia, tono y cifras {M.diffPct} {M.tone} {_st}")
+check(M.days[14].label == "19/11" and M.days[1].label == "06/11" and M.weeks[1].label == "semana del 24/08" and M.weeks[13].label == "semana del 16/11",
+      f"panel: fechas de días y semanas ({M.days[1].label}..{M.days[14].label}, {M.weeks[1].label})")
+check(PH.Model(2996, 450).hasHistory is False, "panel: sin resumen, sin historial")
+for _id, _live in ((2589, 120), (2996, 450), (2318, 50), (2318, None)):
+    PH.Show(_id, _live)
+check(True, "panel: se dibuja con resumen, sin resumen y con todos los valores iguales")
+lua.execute("OroborosResumen = nil")
 fire("AUCTION_HOUSE_SHOW")
 fire("COMMODITY_SEARCH_RESULTS_UPDATED", 2996)
 check(PH.live == 450, f"panel: el precio en vivo es el más barato de otros vendedores, no la primera fila ({PH.live})")
