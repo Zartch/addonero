@@ -18,11 +18,16 @@ import sys
 import time
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-DEFAULT_WORK = os.path.join(HERE, "..", "work")
+DEFAULT_WORK = os.path.normpath(os.path.join(HERE, "..", "work"))
+LOG_FILE = None          # --log: también se escribe aquí (para arrancarlo sin consola)
 
 
 def _log(*a):
-    print(time.strftime("[%d/%m %H:%M:%S]"), *a, flush=True)
+    line = " ".join([time.strftime("[%d/%m %H:%M:%S]")] + [str(x) for x in a])
+    print(line, flush=True)
+    if LOG_FILE:
+        with open(LOG_FILE, "a", encoding="utf-8") as fh:
+            fh.write(line + chr(10))
 
 
 def watch(path, run, interval=30, settle=10, cycles=None, clock=time.time, sleep=time.sleep,
@@ -91,7 +96,11 @@ def main():
     ap.add_argument("--interval", type=float, default=30)
     ap.add_argument("--settle", type=float, default=10)
     ap.add_argument("--once", action="store_true", help="procesar una vez y salir")
+    ap.add_argument("--log", help="escribir también lo que hace en este archivo (útil sin consola)")
     a = ap.parse_args()
+    global LOG_FILE
+    LOG_FILE = a.log
+    a.work = os.path.normpath(a.work)
     path = a.path or (find_file(a.find) if a.find else None)
     if not path:
         ap.error("indica la ruta de Oroboros.lua o --find")

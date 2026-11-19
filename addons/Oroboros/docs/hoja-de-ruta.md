@@ -19,8 +19,8 @@ El usuario quiere ganar oro con la subasta de WoW Forever sabiendo **cuándo** c
 | — | Franjas horarias (dos cuentas: total y baratas) | ✅ Hecho (19/11), ver `docs/franjas-horarias.md` |
 | 1 | Modelo de datos | ✅ Hecho (19/11), plan en `docs/planes/2026-11-19-fase1-modelo-de-datos.md` |
 | 2 | Seguimiento de precios al estilo Camel | ✅ Hecho fuera del juego (19/11); falta comprobarlo en el juego. Plan en `docs/planes/2026-11-19-fase2-seguimiento-precios.md` |
-| 3 | Automatización | ⏳ Siguiente |
-| 4 | Cálculos avanzados | Pendiente (cuando haya datos) |
+| 3 | Automatización | ✅ Hecho fuera del juego (19/11); falta comprobarlo en el juego. Plan en `docs/planes/2026-11-19-fase3-automatizacion.md` |
+| 4 | Cálculos avanzados | ⏳ Siguiente, cuando haya un par de semanas de datos |
 
 ## Fase 1: modelo de datos
 
@@ -73,6 +73,16 @@ El usuario quiere ganar oro con la subasta de WoW Forever sabiendo **cuándo** c
 - Con el escaneo completo de Auctionator activado, no se lanza el propio: se lee el de Auctionator.
 - Se puede apagar con `/oro set autoscan 0`.
 - Un vigilante en Windows (`tools/oroboros_watch.py`) detecta cuándo el juego guarda los datos y exporta, archiva, genera el plan y el resumen solo. Está documentado cómo arrancarlo al iniciar sesión.
+
+**Hecho (19/11), con pruebas fuera del juego.** Lo aprendido:
+- Procesar tus datos reales completos tarda unos 6 s.
+- Arreglado de paso: el panel de precios de la fase 2 se anclaba en el mismo sitio que la ventana de Oroboros; ahora va debajo de ella.
+- La tarea programada de Windows está documentada en el README, pero no se ha creado: es un cambio en el sistema del usuario y la crea él si quiere.
+
+**Por comprobar en el juego:**
+1. Al abrir la subasta pasados 15 min: el botón «Escaneando…» pulsado, el avance y los avisos del chat.
+2. Que no choca con el autoescaneo resumen de Auctionator, que también arranca al abrir la subasta.
+3. Que el panel de precios queda debajo de la ventana de Oroboros.
 
 ## Fase 4: cálculos avanzados
 

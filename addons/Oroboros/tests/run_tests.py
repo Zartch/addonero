@@ -725,10 +725,11 @@ check(_watch_case([100]) == (0, 0), "vigilante: sin cambios no hace nada")
 check(_watch_case([100, 200, 200, 300, 300, 300], fail_first=True) == (1, 2), "vigilante: un fallo se registra y sigue vigilando")
 wtmp = os.path.join(tmp, "watch")
 rw = subprocess.run([sys.executable, os.path.join(ROOT, "tools", "oroboros_watch.py"), os.path.join(tmp, "A.lua"), "--work", wtmp,
-                     "--resumen", os.path.join(wtmp, "Resumen.lua"), "--once"],
+                     "--resumen", os.path.join(wtmp, "Resumen.lua"), "--once", "--log", os.path.join(tmp, "vigilante.log")],
                     capture_output=True, text=True, encoding="utf-8", errors="replace")
 check(rw.returncode == 0 and all(os.path.exists(os.path.join(wtmp, f)) for f in ("plan.html", "archivo.sqlite", "Resumen.lua", "oroboros.sqlite")),
       "vigilante --once: exporta, archiva, genera el plan y el resumen " + (rw.stdout + rw.stderr)[-200:])
+check("Listo:" in open(os.path.join(tmp, "vigilante.log"), encoding="utf-8").read(), "vigilante --log: deja constancia en un archivo")
 
 # Sin histórico (primer día con datos reales): lotes de prueba y tope para la confianza baja
 import shutil

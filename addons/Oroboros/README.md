@@ -105,6 +105,31 @@ Para saber a qué horas se vende más cada objeto (diseño en `docs/franjas-hora
 
 Se cuentan dos cosas entre escaneos seguidos (como mucho 6 h): lo que desaparece en total y lo que desaparece **barato** (a ≤ mínimo × 1,25, con el mismo umbral en los dos escaneos), que es lo que más probablemente se ha vendido. Una franja necesita 3 mediciones en 2 días distintos para darse por fiable.
 
+## Automatización
+
+**Escaneo automático.** Al abrir la subasta, si han pasado 15 minutos desde el último escaneo (propio o de Auctionator), Oroboros lanza el escaneo completo solo. Se ve igual que si hubieras pulsado el botón:
+
+- el botón aparece pulsado y desactivado con «Escaneando…»;
+- la línea de estado muestra el avance («Escaneo automático: 3000 / 7000»);
+- el chat avisa al empezar y al acabar.
+
+Si Auctionator tiene su escaneo completo activado, no se lanza el propio: se lee el suyo. Se apaga con `/oro set autoscan 0`.
+
+**Vigilante.** `tools/oroboros_watch.py` mira `Oroboros.lua` cada 30 s. Cuando el juego lo guarda (al salir o con `/reload`) y lleva 10 s sin cambiar, exporta al archivo (con Auctionator), escribe `Resumen.lua` y genera `work/plan.html` y las rutas. No toca nada del juego.
+
+```
+python tools/oroboros_watch.py --find "F:/World of Warcraft/_forever_"          # vigilar (Ctrl+C para parar)
+python tools/oroboros_watch.py --find "F:/World of Warcraft/_forever_" --once   # procesar ya, una vez
+```
+
+Para que arranque solo al iniciar sesión en Windows, sin ventana, crea una tarea programada desde un `cmd` (ajusta las rutas si las tuyas son otras):
+
+```
+schtasks /Create /TN "Oroboros vigilante" /SC ONLOGON /TR "\"C:\Users\<usuario>\AppData\Local\Programs\Python\Python310\pythonw.exe\" \"<repo>\addons\Oroboros\tools\oroboros_watch.py\" --find \"F:\World of Warcraft\_forever_\" --log \"<repo>\addons\Oroboros\work\vigilante.log\""
+```
+
+Lo que hace queda en `work/vigilante.log`. Para quitarla: `schtasks /Delete /TN "Oroboros vigilante"`.
+
 ## Historial de precios (al estilo CamelCamelCamel)
 
 - **En la subasta**: al seleccionar un objeto, a la derecha de la subasta aparece un panel con:
@@ -173,6 +198,7 @@ El tooltip de cada objeto muestra el precio guardado y qué personaje tuyo lo fa
 | `/oro` | Muestra la ayuda. |
 | `/oro show` | Muestra u oculta la ventana. |
 | `/oro scan` | Escaneo completo (con la subasta abierta). Con Auctionator escaneando, avisa y no lanza otro. |
+| `/oro set autoscan 0` | Apaga el escaneo automático al abrir la subasta (`1` lo vuelve a encender). |
 | `/oro scan forzar` | Escaneo propio aunque Auctionator haga el suyo (respeta el límite de 15 minutos de los dos). |
 | `/oro precio <itemID o enlace>` | Panel con el historial de precios del objeto. |
 | `/oro cliente` | Versión, interfaz, reino, conjunto de reglas y clave de mercado. También se guarda al entrar en `OroborosDB.client`. |
