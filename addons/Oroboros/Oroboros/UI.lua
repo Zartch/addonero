@@ -162,7 +162,7 @@ function UI.Refresh()
             local a = items[i]
             local txt = ns.Queue.Describe(a)
             if a.done >= a.qty then
-                lines[#lines + 1] = "|TInterface\RaidFrame\ReadyCheck-Ready:12|t " .. S.Hex("muted", txt)
+                lines[#lines + 1] = "|TInterface\\RaidFrame\\ReadyCheck-Ready:12|t " .. S.Hex("muted", txt)
             elseif i == idx then
                 lines[#lines + 1] = S.Hex("accent", "> " .. txt)
             else
