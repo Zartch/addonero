@@ -13,6 +13,7 @@ Scanner.lua
 Professions.lua
 Ledger.lua
 Queue.lua
+Style.lua
 UI.lua
 PriceHistory.lua
 # Generado fuera del juego (tools/oroboros_summary.py); si falta, el addon funciona igual

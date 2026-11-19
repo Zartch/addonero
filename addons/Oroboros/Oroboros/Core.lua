@@ -178,6 +178,8 @@ SlashCmdList.OROBOROS = function(msg)
         ns.Print(string.format("%s  min %s  valor %s  cantidad %d  (%s)",
             ns.DB.ItemName(id), ns.Money(p.min), ns.Money(p.mv), p.qty or 0,
             date("%d/%m %H:%M", p.t or 0)))
+    elseif cmd == "precio" and rest:lower() == "debug" then
+        ns.PriceHistory.Debug()
     elseif cmd == "precio" then
         local id = tonumber(rest) or tonumber((rest or ""):match("item:(%d+)"))
         if not id then ns.Print("uso: /oro precio <itemID|link>") return end

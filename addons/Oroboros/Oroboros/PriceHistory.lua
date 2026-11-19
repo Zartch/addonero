@@ -192,27 +192,55 @@ end
 ----------------------------------------------------------------------
 -- Se abre al seleccionar un objeto en la subasta (la búsqueda que lanza el juego o Auctionator)
 ----------------------------------------------------------------------
+-- Precio en vivo: el más barato de otros vendedores (la primera fila puede ser una subasta propia)
+-- rows: { {unitPrice, qty, mine} }
+function PH.LivePrice(rows)
+    local best
+    for _, r in ipairs(rows or {}) do
+        if r[1] and r[1] > 0 and (r[2] or 0) > 0 and not r[3] and (not best or r[1] < best) then best = r[1] end
+    end
+    return best
+end
+
+local function remember(rows)
+    PH.lastRows = {}
+    for i = 1, math.min(5, #rows) do PH.lastRows[i] = rows[i] end
+end
+
+-- /oro precio debug: lo que devolvió el juego en la última búsqueda
+function PH.Debug()
+    if not PH.lastRows or #PH.lastRows == 0 then ns.Print("sin búsquedas todavía: selecciona un objeto en la subasta.") return end
+    ns.Print(string.format("última búsqueda: %s (en vivo %s)", ns.DB.ItemName(PH.current or 0), ns.Money(PH.live)))
+    for i, r in ipairs(PH.lastRows) do
+        ns.Print(string.format("  %d. %s × %s%s", i, tostring(r[1]), tostring(r[2]), r[3] and " (propia)" or ""))
+    end
+end
+
 ns.On("COMMODITY_SEARCH_RESULTS_UPDATED", function(itemID)
     if not (ns.Scanner and ns.Scanner.ahOpen) or not itemID then return end
-    local live
-    if C_AuctionHouse.GetNumCommoditySearchResults(itemID) > 0 then
-        local r = C_AuctionHouse.GetCommoditySearchResultInfo(itemID, 1)
-        live = r and r.unitPrice
+    local rows = {}
+    for i = 1, C_AuctionHouse.GetNumCommoditySearchResults(itemID) do
+        local r = C_AuctionHouse.GetCommoditySearchResultInfo(itemID, i)
+        if r then
+            rows[#rows + 1] = { r.unitPrice, r.quantity, (r.numOwnerItems or 0) > 0 and r.numOwnerItems == r.quantity }
+        end
     end
-    PH.Show(itemID, live)
+    remember(rows)
+    PH.Show(itemID, PH.LivePrice(rows))
 end)
 
 ns.On("ITEM_SEARCH_RESULTS_UPDATED", function(itemKey)
     if not (ns.Scanner and ns.Scanner.ahOpen) or not itemKey or not itemKey.itemID then return end
-    local live
+    local rows = {}
     for i = 1, C_AuctionHouse.GetNumItemSearchResults(itemKey) do
         local r = C_AuctionHouse.GetItemSearchResultInfo(itemKey, i)
         if r and r.buyoutAmount and r.buyoutAmount > 0 then
-            local u = r.buyoutAmount / (r.quantity or 1)
-            if not live or u < live then live = u end
+            rows[#rows + 1] = { r.buyoutAmount / (r.quantity or 1), r.quantity or 1, r.containsOwnerItem and true or false }
         end
     end
-    PH.Show(itemKey.itemID, live)
+    table.sort(rows, function(a, b) return a[1] < b[1] end)
+    remember(rows)
+    PH.Show(itemKey.itemID, PH.LivePrice(rows))
 end)
 
 ns.On("AUCTION_HOUSE_CLOSED", PH.Hide)

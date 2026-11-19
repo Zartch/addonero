@@ -11,7 +11,7 @@ ADDON = os.path.join(ROOT, "Oroboros")
 lua = LuaRuntime(unpack_returned_tuples=True)
 lua.execute(open(os.path.join(ROOT, "tests", "mock_wow.lua"), encoding="utf-8").read())
 ns = lua.eval("{}")
-for f in ["Core.lua", "DB.lua", "Scanner.lua", "Professions.lua", "Ledger.lua", "Queue.lua", "UI.lua", "PriceHistory.lua"]:
+for f in ["Core.lua", "DB.lua", "Scanner.lua", "Professions.lua", "Ledger.lua", "Queue.lua", "Style.lua", "UI.lua", "PriceHistory.lua"]:
     chunk = lua.execute("return function(src, name) return assert(loadstring(src, name)) end")(
         open(os.path.join(ADDON, f), encoding="utf-8").read(), "@" + f)
     chunk("Oroboros", ns)
@@ -184,6 +184,13 @@ lua.execute('OroborosResumen = { v = 1, t = 0, markets = { ["Otro-Alliance"] = {
 check(PH.Get(2589) is None, "panel: el resumen de otro mercado no se usa")
 lua.execute("OroborosResumen = nil")
 check(PH.Get(2589) is None and list(PH.Lines(2589, None).values())[-1] == "Sin historial: genera el plan.", "panel: sin Resumen.lua funciona igual")
+fire("AUCTION_HOUSE_SHOW")
+fire("COMMODITY_SEARCH_RESULTS_UPDATED", 2996)
+check(PH.live == 450, f"panel: el precio en vivo es el más barato de otros vendedores, no la primera fila ({PH.live})")
+check(PH.LivePrice(lua.eval("{}")) is None, "panel: sin filas válidas no hay precio en vivo")
+lua.execute("LOG = {}"); G.SlashCmdList.OROBOROS("precio debug")
+_dbg = " ".join(G.LOG.values())
+check("400" in _dbg and "propia" in _dbg and "450" in _dbg, f"/oro precio debug muestra lo que devolvió el juego ({_dbg[:120]})")
 PH.Hide(); fire("AUCTION_HOUSE_SHOW")      # las pruebas siguientes cuentan con la subasta abierta
 calls()
 
