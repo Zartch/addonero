@@ -309,13 +309,22 @@ check(st_["depth_est"] and st_["src"] == "atr" and st_["conf"] != "alta", f"plan
 check(dd.stats(2589)["depth_est"] is False, "planificador: profundidad real de Oroboros")
 
 from oroboros_export import LuaParser
+# Ayudante: escribe filas (market, t, item, min, mv, qty, cheap, cheap_prev) en el archivo (esquema 2)
+from oroboros_archive import open_archive, insert_scan
+def arch_write(path, flat):
+    con = open_archive(path)
+    by = {}
+    for mk_, t_, it_, mn_, mv_, q_, c_, cp_ in flat:
+        by.setdefault((mk_, t_), []).append((it_, mn_, mv_, q_, c_, cp_))
+    for (mk_, t_), rws in sorted(by.items()):
+        insert_scan(con, mk_, t_, rws)
+    con.commit(); con.close()
+
 # Análisis por franjas: dos cuentas de lo que desaparece (total y baratas)
-from oroboros_archive import SCHEMA as ARCH_SCHEMA
 import oroboros_hours as H
 import tempfile as _tf
 def _ts(day, hh, mm=0): return int(datetime.datetime(2026, 11, day, hh, mm).timestamp())
 arch3 = os.path.join(_tf.mkdtemp(), "a3.sqlite")
-_c3 = sqlite3.connect(arch3); _c3.executescript(ARCH_SCHEMA)
 rows = [  # (item, t, min, qty, cheap, cheap_prev)
     (1, _ts(10, 10), 30, 100, 30, 30), (1, _ts(10, 14), 34, 60, 50, 10),          # 4 h: -40 total, -20 baratas
     (2, _ts(10, 10), 30, 100, 30, 30), (2, _ts(10, 17), 30, 0, 0, 0),             # 7 h: no cuenta
@@ -325,8 +334,7 @@ rows = [  # (item, t, min, qty, cheap, cheap_prev)
     (5, _ts(11, 8, 30), 20, 90, 9, 9), (5, _ts(11, 9, 30), 20, 80, 9, 9),
     (6, _ts(10, 22), 50, 100, 40, 40), (6, _ts(11, 2), 50, 60, 20, 20),          # cruza la medianoche
 ]
-_c3.executemany("INSERT INTO scans VALUES ('M',?,?,?,?,?,?,?)", [(t, i, mn, mn, q, c, cp) for i, t, mn, q, c, cp in rows])
-_c3.commit(); _c3.close()
+arch_write(arch3, [("M", t, i, mn, mn, q, c, cp) for i, t, mn, q, c, cp in rows])
 A = H.analyze(arch3, "M")
 b1 = A[1]
 check((b1[2]["gone_total_h"], b1[2]["gone_cheap_h"], b1[3]["gone_total_h"], b1[3]["gone_cheap_h"]) == (10, 5, 10, 5),
@@ -350,9 +358,29 @@ r1, r2 = append_scans(arch, svdb), append_scans(arch, svdb)
 check(n_buf > 0 and r1["added"] > 0 and r2["added"] == 0 and r2["already"] >= r1["added"],
       f"archivo: añade {r1['added']} filas y no duplica al exportar otra vez")
 _ac = sqlite3.connect(arch)
-check(_ac.execute("SELECT qty, cheap, cheap_prev FROM scans WHERE item_id=2589 ORDER BY t LIMIT 1").fetchone() == (240, 40, 40),
+check(_ac.execute("SELECT o.qty, o.cheap, o.cheap_prev FROM observations o JOIN scans s USING (scan_id) "
+                  "WHERE o.item_id=2589 ORDER BY s.t LIMIT 1").fetchone() == (240, 40, 40),
       "archivo: columnas total, baratas y baratas con el umbral anterior")
+check(_ac.execute("SELECT COUNT(*) FROM markets").fetchone()[0] == 1, "archivo: cada mercado una sola vez")
+_it = _ac.execute("SELECT name, first_seen, last_seen FROM items WHERE item_id=2589").fetchone()
+check(_it and _it[0] == "Linen Cloth" and _it[1] and _it[2] >= _it[1], f"archivo: cada producto una sola vez, con nombre y primera/última vez visto {_it}")
+check(_ac.execute("SELECT value FROM meta WHERE key='schema'").fetchone() == ("2",), "archivo: versión del esquema")
 _ac.close()
+
+# Migración desde la tabla plana del 19/11 (esquema 1)
+arch_v1 = os.path.join(_tf.mkdtemp(), "v1.sqlite")
+_v1 = sqlite3.connect(arch_v1)
+_v1.executescript("""CREATE TABLE scans (market TEXT, t INTEGER, item_id INTEGER, min REAL, mv REAL, qty INTEGER,
+    cheap INTEGER, cheap_prev INTEGER, PRIMARY KEY (market, t, item_id));""")
+_v1.executemany("INSERT INTO scans VALUES (?,?,?,?,?,?,?,?)", [
+    ("M", 100, 2589, 30, 32, 240, 40, 40), ("M", 100, 4306, None, None, 0, 0, 0), ("M", 200, 2589, 31, 33, 200, 30, 35)])
+_v1.commit(); _v1.close()
+_v2 = open_archive(arch_v1)
+check(_v2.execute("SELECT COUNT(*) FROM observations").fetchone()[0] == 3 and
+      _v2.execute("SELECT COUNT(*) FROM scans").fetchone()[0] == 2 and
+      _v2.execute("SELECT value FROM meta WHERE key='schema'").fetchone() == ("2",) and
+      os.path.exists(arch_v1 + ".bak"), "archivo: migración de la tabla plana sin perder filas, con copia .bak")
+_v2.close()
 fake = {"markets": {"M": {"scans": [{"t": 1000 + i, "data": "2589,30,32,240,40,40"} for i in range(12)]}}}
 arch2 = os.path.join(_tf.mkdtemp(), "a2.sqlite")
 append_scans(arch2, {"markets": {"M": {"scans": [{"t": 10, "data": "2589,30,32,240,40,40"}]}}})
@@ -437,11 +465,9 @@ p2 = json.load(open(os.path.join(tmp, "p2.json"), encoding="utf-8"))
 
 # Franjas en el plan: con --archive, la venta dice en qué franja desaparece más
 import datetime as _dt, tempfile as _tf2
-from oroboros_archive import SCHEMA as _AS
 opp_x = next(o for o in plan["opportunities"] if o.get("included") and o["kind"] == "craft")
 X = opp_x["out_item"]
 arch_p = os.path.join(_tf2.mkdtemp(), "arch.sqlite")
-_cx = sqlite3.connect(arch_p); _cx.executescript(_AS)
 qty_, rows_ = 10000, []
 for k in range(36):                                   # cada 2 h durante 3 días
     t = int(_dt.datetime(2026, 11, 10, 0, 0).timestamp()) + k * 7200
@@ -455,7 +481,7 @@ fixed = []
 for j, r_ in enumerate(rows_):
     prev_drop = (40 if _dt.datetime.fromtimestamp(rows_[j - 1][1]).hour >= 20 else 2) if j else 0
     fixed.append(r_ + (500 - prev_drop,))
-_cx.executemany("INSERT INTO scans VALUES (?,?,?,?,?,?,?,?)", fixed); _cx.commit(); _cx.close()
+arch_write(arch_p, fixed)
 r4 = subprocess.run([sys.executable, os.path.join(ROOT, "tools", "oroboros_plan.py"), "--db", os.path.join(tmp, "a.sqlite"),
                      "--json", os.path.join(tmp, "p4.json"), "--html", os.path.join(tmp, "p4.html"), "--synthetic",
                      "--now", NOW, "--archive", arch_p], capture_output=True, text=True, encoding="utf-8", errors="replace")

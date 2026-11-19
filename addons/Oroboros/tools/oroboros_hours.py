@@ -42,8 +42,14 @@ def _split(t0, t1):
 
 
 def pick_market(con):
-    r = con.execute("SELECT market, COUNT(*) n FROM scans GROUP BY market ORDER BY n DESC LIMIT 1").fetchone()
+    r = con.execute("""SELECT m.key, COUNT(*) n FROM scans s JOIN markets m USING (market_id)
+                       GROUP BY m.key ORDER BY n DESC LIMIT 1""").fetchone()
     return r[0] if r else None
+
+
+OBS_SQL = """SELECT o.item_id, s.t, o.min, o.qty, o.cheap, o.cheap_prev
+             FROM observations o JOIN scans s USING (scan_id) JOIN markets m USING (market_id)
+             WHERE m.key=? ORDER BY o.item_id, s.t"""
 
 
 def analyze(archive_path, market=None):
@@ -55,8 +61,7 @@ def analyze(archive_path, market=None):
     acc = defaultdict(lambda: [{"total": 0.0, "cheap": 0.0, "secs": 0, "n": 0, "days": set(), "prices": []}
                                for _ in BANDS])
     prev = {}
-    for item, t, mn, qty, cheap, cheap_prev in con.execute(
-            "SELECT item_id, t, min, qty, cheap, cheap_prev FROM scans WHERE market=? ORDER BY item_id, t", (market,)):
+    for item, t, mn, qty, cheap, cheap_prev in con.execute(OBS_SQL, (market,)):
         a = acc[item]
         if mn is not None:
             a[band_of(t)]["prices"].append(mn)
@@ -130,7 +135,7 @@ def main():
     a = ap.parse_args()
     data = analyze(a.archive, a.market)
     con = sqlite3.connect(a.archive)
-    n_scans = con.execute("SELECT COUNT(DISTINCT t) FROM scans").fetchone()[0]
+    n_scans = con.execute("SELECT COUNT(*) FROM scans").fetchone()[0]
     print(f"{n_scans} escaneos archivados, {len(data)} objetos.")
     items = [a.item] if a.item else sorted(
         data, key=lambda i: -sum(b["gone_cheap_h"] or 0 for b in data[i]))[:a.top]
