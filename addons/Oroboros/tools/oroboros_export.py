@@ -342,6 +342,9 @@ def main():
                     help="añadir los precios de Auctionator (sin ruta: Auctionator.lua junto a Oroboros.lua)")
     ap.add_argument("--archive", metavar="RUTA",
                     help="añadir los escaneos guardados en el juego a un SQLite permanente (p. ej. work/archivo.sqlite)")
+    ap.add_argument("--resumen", metavar="RUTA",
+                    help="con --archive: dónde escribir Resumen.lua para el panel del juego "
+                         "(por defecto Oroboros/Resumen.lua; «no» para no escribirlo)")
     args = ap.parse_args()
 
     path = args.path or (find_file(args.find) if args.find else None)
@@ -358,6 +361,12 @@ def main():
         print(f"JSON → {args.json}")
     if args.archive:
         update_archive(args.archive, db, args.auctionator, path)
+        if (args.resumen or "").lower() != "no":
+            import oroboros_summary
+            out = args.resumen or oroboros_summary.DEFAULT_OUT
+            r = oroboros_summary.write_resumen(args.archive, out)
+            print(f"Resumen → {os.path.abspath(out)}: {r['items']} objetos, {r['bytes'] / 1024:.0f} KB "
+                  "(el juego lo carga al entrar o con /reload).")
     if args.sqlite:
         counts = write_sqlite(db, args.sqlite)
         print(f"SQLite → {args.sqlite}  " + ", ".join(f"{k}: {v}" for k, v in counts.items()))

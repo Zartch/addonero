@@ -18,8 +18,8 @@ El usuario quiere ganar oro con la subasta de WoW Forever sabiendo **cuándo** c
 |---|---|---|
 | — | Franjas horarias (dos cuentas: total y baratas) | ✅ Hecho (19/11), ver `docs/franjas-horarias.md` |
 | 1 | Modelo de datos | ✅ Hecho (19/11), plan en `docs/planes/2026-11-19-fase1-modelo-de-datos.md` |
-| 2 | Seguimiento de precios al estilo Camel | ⏳ Siguiente |
-| 3 | Automatización | Pendiente |
+| 2 | Seguimiento de precios al estilo Camel | ✅ Hecho fuera del juego (19/11); falta comprobarlo en el juego. Plan en `docs/planes/2026-11-19-fase2-seguimiento-precios.md` |
+| 3 | Automatización | ⏳ Siguiente |
 | 4 | Cálculos avanzados | Pendiente (cuando haya datos) |
 
 ## Fase 1: modelo de datos
@@ -50,6 +50,18 @@ El usuario quiere ganar oro con la subasta de WoW Forever sabiendo **cuándo** c
 - `/oro precio <objeto>` abre el panel en cualquier sitio.
 - La pestaña Mercado de la página muestra el historial completo con rangos (1 mes, 3 meses, 6 meses, 1 año, todo) y los mínimos, máximos y medias.
 - El juego no tarda más en cargar.
+
+**Hecho (19/11), con pruebas fuera del juego.** Lo aprendido:
+- Con datos reales, `Resumen.lua` ocupa 841 KB para 7211 objetos y carga en unos 0,02 s. Crecerá algo cuando se llenen las 13 semanas: si pasa de ~1,5 MB, comprimir los números.
+- Con 4 días de historia, las barras semanales del panel salen casi vacías; se llenan solas con los escaneos.
+- Las pruebas nunca escriben `Resumen.lua` en la carpeta del addon: el juego la carga a través del enlace y vería datos inventados.
+
+**Por comprobar en el juego:**
+1. Tras `/reload`, que no salga ningún error, y que el addon cargue también en una instalación sin `Resumen.lua` (mirar `Logs/FrameXML.log`).
+2. Que el panel aparece a la derecha de la subasta al seleccionar un objeto, sin tapar Auctionator.
+3. Que las tildes y el «·» se ven bien con la fuente del juego.
+4. Que `/oro precio <id>` lo abre fuera de la subasta.
+5. Que tras un escaneo completo los objetos van recibiendo su nombre (`/oro stats`, o en la página del plan).
 
 ## Fase 3: automatización
 

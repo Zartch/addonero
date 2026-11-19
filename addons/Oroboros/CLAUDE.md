@@ -13,6 +13,7 @@ Lee `README.md` (uso y funciones) y `docs/arquitectura.md` (decisiones y reglas)
 - `tools/auctionator_source.py` — lee `Auctionator.lua` (base en CBOR) y la mezcla en el SQLite.
 - `tools/oroboros_archive.py` — añade los últimos 12 escaneos del juego a `work/archivo.sqlite` (permanente).
 - `tools/oroboros_hours.py` — franjas horarias: lo que desaparece (total y barato) y el precio por franja.
+- `tools/oroboros_summary.py` — resumen de precios por objeto → `Oroboros/Resumen.lua` (ignorado en git), que lee el panel `Oroboros/PriceHistory.lua`.
 - `tools/oroboros_plan.py` — planificador: rutas, transformaciones, qué aprender, inventario → `plan.html`.
 - `tools/oroboros_ideas.py` — ideas de especulación y cartera.
 - `tools/planner_ui.html` — plantilla de la página (el plan se incrusta en `/*__PLAN__*/null`).

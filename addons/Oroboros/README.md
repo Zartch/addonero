@@ -105,6 +105,20 @@ Para saber a qué horas se vende más cada objeto (diseño en `docs/franjas-hora
 
 Se cuentan dos cosas entre escaneos seguidos (como mucho 6 h): lo que desaparece en total y lo que desaparece **barato** (a ≤ mínimo × 1,25, con el mismo umbral en los dos escaneos), que es lo que más probablemente se ha vendido. Una franja necesita 3 mediciones en 2 días distintos para darse por fiable.
 
+## Historial de precios (al estilo CamelCamelCamel)
+
+- **En la subasta**: al seleccionar un objeto, a la derecha de la subasta aparece un panel con:
+  - el precio de hoy en vivo y si está por encima o por debajo de su media de 30 días;
+  - el mínimo y el máximo históricos con su fecha;
+  - las medias de 7, 30 y 90 días;
+  - 13 barras semanales y 14 diarias;
+  - las franjas en las que más se vende y en las que está más barato, si hay datos fiables.
+
+  Funciona con la subasta de Blizzard y con Auctionator. `/oro precio <id o enlace>` lo abre en cualquier sitio.
+- **De dónde salen los datos**: el exportador con `--archive` escribe `Oroboros/Resumen.lua` (unos 0,8 MB; git lo ignora). El juego lo carga al entrar o con `/reload` y solo lo lee, sin engordar `Oroboros.lua`. Con `--resumen RUTA` se cambia el destino y con `--resumen no` no se escribe. A mano: `python tools/oroboros_summary.py work/archivo.sqlite`. Si no existe, el panel muestra solo el precio de hoy.
+- **En la página del plan**: la pestaña **Mercado** muestra el historial completo con rangos de 1 mes, 3 meses, 6 meses, 1 año y todo, y una tabla con el mínimo y el máximo del rango e históricos (con fecha) y las medias de 7, 30 y 90 días.
+- **Nombres**: tras cada escaneo completo, el addon pide en tandas los nombres de los objetos que el juego aún no le ha dado.
+
 ## Varios personajes y banquero
 
 Los datos del addon son **de la cuenta**: lo que lee un personaje lo ven todos. Un personaje de nivel bajo parado en la subasta conoce las recetas de los demás.
@@ -160,6 +174,7 @@ El tooltip de cada objeto muestra el precio guardado y qué personaje tuyo lo fa
 | `/oro show` | Muestra u oculta la ventana. |
 | `/oro scan` | Escaneo completo (con la subasta abierta). Con Auctionator escaneando, avisa y no lanza otro. |
 | `/oro scan forzar` | Escaneo propio aunque Auctionator haga el suyo (respeta el límite de 15 minutos de los dos). |
+| `/oro precio <itemID o enlace>` | Panel con el historial de precios del objeto. |
 | `/oro cliente` | Versión, interfaz, reino, conjunto de reglas y clave de mercado. También se guarda al entrar en `OroborosDB.client`. |
 | `/oro price <itemID o enlace>` | Precio guardado: mínimo, valor de mercado, cantidad y hora. |
 | `/oro prof` | Profesiones de todos tus personajes, con recetas aprendidas y vistas. |

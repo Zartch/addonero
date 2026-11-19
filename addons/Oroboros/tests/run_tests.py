@@ -504,7 +504,7 @@ append_scans(arch2, {"markets": {"M": {"scans": [{"t": 10, "data": "2589,30,32,2
 check(append_scans(arch2, fake)["gap"] is True, "archivo: avisa si se han perdido escaneos (buffer lleno sin solape)")
 fake["markets"]["M"]["scans"][0]["t"] = 10
 check(append_scans(arch2, fake)["gap"] is False, "archivo: sin hueco si hay solape")
-r = subprocess.run([sys.executable, os.path.join(ROOT, "tools", "oroboros_export.py"), sv, "--archive", arch],
+r = subprocess.run([sys.executable, os.path.join(ROOT, "tools", "oroboros_export.py"), sv, "--archive", arch, "--resumen", "no"],
                    capture_output=True, text=True, encoding="utf-8", errors="replace")
 check(r.returncode == 0 and "Archivo" in r.stdout, "exportador: --archive " + (r.stdout + r.stderr)[-200:])
 
@@ -650,7 +650,7 @@ _cpre.execute("INSERT INTO daily VALUES (?,2589,'2026-09-01',11,12,12,999,'atr',
               (__import__("oroboros_archive").market_id(_cpre, "ForeverPvE-Horde"),))
 _cpre.commit(); _cpre.close()
 r5 = subprocess.run([sys.executable, os.path.join(ROOT, "tools", "oroboros_export.py"), os.path.join(tmp, "A.lua"),
-                     "--sqlite", os.path.join(tmp, "e.sqlite"), "--archive", arch_e],
+                     "--sqlite", os.path.join(tmp, "e.sqlite"), "--archive", arch_e, "--resumen", os.path.join(tmp, "Resumen.lua")],
                     capture_output=True, text=True, encoding="utf-8", errors="replace")
 check(r5.returncode == 0 and "histórico diario" in r5.stdout, "exportador con archivo: " + (r5.stdout + r5.stderr)[-250:])
 _ce = sqlite3.connect(os.path.join(tmp, "e.sqlite"))
@@ -666,6 +666,11 @@ r6 = subprocess.run([sys.executable, os.path.join(ROOT, "tools", "oroboros_plan.
 p6 = json.load(open(os.path.join(tmp, "p6.json"), encoding="utf-8"))
 _sel = lambda pl: sorted((o["name"], o["units"]) for o in pl["opportunities"] if o.get("included"))
 check(_sel(p6) == _sel(plan), "plan desde el archivo: mismas oportunidades que sin archivo")
+_lr2 = LuaRuntime(unpack_returned_tuples=True); _lr2.execute(open(os.path.join(tmp, "Resumen.lua"), encoding="utf-8").read())
+check("Resumen" in r5.stdout and _lr2.eval("OroborosResumen.v") == 1 and _lr2.globals().OroborosResumen.markets["ForeverPvE-Horde"] is not None,
+      "exportador con archivo: escribe Resumen.lua válido")
+check(not os.path.exists(os.path.join(ROOT, "Oroboros", "Resumen.lua")) or "ForeverPvE-Horde" not in open(os.path.join(ROOT, "Oroboros", "Resumen.lua"), encoding="utf-8").read(),
+      "las pruebas no escriben datos inventados en la carpeta del addon")
 
 # Sin histórico (primer día con datos reales): lotes de prueba y tope para la confianza baja
 import shutil
