@@ -67,4 +67,8 @@ Por validar en el juego: la lectura pasiva con el escaneo completo de Auctionato
 
 Goblinomics (instalado) es contabilidad y patrimonio sobre precios de TSM/Auctionator: no escanea, no ejecuta acciones ni planifica. Se solapa con el libro de compras e inventario de Oroboros, no con el escaneo, la cola ni el planificador.
 
+## Siguiente trabajo: hoja de ruta por fases
+
+**Lee primero `docs/hoja-de-ruta.md`.** Ahí está qué esperamos de cada fase (modelo de datos, seguimiento de precios al estilo Camel, automatización y cálculos) y en qué estado está; el detalle técnico está en `docs/modelo-y-seguimiento.md`. Se trabaja una fase cada vez: plan en `docs/planes/`, ejecución con pruebas y commits, y al acabar se actualiza el estado en la hoja de ruta.
+
 Otros pendientes: ver `docs/arquitectura.md`, sección Pendiente.

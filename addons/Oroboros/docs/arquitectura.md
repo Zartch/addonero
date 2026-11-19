@@ -81,6 +81,7 @@ HOLD  <itemID> <cantidad> <objetivo> <stop> <AAAA-MM-DD> [entrada]
 Precios en cobre o `1g23s45c`. `#` = comentario.
 
 ## Pendiente
+- Hoja de ruta por fases (modelo de datos, seguimiento de precios, automatización, cálculos): `docs/hoja-de-ruta.md`.
 - Validar en el juego la lectura pasiva del escaneo de Auctionator.
 - Clave de mercado: Forever tiene un único reino interno (`CAMWOWEU5Realm5PvE`, sin reinos conectados; `GetRegionalRulesetName()` devuelve `nil`). Falta saber si la subasta se comparte entre facciones; si es así, quitar la facción de `ns.MarketKey`.
 - Duraciones de publicación en Forever (Auctionator usa 2/8/24 h).

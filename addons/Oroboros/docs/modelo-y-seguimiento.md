@@ -1,6 +1,6 @@
 # Modelo de datos, seguimiento de precios y automatización
 
-Diseño del 19/11/2026. Estado: **propuesta revisada, pendiente de aprobar**. Sustituye y amplía, para el almacenamiento, a `docs/franjas-horarias.md` (implementado el 19/11).
+Diseño del 19/11/2026. Estado: **aceptado como base el 19/11**; cada fase se planifica al empezarla. Resumen y estado de las fases en `docs/hoja-de-ruta.md`. Sustituye y amplía, para el almacenamiento, a `docs/franjas-horarias.md` (implementado el 19/11).
 
 ## Para qué
 
