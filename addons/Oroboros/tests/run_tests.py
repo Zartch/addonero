@@ -706,6 +706,30 @@ check("Resumen" in r5.stdout and _lr2.eval("OroborosResumen.v") == 1 and _lr2.gl
 check(not os.path.exists(os.path.join(ROOT, "Oroboros", "Resumen.lua")) or "ForeverPvE-Horde" not in open(os.path.join(ROOT, "Oroboros", "Resumen.lua"), encoding="utf-8").read(),
       "las pruebas no escriben datos inventados en la carpeta del addon")
 
+# Vigilante (fase 3): procesa los datos cuando el juego termina de guardar Oroboros.lua
+from oroboros_watch import watch
+def _watch_case(mtimes, fail_first=False, cycles=6):
+    clock = [0.0]; seq = list(mtimes); tries = [0]
+    def mt(_):
+        return seq.pop(0) if len(seq) > 1 else seq[0]
+    def run():
+        tries[0] += 1
+        if fail_first and tries[0] == 1:
+            raise RuntimeError("fallo de prueba")
+    n = watch("x", run, interval=30, settle=10, cycles=cycles, clock=lambda: clock[0],
+              sleep=lambda sec: clock.__setitem__(0, clock[0] + sec), mtime=mt, log=lambda *_: None)
+    return n, tries[0]
+check(_watch_case([100, 200, 200, 200]) == (1, 1), "vigilante: un guardado estable dispara el proceso una vez")
+check(_watch_case([100, 200, 300, 400, 500, 600, 700]) == (0, 0), "vigilante: mientras el archivo sigue cambiando, espera")
+check(_watch_case([100]) == (0, 0), "vigilante: sin cambios no hace nada")
+check(_watch_case([100, 200, 200, 300, 300, 300], fail_first=True) == (1, 2), "vigilante: un fallo se registra y sigue vigilando")
+wtmp = os.path.join(tmp, "watch")
+rw = subprocess.run([sys.executable, os.path.join(ROOT, "tools", "oroboros_watch.py"), os.path.join(tmp, "A.lua"), "--work", wtmp,
+                     "--resumen", os.path.join(wtmp, "Resumen.lua"), "--once"],
+                    capture_output=True, text=True, encoding="utf-8", errors="replace")
+check(rw.returncode == 0 and all(os.path.exists(os.path.join(wtmp, f)) for f in ("plan.html", "archivo.sqlite", "Resumen.lua", "oroboros.sqlite")),
+      "vigilante --once: exporta, archiva, genera el plan y el resumen " + (rw.stdout + rw.stderr)[-200:])
+
 # Sin histórico (primer día con datos reales): lotes de prueba y tope para la confianza baja
 import shutil
 nh = os.path.join(tmp, "nohist.sqlite")
