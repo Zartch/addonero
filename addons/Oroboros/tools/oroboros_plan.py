@@ -32,6 +32,7 @@ CONF_FACTOR = {"alta": 1.0, "media": 0.75, "baja": 0.5}
 TRIAL_UNITS = 20          # unidades como mucho
 TRIAL_INVEST = 10000      # 1 oro de inversión como mucho
 LOW_CONF_SHARE = 0.3      # parte del presupuesto que puede ir a cosas de confianza baja
+RISK_SHARE = 0.5          # de esa parte, lo que no es lote de prueba (reventas…) usa como mucho la mitad
 MIN_MARGIN = 0.08
 HERE = os.path.dirname(os.path.abspath(__file__))
 
@@ -540,8 +541,10 @@ def select(data, plan, opps, budget, horizon_h):
     # primero lo que más rinde por cada oro invertido, ponderado por confianza
     key = lambda o: o["profit_total"] * CONF_FACTOR[o["conf"]] / (o["solo_investment"] + 50000)
     low_cap, low_spent = budget * LOW_CONF_SHARE, 0.0
+    risk_cap, risk_spent = low_cap * RISK_SHARE, 0.0       # el resto queda para lotes de prueba
     for o in sorted(opps, key=key, reverse=True):
         low = o["conf"] == "baja"
+        risky = low and not o.get("trial")
         for attempt in range(3):
             trial = plan.clone()
             before = trial.spend()
@@ -552,6 +555,8 @@ def select(data, plan, opps, budget, horizon_h):
             inv = trial.spend() - before
             # lo de confianza baja no puede pasar del 30 % del presupuesto en total
             limit = min(budget, before + max(0.0, low_cap - low_spent)) if low else budget
+            if risky:
+                limit = min(limit, before + max(0.0, risk_cap - risk_spent))
             if before + inv <= limit:
                 plan.__dict__.update(trial.__dict__)
                 o["investment"], o["included"] = inv, True
@@ -559,6 +564,8 @@ def select(data, plan, opps, budget, horizon_h):
                 chosen.append(o)
                 if low:
                     low_spent += inv
+                if risky:
+                    risk_spent += inv
                 break
             room = limit - before
             if room <= 0 or o["crafts"] <= 1:
@@ -582,6 +589,9 @@ def select(data, plan, opps, budget, horizon_h):
             o["included"] = False
             if o.get("reason") is not None:
                 o["skip"] = o["reason"]
+            elif risky and risk_spent >= risk_cap * 0.95:
+                o["skip"] = (f"Riesgo: lo de confianza baja que no es lote de prueba ya usa su "
+                             f"{LOW_CONF_SHARE * RISK_SHARE * 100:.0f} % del presupuesto (el resto, para lotes de prueba).")
             elif low and low_spent >= low_cap * 0.95:
                 o["skip"] = (f"Confianza baja: ya va el {LOW_CONF_SHARE * 100:.0f} % del presupuesto "
                              "a cosas sin histórico suficiente.")

@@ -870,6 +870,24 @@ check(all(o["units"] <= 20 and (o["crafts"] == 1 or o["cost"] * o["crafts"] <= 1
       "lote de prueba: como mucho 20 unidades o 1 oro " + str([(o["name"], o["units"], round(o["cost"] * o["crafts"])) for o in crafts3]))
 low3 = sum(o["investment"] for o in inc3 if o["conf"] == "baja")
 check(low3 <= p3["settings"]["budget"] * 0.3 + 1, f"confianza baja: como mucho el 30 % del presupuesto ({low3:.0f} de {p3['settings']['budget']:.0f})")
+# Dentro de ese 30 %, lo que no es lote de prueba (reventas de riesgo) usa como mucho la mitad
+import oroboros_plan as _OP
+class _FakePlan:
+    def __init__(self, spent=0.0): self.spent = spent
+    def clone(self): return _FakePlan(self.spent)
+    def spend(self): return self.spent
+def _fake_apply(plan, o): plan.spent += o["cost_total"]; return 0
+_orig = (_OP.apply_flip, _OP.apply_opportunity)
+_OP.apply_flip = _OP.apply_opportunity = _fake_apply
+_opps = ([{"kind": "flip", "name": f"reventa {k}", "conf": "baja", "cost_total": 10, "profit_total": 100, "profit": 100,
+           "crafts": 1, "reason": None} for k in range(5)] +
+         [{"kind": "craft", "name": f"lote {k}", "conf": "baja", "cost_total": 5, "profit_total": 5, "profit": 5,
+           "crafts": 1, "trial": True, "reason": None} for k in range(3)])
+_OP.select(None, _FakePlan(), _opps, 100, 48)
+_OP.apply_flip, _OP.apply_opportunity = _orig
+_inc_f = sum(1 for o in _opps if o["kind"] == "flip" and o.get("included"))
+_inc_t = sum(1 for o in _opps if o["kind"] == "craft" and o.get("included"))
+check((_inc_f, _inc_t) == (1, 3), f"riesgo: las reventas usan como mucho la mitad del 30 % y los lotes de prueba entran ({_inc_f} reventas, {_inc_t} lotes)")
 reach = [l.get("reach") for l in p3["learn"] if not l.get("new_profession")]
 first_unknown = reach.index("desconocido") if "desconocido" in reach else len(reach)
 check(all(x == "desconocido" for x in reach[first_unknown:]) and 0 < first_unknown < len(reach),
