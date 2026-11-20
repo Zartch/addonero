@@ -1,6 +1,6 @@
 # Dónde farmear para vender en la subasta
 
-Diseño del 20/11/2026. Estado: **propuesta revisada, pendiente de aprobar**. Enfoque elegido por el usuario: base de datos de un emulador + nodos de GatherMate2 + lo que mide el addon, calculado fuera del juego.
+Diseño del 20/11/2026. Estado: **propuesta revisada, pendiente de aprobar**. Enfoque elegido por el usuario (ajustado el 20/11): **la base es lo que mide el addon**; AzerothCore es solo una **estimación inicial** para proponer sitios donde aún no se ha farmeado, y la recolección sale de GatherMate2 (datos de Forever). Se calcula fuera del juego.
 
 ## Para qué
 
@@ -20,6 +20,8 @@ Se calcula **fuera del juego**, como el plan. Dentro solo entra un resumen peque
   - `creature_loot_template`, `reference_loot_template`, `skinning_loot_template`;
   - `item_template`: `SellPrice`, `Quality`, `Bonding` y si es de misión.
 - **Los números de objeto de Forever coinciden con los clásicos** (comprobado con pociones, hierbas y paños). Los de criatura, previsiblemente también.
+- **Pero el botín de Forever no es el clásico** (comprobado el 20/11 en otra sesión, al estudiar un addon de equipo): casi la mitad del equipo es nuevo (números de objeto ≥ 250000), y el botín de los objetos antiguos cambió de criaturas y de porcentajes. Por eso AzerothCore solo vale como **aproximación para materiales** (paño, cuero, carne, polvos, objetos grises de vendedor y oro suelto), no para equipo.
+- Otras fuentes de Forever, por si hacen falta más adelante: **Pro Item Forever** (instalado, sin licencia: 866 objetos con origen y porcentaje, centrado en equipo; se puede leer del disco, no copiar) y foreverchanges.pro (no permite copiar en bloque). Quedan fuera de este diseño.
 - **GatherMate2_Data/Forever** (instalado; 629 KB): nodos de hierbas (~14 650), minerales, pesca y tesoros, con la forma `[uiMapID] = { [coordenada] = tipoDeNodo }`.
 - Precios: el archivo (`daily`) y el precio de vendedor (`items.vendor_sell` o, si falta, `item_template.SellPrice`).
 
@@ -27,7 +29,7 @@ Se calcula **fuera del juego**, como el plan. Dentro solo entra un resumen peque
 
 - Para cada personaje: las **mejores zonas** para su nivel, con oro por hora estimado, las criaturas que matar y lo que sueltan que más vale.
 - Lo mismo para **recolectar** (hierbas, minerales, pesca), según las profesiones del personaje.
-- **Aprender de lo que juega el usuario**: donde ya ha farmeado, la estimación se sustituye o se corrige con lo que de verdad le cayó y a qué ritmo.
+- **Lo medido manda**: donde el usuario ya ha farmeado, la cifra es la suya (lo que le cayó y a qué ritmo). La estimación de AzerothCore solo sirve para **proponer sitios por explorar**, marcada como «estimación inicial (aproximada)».
 - Verlo en la página del plan (pestaña **Farmear**) y en el juego (`/oro farmear` y un aviso al entrar en una zona).
 
 ## Fuera de alcance
@@ -48,12 +50,15 @@ Se calcula **fuera del juego**, como el plan. Dentro solo entra un resumen peque
 
 | Enfoque | Decisión |
 |---|---|
-| **AzerothCore + GatherMate2 + medición propia** | **Elegido por el usuario** |
-| Solo medición propia (exacta, pero no propone sitios nuevos) | Descartado como única fuente; queda como corrección |
+| **Medición propia como base + AzerothCore como estimación inicial de materiales + GatherMate2** | **Elegido por el usuario** (ajustado el 20/11: antes AzerothCore era la base y lo medido la corrección) |
+| Solo medición propia (exacta, pero no propone sitios nuevos) | Descartado como única fuente: no propondría dónde ir por primera vez |
+| AzerothCore como base | Descartado: el botín de Forever cambió y las cifras serían engañosas |
 | Wowhead (tiene datos de Forever) | Descartado: sus condiciones no permiten copiarlos |
 | Cargar la base de botín dentro del juego | Descartado: decenas de MB y cargas lentas |
 
 ## Diseño
+
+**Orden de construcción**: primero la medición en el juego (sección 5), que da valor desde el primer día y es la base de todo. Después la estimación inicial (secciones 1 a 3) y la recolección (4). Por último el resultado (6).
 
 ### 1. Fuentes (fuera del juego, `tools/oroboros_farm.py`)
 
@@ -76,6 +81,7 @@ Se calcula **fuera del juego**, como el plan. Dentro solo entra un resumen peque
   - Las referencias (`reference_loot_template`) se expanden.
   - En un grupo de botín (`groupid > 0`) cae como mucho uno: los objetos con probabilidad explícita la usan, y los que tienen 0 se reparten lo que queda a partes iguales.
   - Se excluyen los objetos de misión (`QuestRequired`) y los ligados al recogerlos que no se venden al vendedor.
+- **Qué cuenta la estimación inicial**: solo materiales y objetos de vendedor, porque el botín de equipo de Forever cambió. En concreto: oro suelto; objetos de clase «artículos de comercio» (`class` 7), consumibles (`class` 0) y componentes (`class` 5), y objetos grises (`Quality` 0) a precio de vendedor. El equipo (armas y armaduras, `class` 2 y 4) **no se estima**: aparece como «equipo: sin estimar» hasta que se mide.
 - **Valor unitario**: mediana de 7 días del valor de mercado **del mercado del personaje** (el mismo criterio que el plan) si el objeto se vende en la subasta; si no, el precio de vendedor.
 - **Versión del mundo**: Forever es 1–60 y solo los continentes clásicos (mapas 0 y 1). AzerothCore es la base de WotLK (3.3.5): algún porcentaje de botín difiere del de Vanilla. Se acepta como **estimación de partida**; lo medido la corrige. Una base más fiel a Vanilla (VMaNGOS) se distribuye en 7z, que la biblioteca estándar de Python no abre: queda como mejora futura.
 - **Saturación**: si lo que caería en una hora supera lo que la subasta vende en un día (`vol`), lo que pasa de esa cantidad vale el precio de vendedor. La zona lo avisa.
@@ -104,17 +110,28 @@ Se calcula **fuera del juego**, como el plan. Dentro solo entra un resumen peque
 - **Qué subzona es**: el juego da el nombre de la subzona (`GetSubZoneText`) y el mapa (`C_Map.GetBestMapForUnit`), no el `areaId`. El addon traduce a su nombre en español cada `areaId` de `Farmeo.lua` (`C_Map.GetAreaInfo`), los compara con la subzona actual y guarda esa tabla `areaId → nombre` en `OroborosDB.farmAreas`. Lo medido se guarda con el `areaId` que coincide, o con el nombre si no coincide ninguno. El exportador empareja estimado y medido con esa tabla.
 - **«Medido»** = oro recogido + botín valorado a los precios de hoy (como hace Goblinomics), no lo cobrado al vender.
 - Recolección: nodos recogidos y objetos (los hechizos de recolección, `UNIT_SPELLCAST_SUCCEEDED` y el botín).
-- El exportador lo pasa al archivo (tablas `farm_obs`). Con **30 muertes o más** de una criatura, su valor por muerte medido sustituye al estimado, y el ritmo medido sustituye a la suposición.
+- El exportador lo pasa al archivo (tablas `farm_obs`).
+- **Lo medido manda**:
+  - con **30 muertes o más** de una criatura en una subzona, su valor por muerte y su ritmo son los medidos, sin mezclar;
+  - con menos, se mezcla: peso de lo medido = muertes / 30, y el resto, la estimación inicial. Si no hay estimación (criatura de Forever que no está en AzerothCore), cuenta solo lo medido y la confianza baja;
+  - el equipo que suelte se valora a partir de lo medido (precio de la subasta de cada pieza, o de vendedor), como cualquier otro objeto.
+- **Confianza**:
+  - **alta**: medido con ≥ 30 muertes y ≥ 20 minutos activos;
+  - **media**: con medición parcial;
+  - **baja**: solo estimación inicial.
 
 ### 6. Resultado
 
-- **Pestaña «Farmear»** en la página del plan, para cada personaje: las 10 mejores subzonas de criaturas y las 5 mejores de recolección.
+- **Pestaña «Farmear»** en la página del plan, para cada personaje, en tres bloques:
+  - **«Donde ya has farmeado»**, con lo medido: oro por hora real, muertes, tiempo y lo que más te dejó;
+  - **«Por explorar»**, las 10 mejores subzonas de la estimación inicial, marcadas «aproximado: solo materiales»;
+  - **«Recolección»**, las 5 mejores.
   - Oro por hora (rango) y nivel de las criaturas.
   - Qué matar, con sus 3 objetos más valiosos.
   - Aviso de saturación.
   - Origen (estimado o medido) y confianza.
 - **En el juego**: `tools/oroboros_farm.py` escribe `Oroboros/Farmeo.lua` (ignorado en git) con las 15 mejores subzonas por tramo de 5 niveles y los ids de zona.
-  - `/oro farmear` abre un panel con el estilo actual: las mejores para el nivel del personaje.
+  - `/oro farmear` abre un panel con el estilo actual: primero las medidas y después las «por explorar», para el nivel del personaje.
   - Al entrar en una subzona de la lista, una línea en el chat: «Farmeo aquí: ≈ X/h (estimado)».
   - Los nombres de zona se resuelven en el juego (`C_Map.GetAreaInfo`, `C_Map.GetMapInfo`), y el addon guarda una caché de esos nombres para que la página los muestre en español.
 - El vigilante regenera `Farmeo.lua` junto al plan cuando ya hay fuentes descargadas.
@@ -127,6 +144,6 @@ Se calcula **fuera del juego**, como el plan. Dentro solo entra un resumen peque
 
 ## Decisiones del constructor (propuestas)
 
-- Las cifras de ritmo (40/h, +10 % por nivel, ×0,5 de apariciones, 30 nodos/h), el 30 % para «zona de élites», el margen de nivel (+1 / −12) y las 30 muertes para fiarse de lo medido. Van como constantes con nombre y se documentan.
+- Las cifras de ritmo de la estimación inicial (40/h, +10 % por nivel, ×0,5 de apariciones, 30 nodos/h), el 30 % para «zona de élites», el margen de nivel (+1 / −12), las 30 muertes y 20 minutos para fiarse de lo medido, y las clases de objeto que entran en la estimación. Van como constantes con nombre y se documentan.
 - Tablas exactas de `farm_obs` en el archivo y formato compacto de `Farmeo.lua`.
 - Diseño visual del panel `/oro farmear`, con el estilo actual.
