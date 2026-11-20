@@ -331,6 +331,15 @@ Cómo decide:
 - **Cuántas hacer:** lo que el mercado absorbe en el horizonte, como mucho el 30 % de lo publicado, y el enfriamiento de la receta.
 - **Lote de prueba:** mientras no haya días de escaneo suficientes para medir las ventas por día, como mucho 20 unidades o 1 oro por receta o reventa, y lo de confianza baja no pasa del 30 % del presupuesto. Escanea una o dos veces al día y las cantidades crecerán solas.
 - **Qué aprender:** primero las recetas a tu alcance; las que tienen el nivel sin comprobar (en Forever el juego no lo da) van en un grupo aparte.
+- **Con [ProfessionDB](https://www.curseforge.com/wow/addons/libprofessiondb) instalada** (licencia MIT), el exportador lee sus datos de Forever desde la carpeta de WoW, sin cargarla en el juego. Así:
+  - cada receta tiene su nivel requerido real y «te faltan N puntos»;
+  - se sabe dónde se aprende: instructor, vendedor con su nombre y precio, misión, contenedor, botín o «con la profesión»;
+  - el coste de aprender se usa para calcular en cuántos días se paga;
+  - las recetas que nunca existieron se descartan;
+  - «si cambiaras de profesión» propone las mejores 30 recetas de las profesiones que no tienes.
+
+  Si un nivel viene de Vanilla, lo avisa. `--professiondb RUTA` cambia la carpeta y `--professiondb no` la desactiva.
+- **Riesgo:** de ese 30 %, lo que no es lote de prueba (sobre todo las reventas) usa como mucho la mitad, y el resto queda para lotes de prueba de fabricación.
 - **Ventas por día:** se estiman con las bajadas de cantidad publicada entre un día y el siguiente.
 - **Margen mínimo:** 8 % sobre el coste. Por debajo, la receta sale como no rentable, con el motivo.
 - **Confianza** (alta, media, baja): según la volatilidad, las ventas por día y los días de histórico.

@@ -88,6 +88,16 @@ El usuario quiere ganar oro con la subasta de WoW Forever sabiendo **cuándo** c
 
 Hecho fuera del juego: estilo propio oscuro y plano (`Style.lua`), gráficas con escala, leyenda y detalle al pasar el ratón (`Chart.lua`), precio en vivo corregido y ventana principal con el mismo estilo. Diseño en `docs/rediseno-ventanas.md`. Falta comprobarlo en el juego: fuente, caracteres «×» y «…», gráficas y detalle al pasar el ratón.
 
+## ProfessionDB (20/11)
+
+Hecho: «qué aprender» lee ProfessionDB (nivel real, dónde se aprende, coste; sin recetas que nunca existieron) y «si cambiaras de profesión» sale de ella. Con los datos reales, las recetas de nivel desconocido bajan de 230 a 15. Plan en `docs/planes/2026-11-20-professiondb.md`.
+
+También:
+- las reventas de riesgo usan como mucho la mitad del 30 % de confianza baja, para que entren los lotes de prueba de fabricación (de 1 a 7 con los datos reales);
+- subasta o vendedor se decide por objeto, sumando bolsas y banco.
+
+Ojo: el beneficio por día de las profesiones nuevas aún usa ventas por día supuestas (hay pocos días de datos) y sale muy alto. Se corregirá solo con más escaneos.
+
 ## Fase 4: cálculos avanzados
 
 **Qué esperamos:** sacar más de los mismos datos. Cada cálculo tiene su propio diseño corto antes de programarlo, cuando haya datos suficientes para comprobar que funciona:
