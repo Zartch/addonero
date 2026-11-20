@@ -24,6 +24,8 @@ GPH_SPREAD = 0.30           # rango ±30 % de la estimación
 CAPITALS = {1519, 1537, 1657, 1637, 1638, 1497}
 CELL = 400                  # cuadrícula de agrupación, en metros del continente (AzerothCore no trae subzonas)
 CITY_SHARE = 0.20           # cuadrícula con ≥ 20 % de PNJ con servicios: ciudad o campamento, fuera
+GATHER_NPH = 30             # nodos por hora en un mapa con nodos densos
+DENSE_NODES = 200           # nodos conocidos de una profesión a partir de los que un mapa es «denso»
 MATERIAL_CLASSES = {0, 5, 7}    # consumibles, componentes, artículos de comercio
 NOT_ATTACKABLE = 0x2 | 0x100 | 0x02000000
 
@@ -91,6 +93,63 @@ def mob_value(ac, entry, prices, skinning=False):
     return {"copper": copper, "gold": gold, "qty": qty}
 
 
+def _sell(ac, qty_h, prices):
+    """Valor por hora de cada objeto: lo que pasa del volumen diario de la subasta se vende al vendedor.
+    Devuelve ([(itemID, cantidad, valor)] de más a menos valor, saturado)."""
+    saturated, items_h = False, []
+    for it, q in qty_h.items():
+        info = ac["items"].get(it)
+        if not info:
+            continue
+        unit = _unit(it, info, prices)
+        vol = (prices.get(it) or {}).get("vol")
+        if vol is not None and info["quality"] > 0 and q > vol:
+            value = vol * unit + (q - vol) * (info["sell"] or 0)
+            saturated = True
+        else:
+            value = q * unit
+        items_h.append((it, q, value))
+    items_h.sort(key=lambda x: -x[2])
+    return items_h, saturated
+
+
+def node_qty(ac, name):
+    """{itemID: cantidad esperada} por nodo con ese nombre, o None si AzerothCore no lo conoce."""
+    lids = ac["nodes"].get(name)
+    if not lids:
+        return None
+    qty = {}
+    for lid in lids:            # varios botines con el mismo nombre: la media
+        for it, q in loot_qty(ac, ac["goloot"], lid).items():
+            qty[it] = qty.get(it, 0) + q / len(lids)
+    return qty
+
+
+def gathering(gm, ac, prices, profs):
+    """Mapas de recolección ordenados por oro por hora. gm: gathermate.load; profs: {"herb", "mine"}.
+    Nodos por hora: GATHER_NPH, menos si el mapa tiene pocos nodos conocidos. El nivel de profesión no se comprueba."""
+    out = []
+    for kind in sorted(profs):
+        for mapid, nodes in gm.get(kind, {}).items():
+            total = sum(nodes.values())
+            nph = GATHER_NPH * min(1.0, total / DENSE_NODES)
+            qty_h, unvalued = {}, []
+            for nid, n in nodes.items():
+                name = gm["names"].get(nid, str(nid))
+                q = node_qty(ac, name)
+                if q is None:
+                    unvalued.append(name)
+                    continue
+                for it, x in q.items():
+                    qty_h[it] = qty_h.get(it, 0) + nph * n / total * x
+            items_h, saturated = _sell(ac, qty_h, prices)
+            out.append({"map": mapid, "kind": kind, "nodes": total, "nph": nph,
+                        "gph": sum(v for _, _, v in items_h), "top_items": items_h[:3],
+                        "unvalued": sorted(unvalued), "saturated": saturated})
+    out.sort(key=lambda r: -r["gph"])
+    return out
+
+
 def _in_pool(t, zone, mapid):
     return (t and t["npcflag"] == 0 and (t["lootid"] or t["maxgold"]) and zone not in CAPITALS
             and mapid in (0, 1) and t["type"] != 8 and not (t["unit_flags"] or 0) & NOT_ATTACKABLE)
@@ -144,18 +203,7 @@ def estimate(ac, prices, level, skinning=False):
             gold_h += kph * w * v["gold"]
             for it, q in v["qty"].items():
                 qty_h[it] = qty_h.get(it, 0) + kph * w * q
-        saturated, items_h = False, []
-        for it, q in qty_h.items():
-            info = ac["items"][it]
-            unit = _unit(it, info, prices)
-            vol = (prices.get(it) or {}).get("vol")
-            if vol is not None and info["quality"] > 0 and q > vol:
-                value = vol * unit + (q - vol) * (info["sell"] or 0)
-                saturated = True
-            else:
-                value = q * unit
-            items_h.append((it, q, value))
-        items_h.sort(key=lambda x: -x[2])
+        items_h, saturated = _sell(ac, qty_h, prices)
         gph = gold_h + sum(v for _, _, v in items_h)
         levels = (min(x["levels"][0] for x in mobs), max(x["levels"][1] for x in mobs))
         out.append({"map": mapid, "cell": (cx, cy), "x": sum(a["xs"]) / len(a["xs"]), "y": sum(a["ys"]) / len(a["ys"]),

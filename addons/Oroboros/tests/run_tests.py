@@ -734,11 +734,16 @@ def write_fake_ac(d):
     dump("reference_loot_template", lt, [(1000, 3000, 0, 20, 0, 1, 0, 1, 1)])
     dump("skinning_loot_template", lt, [])
     dump("item_template", ["entry", "class", "Quality", "SellPrice", "bonding"],
-         [(2589, 7, 1, 10, 0), (2592, 7, 1, 25, 0), (4306, 7, 1, 38, 0), (999, 4, 2, 500, 2), (3000, 15, 0, 25, 0), (777, 12, 1, 0, 4)])
+         [(2589, 7, 1, 10, 0), (2592, 7, 1, 25, 0), (4306, 7, 1, 38, 0), (999, 4, 2, 500, 2), (3000, 15, 0, 25, 0), (777, 12, 1, 0, 4),
+          (2447, 7, 1, 4, 0), (2770, 7, 1, 5, 0)])
+    dump("gameobject_template", ["entry", "type", "name", "Data0", "Data1"],
+         [(1618, 3, "'Peacebloom'", 29, 1415), (3724, 3, "'Peacebloom'", 29, 1415), (1731, 3, "'Copper Vein'", 38, 1502),
+          (9000, 10, "'Peacebloom'", 0, 0)])
+    dump("gameobject_loot_template", lt, [(1415, 2447, 0, 100, 0, 1, 0, 1, 3), (1502, 2770, 0, 100, 0, 1, 0, 1, 2)])
 _acd = os.path.join(_tf.mkdtemp(), "azerothcore")
 write_fake_ac(_acd)
 _ac = AC.load(_acd)
-check(_ac["templates"][1]["name"] == "Lobo, 'el' gris" and len(_ac["spawns"]) == 41 and _ac["loot"][1][4]["reference"] == 1000,
+check(_ac["templates"][1]["name"] == "Lobo, 'el' gris" and len(_ac["spawns"]) == 41 and _ac["nodes"]["Peacebloom"] == [1415] and _ac["loot"][1][4]["reference"] == 1000,
       "AzerothCore: lee los volcados SQL (filas seguidas, comas y comillas escapadas, referencias)")
 _prices = {2589: {"value": 100, "vol": None}, 2592: {"value": 400, "vol": 2}, 4306: {"value": 1000, "vol": None}}
 _pk = OF.mob_value(_ac, 1, _prices)
@@ -751,6 +756,40 @@ _r = _rows[0]
 check(abs(_r["kph"] - 42) < 1e-6 and abs(_r["gph"] - 27525) < 1e-6 and _r["saturated"] and _r["top_items"][0][0] == 4306,
       f"farmeo: oro por hora con ritmo según nivel y saturación de la lana ({_r['kph']}, {_r['gph']})")
 check(OF.estimate(_ac, _prices, 50) == [], "farmeo: con nivel 50, esas criaturas quedan fuera del margen de nivel")
+
+# Farmeo: recolección con GatherMate2 (nodos de Forever) valorada con el botín de los nodos de AzerothCore
+import gathermate as GM
+def write_fake_gm(base):
+    os.makedirs(os.path.join(base, "GatherMate2"), exist_ok=True)
+    os.makedirs(os.path.join(base, "GatherMate2_Data", "Forever"), exist_ok=True)
+    open(os.path.join(base, "GatherMate2", "Constants.lua"), "w", encoding="utf-8").write(
+        'local node_ids = {\n\t["Mining"] = {\n\t\t["Copper Vein"] = {\n\t\t\tid = 201,\n\t\t\tvariants = {\n\t\t\t\t"Poor Copper Vein"\n'
+        '\t\t\t}\n\t\t},\n\t\t--["Hakkari Thorium Vein"] = 216,\n\t},\n\t["Herb Gathering"] = {\n\t\t["Peacebloom"] = {\n\t\t\tid = 401,\n'
+        '\t\t},\n\t\t["Ghostbloom"] \t\t= 499,\n\t},\n}\n')
+    def data(name, var, maps):
+        lines = [var + " = {"]
+        for m, nodes in maps.items():
+            lines.append("\t[%d] = {" % m)
+            lines += ["\t\t[%d] = %d," % (3570284000 + i * 1000, n) for i, n in enumerate(nodes)]
+            lines.append("\t},")
+        open(os.path.join(base, "GatherMate2_Data", "Forever", name), "w", encoding="utf-8").write("\n".join(lines + ["}", ""]))
+    data("HerbalismData.lua", "GatherMateData2HerbDB", {1411: [401] * 150 + [499] * 50})
+    data("MiningData.lua", "GatherMateData2MineDB", {1412: [201] * 20})
+_gmb = os.path.join(_tf.mkdtemp(), "Interface", "AddOns")
+write_fake_gm(_gmb)
+check(GM.find(os.path.join(_gmb, "..", "..", "WTF", "x.lua")) == os.path.normpath(_gmb), "GatherMate2: encuentra la carpeta de addons subiendo desde un archivo")
+_gm = GM.load(_gmb)
+check(_gm["herb"][1411] == {401: 150, 499: 50} and _gm["mine"][1412] == {201: 20} and _gm["names"][201] == "Copper Vein"
+      and 216 not in _gm["names"], "GatherMate2: nodos por mapa y nombre de cada tipo (sin las líneas comentadas)")
+_gprices = {2447: {"value": 50, "vol": None}, 2770: {"value": 200, "vol": None}}
+_gr = OF.gathering(_gm, _ac, _gprices, {"herb"})
+check([(r["map"], r["kind"]) for r in _gr] == [(1411, "herb")], "farmeo: recolección solo de las profesiones del personaje")
+_g0 = _gr[0]
+check(abs(_g0["gph"] - 2250) < 1e-6 and _g0["top_items"][0][0] == 2447 and _g0["unvalued"] == ["Ghostbloom"] and _g0["nodes"] == 200,
+      f"farmeo: hierbas valoradas con el botín del nodo; el tipo desconocido queda «sin valorar» ({_g0['gph']}, {_g0['unvalued']})")
+_gr2 = OF.gathering(_gm, _ac, _gprices, {"herb", "mine"})
+check([(r["map"], r["kind"], round(r["gph"])) for r in _gr2] == [(1411, "herb", 2250), (1412, "mine", 900)],
+      f"farmeo: un mapa con pocos nodos da menos nodos por hora {[(r['map'], round(r['gph'])) for r in _gr2]}")
 
 # Migración desde la tabla plana del 19/11 (esquema 1)
 arch_v1 = os.path.join(_tf.mkdtemp(), "v1.sqlite")

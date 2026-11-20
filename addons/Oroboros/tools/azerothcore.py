@@ -13,15 +13,15 @@ import urllib.request
 
 BASE_URL = "https://raw.githubusercontent.com/azerothcore/azerothcore-wotlk/master/data/sql/base/db_world/"
 TABLES = ("creature_template", "creature", "creature_loot_template", "reference_loot_template",
-          "skinning_loot_template", "item_template")
+          "skinning_loot_template", "item_template", "gameobject_template", "gameobject_loot_template")
 CACHE = "cache.json"
-CACHE_VERSION = 2
+CACHE_VERSION = 3
 
 TOKEN = re.compile(r"'(?:[^'\\]|\\.|'')*'|NULL|-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?|[(),;]")
 
 
 def download(dest_dir, log=print):
-    """Descarga las seis tablas (unos 45 MB). Sobrescribe las que hubiera."""
+    """Descarga las ocho tablas (unos 48 MB). Sobrescribe las que hubiera."""
     os.makedirs(dest_dir, exist_ok=True)
     for t in TABLES:
         url = BASE_URL + t + ".sql"
@@ -88,7 +88,7 @@ def _loot(rows):
 
 def load(dest_dir):
     """Lee las tablas (o la caché, si es más nueva que los .sql). Devuelve un dict con
-    templates, spawns, loot, refs, skin e items."""
+    templates, spawns, loot, refs, skin, items, nodes ({nombre del nodo: [botín]}) y goloot."""
     cache = os.path.join(dest_dir, CACHE)
     sqls = [os.path.join(dest_dir, t + ".sql") for t in TABLES]
     if os.path.exists(cache) and all(os.path.getmtime(cache) >= os.path.getmtime(s) for s in sqls):
@@ -97,7 +97,8 @@ def load(dest_dir):
         if c.get("v") == CACHE_VERSION:
             ints = lambda d: {int(k): v for k, v in d.items()}
             return {"templates": ints(c["templates"]), "spawns": [tuple(s) for s in c["spawns"]],
-                    "loot": ints(c["loot"]), "refs": ints(c["refs"]), "skin": ints(c["skin"]), "items": ints(c["items"])}
+                    "loot": ints(c["loot"]), "refs": ints(c["refs"]), "skin": ints(c["skin"]), "items": ints(c["items"]),
+                    "nodes": c["nodes"], "goloot": ints(c["goloot"])}
     lt = ["Entry", "Item", "Reference", "Chance", "QuestRequired", "LootMode", "GroupId", "MinCount", "MaxCount"]
     ct = ["entry", "name", "minlevel", "maxlevel", "rank", "type", "unit_flags", "npcflag", "lootid", "skinloot",
           "mingold", "maxgold"]
@@ -106,8 +107,14 @@ def load(dest_dir):
     spawns = read_dump(sqls[1], ["id1", "map", "zoneId", "areaId", "spawntimesecs", "position_x", "position_y"])
     items = {r[0]: {"class": r[1], "quality": r[2], "sell": r[3], "bonding": r[4]}
              for r in read_dump(sqls[5], ["entry", "class", "Quality", "SellPrice", "bonding"])}
+    # Nodos de recolección (tipo 3, cofre): Data1 es su botín. Varios nodos comparten nombre (p. ej. «Copper Vein»)
+    nodes = {}
+    for entry, typ, name, lid in read_dump(sqls[6], ["entry", "type", "name", "Data1"]):
+        if typ == 3 and lid and lid not in nodes.setdefault(name, []):
+            nodes[name].append(lid)
     ac = {"templates": templates, "spawns": spawns, "loot": _loot(read_dump(sqls[2], lt)),
-          "refs": _loot(read_dump(sqls[3], lt)), "skin": _loot(read_dump(sqls[4], lt)), "items": items}
+          "refs": _loot(read_dump(sqls[3], lt)), "skin": _loot(read_dump(sqls[4], lt)), "items": items,
+          "nodes": nodes, "goloot": _loot(read_dump(sqls[7], lt))}
     try:
         with open(cache, "w", encoding="utf-8") as fh:
             json.dump(dict(ac, v=CACHE_VERSION), fh)
