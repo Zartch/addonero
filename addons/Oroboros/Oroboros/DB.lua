@@ -162,6 +162,20 @@ function DB.ScanCount(mk)
     return scans and #scans or 0, SCAN_BUFFER
 end
 
+-- Escaneos aún sin exportar: los posteriores al último archivado, según Resumen.lua (lo escribe el
+-- exportador). Sin esa información cuentan todos. Se pierde uno solo si hay más de 12 sin exportar.
+function DB.PendingScans(mk)
+    mk = mk or ns.MarketKey()
+    local scans = DB.Market(mk).scans or {}
+    local r = OroborosResumen
+    local upTo = type(r) == "table" and type(r.archived) == "table" and r.archived[mk] or nil
+    local n = 0
+    for _, s in ipairs(scans) do
+        if not upTo or (s.t or 0) > upTo then n = n + 1 end
+    end
+    return n, SCAN_BUFFER
+end
+
 local function fmt(x) return x and string.format("%.0f", x) or "" end
 
 -- byItem: { [itemID] = { {unitPrice, qty}, ... } }
@@ -359,9 +373,10 @@ function DB.PrintStats()
         for _ in pairs(m.prices) do n = n + 1 end
         ns.Print(string.format("  mercado %s: %d precios, último completo %s", mk, n,
             m.lastFull > 0 and date("%d/%m %H:%M", m.lastFull) or "nunca"))
-        local ns_, cap = DB.ScanCount(mk)
-        ns.Print(string.format("  escaneos guardados: %d/%d%s", ns_, cap,
-            ns_ >= cap and " (lleno: exporta antes del siguiente escaneo o se pierde el más antiguo)" or ""))
+        local pend, cap = DB.PendingScans(mk)
+        ns.Print(string.format("  escaneos sin exportar: %d/%d%s", pend, cap,
+            pend >= cap and " (exporta antes del siguiente escaneo o se perderá el más antiguo)"
+            or (pend >= cap - 2 and " (exporta pronto)" or "")))
     end
     if nMk == 0 then ns.Print("  sin mercados escaneados") end
 end

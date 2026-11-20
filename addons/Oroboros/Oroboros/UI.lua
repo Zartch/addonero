@@ -72,7 +72,7 @@ local function build()
     -- Pie: tres datos con etiqueta y valor
     f.footDiv = S.Divider(f)
     f.foot = {}
-    for k, label in ipairs({ "PRÓXIMO ESCANEO", "ÚLTIMO", "GUARDADOS" }) do
+    for k, label in ipairs({ "PRÓXIMO ESCANEO", "ÚLTIMO", "SIN EXPORTAR" }) do
         local cell = { label = S.Text(f, "label"), value = S.Text(f, "value") }
         cell.label:SetText(label)
         f.foot[k] = cell
@@ -119,9 +119,9 @@ function UI.UpdateFooter()
     end
     f.foot[1].value:SetText(nextTxt); S.Color(f.foot[1].value, nextTone)
     f.foot[2].value:SetText(m.lastFull > 0 and date("%d/%m %H:%M", m.lastFull) or "nunca")
-    local nScans, cap = ns.DB.ScanCount()
-    f.foot[3].value:SetText(string.format("%d/%d%s", nScans, cap, nScans >= cap and "  exporta" or ""))
-    S.Color(f.foot[3].value, nScans >= cap and "bad" or "value")
+    local pend, cap = ns.DB.PendingScans()
+    f.foot[3].value:SetText(string.format("%d/%d%s", pend, cap, pend >= cap - 2 and "  exporta" or ""))
+    S.Color(f.foot[3].value, pend >= cap and "bad" or (pend >= cap - 2 and "accent" or "value"))
     f.gold:SetText(ns.Coin(GetMoney()))
 end
 

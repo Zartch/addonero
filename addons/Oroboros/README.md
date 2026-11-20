@@ -93,8 +93,8 @@ Si Auctionator está instalado, Oroboros no escanea dos veces (detalle en `docs/
 
 Para saber a qué horas se vende más cada objeto (diseño en `docs/franjas-horarias.md`):
 
-1. **Escanea varias veces al día**, en distintas franjas, y haz `/reload` después de cada escaneo. El addon guarda los últimos 12 escaneos completos; `/oro stats` y el pie de la ventana muestran «escaneos guardados: N/12».
-2. **Exporta antes de llegar a 12**, o se pierde el más antiguo. Los escaneos se van añadiendo a un archivo permanente que nunca se borra:
+1. **Escanea varias veces al día**, en distintas franjas, y haz `/reload` después de cada escaneo. El addon guarda los últimos 12 escaneos completos; al llegar uno nuevo sale el más antiguo. `/oro stats` y el pie de la ventana muestran «sin exportar: N/12»: el exportador apunta en `Resumen.lua` hasta qué escaneo está archivado, y el juego lo lee al entrar o con `/reload`. Solo se pierde un escaneo si hay más de 12 sin exportar; con el vigilante en marcha no pasa.
+2. **Exporta antes de tener 12 sin exportar**, o se perderá el más antiguo. Los escaneos se van añadiendo a un archivo permanente que nunca se borra:
    ```
    python tools/oroboros_export.py --find "<carpeta WoW>" --auctionator --archive work/archivo.sqlite --sqlite work/oroboros.sqlite
    ```

@@ -149,8 +149,18 @@ for _ in range(11):
 check(len(sc) == 12, f"buffer: como mucho 12 escaneos ({len(sc)})")
 n, cap = ns.DB.ScanCount("TEST-MK")
 check((n, cap) == (12, 12), "buffer: ScanCount")
+# Sin exportar: Resumen.lua dice hasta qué escaneo está archivado; el resto, pendiente
+lua.execute('for i, sc in ipairs(OroborosDB.markets["TEST-MK"].scans) do sc.t = 1000 + i end')
+lua.execute("OroborosResumen = nil")
+check(tuple(ns.DB.PendingScans("TEST-MK")) == (12, 12), "sin exportar: sin información, cuentan todos")
 lua.execute("LOG = {}"); ns.DB.PrintStats()
-check(any("escaneos guardados: 12/12 (lleno" in l for l in G.LOG.values()), "/oro stats avisa con el buffer lleno")
+check(any("sin exportar: 12/12" in l and "exporta" in l for l in G.LOG.values()), "/oro stats avisa si hay 12 sin exportar")
+lua.execute('OroborosResumen = { v = 1, t = 0, archived = { ["TEST-MK"] = 1009 }, markets = {} }')
+check(tuple(ns.DB.PendingScans("TEST-MK")) == (3, 12), "sin exportar: solo los posteriores al último archivado")
+lua.execute("LOG = {}"); ns.DB.PrintStats()
+_st = " ".join(G.LOG.values())
+check("sin exportar: 3/12" in _st and "lleno" not in _st, f"/oro stats: 3 sin exportar y sin falsa alarma")
+lua.execute("OroborosResumen = nil")
 G.OroborosDB.markets["TEST-MK"] = None
 
 # Nombres que faltan: se piden en tandas de 100 y se rellenan al llegar
@@ -659,6 +669,12 @@ check(append_scans(arch2, fake)["gap"] is False, "archivo: sin hueco si hay sola
 r = subprocess.run([sys.executable, os.path.join(ROOT, "tools", "oroboros_export.py"), sv, "--archive", arch, "--resumen", "no"],
                    capture_output=True, text=True, encoding="utf-8", errors="replace")
 check(r.returncode == 0 and "Archivo" in r.stdout, "exportador: --archive " + (r.stdout + r.stderr)[-200:])
+from oroboros_summary import write_resumen as _wr
+_out_a = os.path.join(_tf.mkdtemp(), "Resumen.lua"); _wr(arch, _out_a)
+_la = LuaRuntime(unpack_returned_tuples=True); _la.execute(open(_out_a, encoding="utf-8").read())
+_ca = sqlite3.connect(arch)
+_mk_a, _tmax = _ca.execute("SELECT m.key, MAX(s.t) FROM scans s JOIN markets m USING (market_id)").fetchone(); _ca.close()
+check(_la.globals().OroborosResumen.archived[_mk_a] == _tmax, "Resumen.lua lleva hasta qué escaneo está archivado cada mercado")
 
 extra = LuaParser('Extra = {\n\t"a", -- [1]\n\t{\n\t\t2589, -- [1]\n\t\t2, -- [2]\n\t}, -- [2]\n}\nS = "\\195\\177and\\"u"').assignments()
 check(extra["Extra"] == ["a", [2589, 2]] and extra["S"] == 'ñand"u', f"parser: arrays estilo WoW y escapes {extra}")

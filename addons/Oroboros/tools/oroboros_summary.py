@@ -93,7 +93,12 @@ def write_resumen(archive_path, out_path, today=None):
     con = sqlite3.connect(archive_path)
     since = (today - datetime.timedelta(days=ACTIVE_DAYS - 1)).isoformat()
     lines = [f"-- Generado por tools/oroboros_summary.py el {datetime.datetime.now():%d/%m/%Y %H:%M}. No editar.",
-             f"OroborosResumen = {{ v = 1, t = {int(time.time())}, markets = {{"]
+             f"OroborosResumen = {{ v = 1, t = {int(time.time())},"]
+    # hasta qué escaneo está archivado cada mercado: el addon cuenta como «sin exportar» solo los posteriores
+    archived = con.execute("""SELECT m.key, MAX(s.t) FROM scans s JOIN markets m USING (market_id)
+                              GROUP BY m.key""").fetchall()
+    lines.append("archived = { " + "".join(f"[{lua_str(k)}] = {int(t)}, " for k, t in archived if t) + "},")
+    lines.append("markets = {")
     n = 0
     for mid, key in con.execute("SELECT market_id, key FROM markets ORDER BY key").fetchall():
         hours = oroboros_hours.analyze(archive_path, key)
