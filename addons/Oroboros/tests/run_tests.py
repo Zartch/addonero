@@ -888,6 +888,18 @@ _OP.apply_flip, _OP.apply_opportunity = _orig
 _inc_f = sum(1 for o in _opps if o["kind"] == "flip" and o.get("included"))
 _inc_t = sum(1 for o in _opps if o["kind"] == "craft" and o.get("included"))
 check((_inc_f, _inc_t) == (1, 3), f"riesgo: las reventas usan como mucho la mitad del 30 % y los lotes de prueba entran ({_inc_f} reventas, {_inc_t} lotes)")
+# Subasta o vendedor se decide por objeto (bolsas + banco), no por sitio
+_vdb = os.path.join(tmp, "vend.sqlite"); _sh.copy(os.path.join(tmp, "a.sqlite"), _vdb)
+_cv = sqlite3.connect(_vdb)
+_ck = _cv.execute("SELECT char FROM characters ORDER BY char LIMIT 1").fetchone()[0]
+_vi = 2589                                  # Paño de lino: 3 en bolsas no llegan al mínimo, 43 en total sí
+_cv.execute("DELETE FROM inventory WHERE item_id=?", (_vi,))
+_cv.execute("INSERT INTO inventory VALUES (?, 'bags', ?, 3)", (_ck, _vi))
+_cv.execute("INSERT INTO inventory VALUES (?, 'bank', ?, 40)", (_ck, _vi))
+_cv.commit(); _cv.close()
+_pv = _OP.build_plan(_Data(_vdb, os.path.join(ROOT, "tools", "catalog.json"), now=_now))
+_acts = {e["loc"]: e["action"] for v in _pv["inventory"] if v["owner"] == _ck for e in v["items"] if e["item"] == _vi}
+check(len(_acts) == 2 and len(set(_acts.values())) == 1, f"inventario: el mismo objeto en bolsas y banco recibe la misma decisión {_acts}")
 reach = [l.get("reach") for l in p3["learn"] if not l.get("new_profession")]
 first_unknown = reach.index("desconocido") if "desconocido" in reach else len(reach)
 check(all(x == "desconocido" for x in reach[first_unknown:]) and 0 < first_unknown < len(reach),

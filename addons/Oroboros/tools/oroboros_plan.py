@@ -922,6 +922,11 @@ def add_stock_sales(data, plan, views, horizon_h):
         holder = richest if banda else v["owner"]
         seller = plan.banker or holder
         c, cs = plan.chars[holder], plan.chars[seller]
+        # lo que tiene el personaje de cada objeto (bolsas + banco): «vale muy poco» se decide con el total
+        owned_free = defaultdict(int)
+        for e in v["items"]:
+            if e["action"] == "subasta":
+                owned_free[e["item"]] += max(0, e["free"])
         for e in v["items"]:
             if e["action"] == "subasta" and e["free"] > 0:
                 st = data.stats(e["item"])
@@ -935,7 +940,7 @@ def add_stock_sales(data, plan, views, horizon_h):
                     e["why"] = (f"La ruta ya vende {num(already)}; guarda estas y véndelas más adelante "
                                 "para no hundir el precio.")
                     continue
-                if e["ah"] * q < 2000:
+                if e["ah"] * owned_free[e["item"]] < 2000:
                     e["action"] = "vendedor"
                     e["why"] = (f"Vale muy poco ({money(e['ah'] * e['free'])} en total): véndelo al vendedor "
                                 "o tíralo para liberar hueco.")
