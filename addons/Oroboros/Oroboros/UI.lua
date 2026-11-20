@@ -90,10 +90,10 @@ local function layout(queueLines)
     f.footDiv:ClearAllPoints()
     f.footDiv:SetPoint("TOPLEFT", PAD, y)
     f.footDiv:SetPoint("TOPRIGHT", -PAD, y)
-    local colW = (W - 2 * PAD) / 3
+    local colX = { 0, 124, 234 }      -- la primera etiqueta («PRÓXIMO ESCANEO») es la más larga
     for k, cell in ipairs(f.foot) do
-        cell.label:ClearAllPoints(); cell.label:SetPoint("TOPLEFT", PAD + (k - 1) * colW, y - 10)
-        cell.value:ClearAllPoints(); cell.value:SetPoint("TOPLEFT", PAD + (k - 1) * colW, y - 24)
+        cell.label:ClearAllPoints(); cell.label:SetPoint("TOPLEFT", PAD + colX[k], y - 10)
+        cell.value:ClearAllPoints(); cell.value:SetPoint("TOPLEFT", PAD + colX[k], y - 24)
     end
     f:SetHeight(-(y - 46) + 4)
 end
@@ -118,7 +118,7 @@ function UI.UpdateFooter()
     local nScans, cap = ns.DB.ScanCount()
     f.foot[3].value:SetText(string.format("%d/%d%s", nScans, cap, nScans >= cap and "  exporta" or ""))
     S.Color(f.foot[3].value, nScans >= cap and "bad" or "value")
-    f.gold:SetText(ns.Money(GetMoney()))
+    f.gold:SetText(ns.Coin(GetMoney()))
 end
 
 -- Botón de escaneo: pulsado y desactivado mientras se escanea, sea a mano o automático

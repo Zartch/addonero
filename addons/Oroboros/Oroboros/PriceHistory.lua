@@ -104,11 +104,11 @@ function PH.Model(itemID, live)
         m.tone = (m.diffPct <= -2 and "good") or (m.diffPct >= 2 and "bad") or "neutral"
     end
     m.stats = {
-        { label = "MEDIA 7 D", value = ns.Money(s.avg7) },
-        { label = "MEDIA 30 D", value = ns.Money(s.avg30) },
-        { label = "MEDIA 90 D", value = ns.Money(s.avg90) },
-        { label = "MÍNIMO", value = ns.Money(s.low), sub = ddmm(s.lowDay) },
-        { label = "MÁXIMO", value = ns.Money(s.high), sub = ddmm(s.highDay) },
+        { label = "MEDIA 7 D", value = ns.Coin(s.avg7) },
+        { label = "MEDIA 30 D", value = ns.Coin(s.avg30) },
+        { label = "MEDIA 90 D", value = ns.Coin(s.avg90) },
+        { label = "MÍNIMO", value = ns.Coin(s.low), sub = ddmm(s.lowDay) },
+        { label = "MÁXIMO", value = ns.Coin(s.high), sub = ddmm(s.highDay) },
     }
     local last = dayTime(s.lastDay)
     m.days, m.weeks = {}, {}
@@ -203,7 +203,7 @@ local function render(f, m)
     local y = -38
     y = place(f, f.todayLabel, y, nil, 14)
     f.today:ClearAllPoints(); f.today:SetPoint("TOPLEFT", PAD, y)
-    f.today:SetText(m.today and ns.Money(m.today) or "sin precio")
+    f.today:SetText(m.today and ns.Coin(m.today) or "sin precio")
     S.Color(f.today, m.tone == "good" and "good" or (m.tone == "bad" and "bad" or "value"))
     f.diff:ClearAllPoints(); f.diff:SetPoint("BOTTOMLEFT", f.today, "BOTTOMRIGHT", 10, 2)
     if m.diffPct then
@@ -243,7 +243,7 @@ local function render(f, m)
     f.dayTitle:ClearAllPoints(); f.dayTitle:SetPoint("TOPLEFT", PAD, y); f.dayTitle:Show()
     f.legend:ClearAllPoints(); f.legend:SetPoint("TOPRIGHT", -PAD, y); f.legend:Show()
     y = y - 16
-    local money = function(p) return p.label, p.value and ns.Money(p.value) or "sin datos" end
+    local money = function(p) return p.label, p.value and ns.Coin(p.value) or "sin datos" end
     f.dayChart:ClearAllPoints(); f.dayChart:SetPoint("TOPLEFT", PAD, y); f.dayChart:Show()
     f.dayChart:SetData(m.days, m.avg30, money)
     y = y - 96 - 10

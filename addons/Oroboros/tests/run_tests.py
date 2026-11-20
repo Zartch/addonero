@@ -184,11 +184,19 @@ lua.execute('OroborosResumen = { v = 1, t = 0, markets = { ["Otro-Alliance"] = {
 check(PH.Get(2589) is None, "panel: el resumen de otro mercado no se usa")
 lua.execute("OroborosResumen = nil")
 check(PH.Get(2589) is None and list(PH.Lines(2589, None).values())[-1] == "Sin historial: genera el plan.", "panel: sin Resumen.lua funciona igual")
+# Dinero con iconos de moneda (ventanas y tooltip)
+_cop, _sil, _gol = "UI-CopperIcon", "UI-SilverIcon", "UI-GoldIcon"
+_c = ns.Coin(120)
+check(_c.startswith("1|T") and _sil in _c and _c.endswith("|t") and "20|T" in _c and _cop in _c and "s" not in _c.split("|T")[0],
+      f"monedas: 1 plata 20 cobre con iconos ({_c})")
+check(ns.Coin(10000).count("|T") == 1 and _gol in ns.Coin(10000) and ns.Coin(0).startswith("0|T") and _cop in ns.Coin(0),
+      "monedas: se omiten las unidades a cero salvo si todo es cero")
+check(ns.Chart.ShortMoney(2000).startswith("20|T") and _sil in ns.Chart.ShortMoney(2000), "escala de las gráficas con icono de moneda")
 # Modelo del panel rediseñado (cifras, tono, fechas de días y semanas)
 lua.execute("OroborosResumen = { v = 1, t = 0, markets = { [\"" + ns.MarketKey() + "\"] = { [2589] = [[" + _S + "]], [2318] = [[50;50;50;50;50;20261119;50;20261119;;;50,50,50,50,50,50,50,50,50,50,50,50,50;50,50,50,50,50,50,50,50,50,50,50,50,50,50;20261119]] } } }")
 M = PH.Model(2589, 120)
 _st = [(x.label, x.value, x.sub) for x in M.stats.values()]
-check((M.diffPct, M.tone, M.hasHistory) == (-12, "good", True) and len(_st) == 5 and _st[3] == ("MÍNIMO", "95c", "12/11"),
+check((M.diffPct, M.tone, M.hasHistory) == (-12, "good", True) and len(_st) == 5 and _st[3] == ("MÍNIMO", ns.Coin(95), "12/11"),
       f"panel: modelo con diferencia, tono y cifras {M.diffPct} {M.tone} {_st}")
 check(M.days[14].label == "19/11" and M.days[1].label == "06/11" and M.weeks[1].label == "semana del 24/08" and M.weeks[13].label == "semana del 16/11",
       f"panel: fechas de días y semanas ({M.days[1].label}..{M.days[14].label}, {M.weeks[1].label})")

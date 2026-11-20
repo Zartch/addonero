@@ -5,12 +5,14 @@ ns.Chart = Chart
 
 local L, R, T, B = 46, 6, 6, 14      -- márgenes: escala a la izquierda, fechas abajo
 
--- Dinero corto para la escala: 1.2g, 15.2s, 87c
+-- Dinero corto para la escala, con el icono de la moneda: 1.2 oro, 15 plata, 87 cobre
 function Chart.ShortMoney(c)
     if not c then return "" end
-    if c >= 10000 then return string.format("%.1fg", c / 10000) end
-    if c >= 100 then return string.format("%.1fs", c / 100) end
-    return string.format("%dc", math.floor(c + 0.5))
+    local icon = ns.COIN_ICON or { g = "g", s = "s", c = "c" }
+    local function num(x) return (string.format("%.1f", x):gsub("%.0$", "")) end
+    if c >= 10000 then return num(c / 10000) .. icon.g end
+    if c >= 100 then return num(c / 100) .. icon.s end
+    return string.format("%d", math.floor(c + 0.5)) .. icon.c
 end
 
 local function tex(parent, layer, color)

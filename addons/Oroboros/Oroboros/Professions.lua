@@ -134,7 +134,7 @@ if TooltipDataProcessor and Enum.TooltipDataType and Enum.TooltipDataType.Item t
         if not OroborosDB or not data or not data.id or not tooltip.AddDoubleLine then return end
         local p = ns.DB.GetPrice(data.id)
         if p and p.mv then
-            tooltip:AddDoubleLine("Oroboros", ns.Money(p.mv) .. (p.qty and (" (" .. p.qty .. ")") or ""), 0.9, 0.72, 0, 1, 1, 1)
+            tooltip:AddDoubleLine("Oroboros", ns.Coin(p.mv) .. (p.qty and (" (" .. p.qty .. ")") or ""), 0.9, 0.72, 0, 1, 1, 1)
         end
         for _, c in ipairs(Professions.Crafters(data.id)) do
             tooltip:AddDoubleLine("Lo fabrica", c.char:match("^([^%-]+)") .. " (" .. c.prof .. ")", 0.9, 0.72, 0, 1, 1, 1)

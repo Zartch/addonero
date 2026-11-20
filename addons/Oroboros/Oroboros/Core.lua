@@ -31,6 +31,25 @@ function ns.Money(copper)
     return string.format("%dc", c)
 end
 
+-- Dinero con los iconos de oro, plata y cobre del juego (para ventanas y tooltips; el chat usa ns.Money).
+-- Las unidades a cero se omiten, salvo que todo sea cero.
+local COIN = "|TInterface\\MoneyFrame\\UI-%sIcon:0:0:2:0|t"
+local COIN_ICON = { g = COIN:format("Gold"), s = COIN:format("Silver"), c = COIN:format("Copper") }
+ns.COIN_ICON = COIN_ICON
+
+function ns.Coin(copper)
+    if not copper then return "?" end
+    copper = math.floor(copper + 0.5)
+    local g = math.floor(copper / 10000)
+    local s = math.floor((copper % 10000) / 100)
+    local c = copper % 100
+    local parts = {}
+    if g > 0 then parts[#parts + 1] = g .. COIN_ICON.g end
+    if s > 0 then parts[#parts + 1] = s .. COIN_ICON.s end
+    if c > 0 or #parts == 0 then parts[#parts + 1] = c .. COIN_ICON.c end
+    return table.concat(parts, " ")
+end
+
 function ns.Today()
     return date("%Y-%m-%d")
 end
