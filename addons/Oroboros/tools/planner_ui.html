@@ -191,6 +191,7 @@ input[type="search"], select { font: inherit; padding: 6px 10px; border: 1px sol
   <section class="view" id="v-inventario"></section>
   <section class="view" id="v-mercado"></section>
   <section class="view" id="v-horas"></section>
+  <section class="view" id="v-farmear"></section>
 </main>
 <div class="tip" id="tip"></div>
 <script>
@@ -198,7 +199,7 @@ const PLAN = /*__PLAN__*/null;
 
 const VIEWS = [
   ["resumen", "Resumen"], ["ruta", "Ruta"], ["recetas", "Qué ganas y por qué"],
-  ["transformar", "Transformaciones"], ["aprender", "Qué aprender"], ["ideas", "Ideas"], ["cartera", "Cartera"], ["inventario", "Qué tienes"], ["mercado", "Mercado"], ["horas", "Horas"],
+  ["transformar", "Transformaciones"], ["aprender", "Qué aprender"], ["ideas", "Ideas"], ["cartera", "Cartera"], ["inventario", "Qué tienes"], ["mercado", "Mercado"], ["horas", "Horas"], ["farmear", "Farmear"],
 ];
 const $ = (s, el = document) => el.querySelector(s);
 const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
@@ -612,7 +613,64 @@ function renderMercado() {
   wireChart(mkItem);
 }
 
-const RENDER = { resumen: renderResumen, ruta: renderRuta, recetas: renderRecetas, transformar: renderTransformar, aprender: renderAprender, ideas: renderIdeas, cartera: renderCartera, inventario: renderInventario, mercado: renderMercado, horas: renderHoras };
+/* ---------------- Farmear (docs/farmeo.md) ---------------- */
+let farmChar = null;
+const CONTINENT = { 0: "Reinos del Este", 1: "Kalimdor" };
+const fItem = id => (PLAN.farm && PLAN.farm.names && PLAN.farm.names[id]) || itemName(id);
+const fTime = s => s >= 3600 ? `${Math.floor(s / 3600)} h ${Math.round((s % 3600) / 60)} min` : `${Math.round(s / 60)} min`;
+const fTop = items => (items || []).map(([id, q, v]) => `<li>${esc(fItem(id))} <span class="sub">×${fmtN(q)}</span> ${money(v)}</li>`).join("");
+const SOURCE = { medido: ["medido", "good"], mixto: ["medido en parte", "info"], estimado: ["aproximado: solo materiales", "mute"] };
+// Nombre del sitio: el juego lo resuelve (OroborosDB.farmPlaces) y el exportador lo trae; si no, continente y coordenadas
+function cellPlace(r) {
+  const k = `${r.map}:${r.cell[0]}:${r.cell[1]}`, p = PLAN.farm.places && PLAN.farm.places[k];
+  if (p) return `${esc(p.zone)}${p.x !== undefined ? ` <span class="sub">(${fmtN(p.x)}, ${fmtN(p.y)})</span>` : ""}`;
+  return `${CONTINENT[r.map] || "Mapa " + r.map} <span class="sub">(x ${Math.round(r.x)}, y ${Math.round(r.y)} del mundo)</span>`;
+}
+const mapName = id => (PLAN.farm.maps && PLAN.farm.maps[id]) || `Mapa ${id}`;
+
+function renderFarmear() {
+  const F = PLAN.farm;
+  if (!F) { $("#v-farmear").innerHTML = `<div class="panel"><header><h2>Farmear</h2></header><p class="lead">Este plan no trae datos de farmeo.</p></div>`; return; }
+  const keys = Object.keys(F.chars).sort((a, b) => (F.chars[b].level || 0) - (F.chars[a].level || 0));
+  if (!farmChar || !F.chars[farmChar]) farmChar = keys[0];
+  const C = F.chars[farmChar] || { explore: [], gather: [], kinds: [] };
+  const measured = F.measured.length ? `<div class="tablewrap"><table><thead><tr><th>Dónde</th><th class="n">Oro/h</th><th class="n">Muertes</th><th class="n">Tiempo activo</th><th class="n">Por muerte</th><th>Criaturas</th><th>Lo que más te dejó</th><th>Confianza</th></tr></thead><tbody>${
+    F.measured.map(r => `<tr><td><b>${esc(r.sub)}</b><div class="sub">${esc(r.zone)}</div></td>
+      <td class="n">${r.gph !== null ? money(r.gph) : '<span class="sub">poco tiempo</span>'}</td><td class="n">${r.kills}</td><td class="n">${fTime(r.secs)}</td>
+      <td class="n">${money(r.per_kill)}</td>
+      <td>${r.mobs.slice(0, 3).map(m => `${esc(m.name)}${m.level ? ` <span class="sub">${m.level}</span>` : ""}${m.cls && m.cls !== "normal" ? ` <span class="pill warn">${esc(m.cls)}</span>` : ""}`).join("<br>")}</td>
+      <td><ul class="why">${fTop(r.top_items)}</ul></td><td>${confPill(r.confidence)}</td></tr>`).join("")}</tbody></table></div>`
+    : `<p class="lead">Aún no hay nada medido. Con Oroboros activo, mata criaturas y despójalas; al hacer <code>/reload</code> o salir, el plan lo recoge.</p>`;
+  const card = (r, i) => {
+    const [src, cls] = SOURCE[r.source] || SOURCE.estimado;
+    return `<div class="card ${i === 0 ? "top" : ""}">
+      <div class="t"><h3>${r.mobs.slice(0, 2).map(m => esc(m.name)).join(" y ")}</h3><div class="sub">${cellPlace(r)}</div></div>
+      <div style="display:flex;gap:6px;flex-wrap:wrap"><span class="pill ${cls}">${src}</span>${confPill(r.confidence)}${r.saturated ? '<span class="pill warn" title="Sacarías más de lo que la subasta vende al día: el resto va al vendedor">satura la subasta</span>' : ""}</div>
+      <div class="big">${money(r.gph)}<span class="sub"> /h</span></div>
+      <div class="stats"><span>Rango <b>${money(r.gph_range[0])} – ${money(r.gph_range[1])}</b></span><span>Nivel <b>${r.levels[0]}–${r.levels[1]}</b></span><span>≈ <b>${Math.round(r.kph)}</b> muertes/h</span><span><b>${r.spawns}</b> apariciones</span></div>
+      <details><summary>Qué matar y qué sueltan</summary><ul class="why">${r.mobs.map(m => `<li>${esc(m.name)} <span class="sub">niv. ${m.levels[0]}–${m.levels[1]} · ${pct(m.share)} de las apariciones</span> ${money(m.measured ? m.measured.per_kill : m.per_kill)}<span class="sub">/muerte${m.measured ? ` (medido, ${m.measured.kills} muertes)` : ""}</span></li>`).join("")}</ul>
+      <ul class="why">${fTop(r.top_items)}</ul></details>
+    </div>`;
+  };
+  const explore = !F.has_ac ? `<p class="lead">Para proponer sitios donde aún no has farmeado hace falta la base de AzerothCore: <code>python tools/oroboros_farm.py --descargar</code> (≈ 48 MB, en <code>work/fuentes/</code>).</p>`
+    : !C.level ? `<p class="lead">No sé el nivel de este personaje: entra con él y haz <code>/reload</code>.</p>`
+    : C.explore.length ? `<div class="cards">${C.explore.map(card).join("")}</div>` : `<p class="lead">Nada a tu nivel en mundo abierto.</p>`;
+  const KIND = { herb: "Botánica", mine: "Minería" };
+  const gather = !C.kinds.length ? `<p class="lead">Este personaje no tiene Botánica ni Minería.</p>`
+    : !F.has_gm ? `<p class="lead">No encuentro GatherMate2_Data (carpeta Forever) en la carpeta de addons del juego.</p>`
+    : `<div class="tablewrap"><table><thead><tr><th>Mapa</th><th>Profesión</th><th class="n">Nodos conocidos</th><th class="n">Nodos/h</th><th class="n">Oro/h</th><th>Qué sacas</th></tr></thead><tbody>${
+      C.gather.map(g => `<tr><td><b>${esc(mapName(g.map))}</b></td><td>${KIND[g.kind]}</td><td class="n">${g.nodes}</td><td class="n">${Math.round(g.nph)}</td>
+        <td class="n">${money(g.gph)}${g.saturated ? ' <span class="pill warn">satura</span>' : ""}</td>
+        <td><ul class="why">${fTop(g.top_items)}</ul>${g.unvalued.length ? `<div class="sub">Sin valorar: ${g.unvalued.map(esc).join(", ")}</div>` : ""}${g.above_skill.length ? `<div class="sub">Por encima de tu nivel (${g.skill}): ${g.above_skill.map(esc).join(", ")}</div>` : ""}${g.rare.length ? `<div class="sub">Raros, no estimados: ${g.rare.map(esc).join(", ")}</div>` : ""}${g.unchecked.length ? `<div class="sub">Nivel sin comprobar: ${g.unchecked.map(esc).join(", ")}</div>` : ""}</td></tr>`).join("")}</tbody></table></div>`;
+  $("#v-farmear").innerHTML = `<div class="panel"><header><h2>Farmear</h2><div class="route-tabs">${keys.map(k => `<button class="seg" aria-pressed="${k === farmChar}" data-fch="${esc(k)}">${esc(short(k))}${F.chars[k].level ? ` · ${F.chars[k].level}` : ""}</button>`).join("")}</div></header>
+    <p class="lead">Criaturas de mundo abierto (sin élites ni zonas de élites), de tu nivel o hasta 12 por debajo. Lo que mides en el juego manda: con 30 muertes sustituye a la estimación.</p></div>
+    <div class="panel"><header><h2>Donde ya has farmeado</h2></header>${measured}</div>
+    <div class="panel"><header><h2>Por explorar</h2></header><p class="lead">Estimación inicial con la base de AzerothCore (WotLK): solo oro y materiales, sin equipo. El botín de Forever cambió, así que es aproximado hasta que lo midas.</p>${explore}</div>
+    <div class="panel"><header><h2>Recolección</h2></header><p class="lead">Nodos de GatherMate2 (Forever) valorados con lo que suelta cada nodo; 30 nodos/h en un mapa denso. Solo los nodos de tu nivel de profesión (niveles del juego clásico, sin comprobar en Forever).</p>${gather}</div>`;
+  $("#v-farmear").querySelectorAll("[data-fch]").forEach(b => b.onclick = () => { farmChar = b.dataset.fch; renderFarmear(); });
+}
+
+const RENDER = { resumen: renderResumen, ruta: renderRuta, recetas: renderRecetas, transformar: renderTransformar, aprender: renderAprender, ideas: renderIdeas, cartera: renderCartera, inventario: renderInventario, mercado: renderMercado, horas: renderHoras, farmear: renderFarmear };
 function show() {
   const h = location.hash.replace("#", "");
   const v = RENDER[h] ? h : "resumen";

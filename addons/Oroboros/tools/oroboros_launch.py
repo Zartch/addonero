@@ -137,7 +137,9 @@ def main():
 
     def process():
         time.sleep(3)                               # por si el juego aún cierra archivos
-        oroboros_watch.pipeline(find_file(root), work, a.resumen)
+        import azerothcore
+        ac_dir = os.path.join(HERE, "..", "work", "fuentes", "azerothcore")
+        oroboros_watch.pipeline(find_file(root), work, a.resumen, ac_dir=ac_dir if azerothcore.available(ac_dir) else None)
 
     run_session(lambda: find_wow(exe), wait_pid, process, start_launcher=start, wait_start=a.wait_start * 60)
 

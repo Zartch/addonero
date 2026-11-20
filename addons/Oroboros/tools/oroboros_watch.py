@@ -57,8 +57,9 @@ def watch(path, run, interval=30, settle=10, cycles=None, clock=time.time, sleep
     return ok
 
 
-def pipeline(sv_path, work_dir, resumen=None, log=_log):
-    """Exporta y genera el plan. Lanza RuntimeError si algún paso falla."""
+def pipeline(sv_path, work_dir, resumen=None, log=_log, ac_dir=None):
+    """Exporta y genera el plan. Lanza RuntimeError si algún paso falla.
+    Con AzerothCore descargado (ac_dir), el plan lleva también la estimación del farmeo."""
     os.makedirs(work_dir, exist_ok=True)
     py = sys.executable
     archive = os.path.join(work_dir, "archivo.sqlite")
@@ -68,7 +69,8 @@ def pipeline(sv_path, work_dir, resumen=None, log=_log):
                       "--archive", archive, "--sqlite", sqlite_] + (["--resumen", resumen] if resumen else [])),
         ("plan", [py, os.path.join(HERE, "oroboros_plan.py"), "--db", sqlite_, "--archive", archive,
                   "--html", os.path.join(work_dir, "plan.html"), "--json", os.path.join(work_dir, "plan.json"),
-                  "--routes", os.path.join(work_dir, "rutas")]),
+                  "--routes", os.path.join(work_dir, "rutas"), "--wow", sv_path]
+                 + (["--azerothcore", ac_dir] if ac_dir else [])),
     ]
     for name, cmd in steps:
         r = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8", errors="replace")
@@ -96,6 +98,8 @@ def main():
     ap.add_argument("--interval", type=float, default=30)
     ap.add_argument("--settle", type=float, default=10)
     ap.add_argument("--once", action="store_true", help="procesar una vez y salir")
+    ap.add_argument("--azerothcore", default=os.path.join(HERE, "..", "work", "fuentes", "azerothcore"),
+                    help="carpeta de AzerothCore para el farmeo (si no está descargado, se omite)")
     ap.add_argument("--log", help="escribir también lo que hace en este archivo (útil sin consola)")
     a = ap.parse_args()
     global LOG_FILE
@@ -104,7 +108,9 @@ def main():
     path = a.path or (find_file(a.find) if a.find else None)
     if not path:
         ap.error("indica la ruta de Oroboros.lua o --find")
-    run = lambda: pipeline(path, a.work, a.resumen)
+    import azerothcore
+    ac_dir = a.azerothcore if a.azerothcore and azerothcore.available(a.azerothcore) else None
+    run = lambda: pipeline(path, a.work, a.resumen, ac_dir=ac_dir)
     if a.once:
         try:
             run()

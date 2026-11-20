@@ -733,9 +733,9 @@ def write_fake_ac(d):
         (1, 999, 0, 100, 0, 1, 0, 1, 1), (1, 1, 1000, 100, 0, 1, 0, 1, 1), (1, 777, 0, 100, 1, 1, 0, 1, 1)])
     dump("reference_loot_template", lt, [(1000, 3000, 0, 20, 0, 1, 0, 1, 1)])
     dump("skinning_loot_template", lt, [])
-    dump("item_template", ["entry", "class", "Quality", "SellPrice", "bonding"],
-         [(2589, 7, 1, 10, 0), (2592, 7, 1, 25, 0), (4306, 7, 1, 38, 0), (999, 4, 2, 500, 2), (3000, 15, 0, 25, 0), (777, 12, 1, 0, 4),
-          (2447, 7, 1, 4, 0), (2770, 7, 1, 5, 0)])
+    dump("item_template", ["entry", "class", "Quality", "SellPrice", "bonding", "name"],
+         [r + ("'Item %d'" % r[0],) for r in [(2589, 7, 1, 10, 0), (2592, 7, 1, 25, 0), (4306, 7, 1, 38, 0), (999, 4, 2, 500, 2),
+                                              (3000, 15, 0, 25, 0), (777, 12, 1, 0, 4), (2447, 7, 1, 4, 0), (2770, 7, 1, 5, 0)]])
     dump("gameobject_template", ["entry", "type", "name", "Data0", "Data1"],
          [(1618, 3, "'Peacebloom'", 29, 1415), (3724, 3, "'Peacebloom'", 29, 1415), (1731, 3, "'Copper Vein'", 38, 1502),
           (9000, 10, "'Peacebloom'", 0, 0)])
@@ -790,6 +790,42 @@ check(abs(_g0["gph"] - 2250) < 1e-6 and _g0["top_items"][0][0] == 2447 and _g0["
 _gr2 = OF.gathering(_gm, _ac, _gprices, {"herb", "mine"})
 check([(r["map"], r["kind"], round(r["gph"])) for r in _gr2] == [(1411, "herb", 2250), (1412, "mine", 900)],
       f"farmeo: un mapa con pocos nodos da menos nodos por hora {[(r['map'], round(r['gph'])) for r in _gr2]}")
+_gr0 = OF.gathering(_gm, _ac, _gprices, {"herb": 0})
+check(len(_gr0) == 1 and _gr0[0]["gph"] == 0 and _gr0[0]["above_skill"] == ["Peacebloom"] and _gr0[0]["unchecked"] == ["Ghostbloom"]
+      and _gr0[0]["nph"] == 30 * 50 / 200, "farmeo: con nivel 0 de Botánica, la Peacebloom (pide 1) no cuenta; lo que no está en la tabla, «sin comprobar»")
+_gm_lotus = {"names": {401: "Peacebloom", 444: "Black Lotus"}, "herb": {7: {401: 200, 444: 50}}}
+_grl = OF.gathering(_gm_lotus, _ac, _gprices, {"herb": 300})[0]
+check(abs(_grl["gph"] - 3000) < 1e-6 and _grl["rare"] == ["Black Lotus"],
+      f"farmeo: el Loto negro (raro, un sitio de muchos) no se estima ni cuenta como nodo ({_grl['gph']})")
+
+# Farmeo: lo medido manda (peso = muertes / 30) y lo solo medido también aparece
+_meas = OF.read_measured(arch_f, "M")
+check(len(_meas["mobs"]) == 1 and _meas["mobs"][0]["items"] == {2589: 2} and _meas["npcs"][1234]["name"] == "Lobo"
+      and OF.read_measured(arch_f, "Otro")["mobs"] == [], "farmeo: lee lo medido del archivo, solo de ese mercado")
+def _m(npc, sub, kills, secs, copper, items=None):
+    return {"npc": npc, "sub": sub, "zone": "Elwynn", "map": 1429, "kills": kills, "secs": secs, "copper": copper, "items": items or {}}
+_est = OF.estimate(_ac, _prices, 11)
+_c10 = OF.combine(_est, OF.per_npc([_m(1, "Bosque X", 10, 300, 5000)]), _ac, _prices)[0]
+check(abs(_c10["gph"] - (21000 / 3 + 27525 * 2 / 3)) < 1e-6 and _c10["source"] == "mixto" and _c10["confidence"] == "media"
+      and _est[0]["gph"] == 27525, f"farmeo: 10 muertes medidas pesan 1/3 ({_c10['gph']}, {_c10['source']})")
+_c30 = OF.combine(_est, OF.per_npc([_m(1, "Bosque X", 20, 900, 10000), _m(1, "Otra", 10, 600, 5000)]), _ac, _prices)[0]
+check(abs(_c30["gph"] - 21000) < 1e-6 and _c30["source"] == "medido" and _c30["confidence"] == "alta",
+      f"farmeo: 30 muertes (sumando subzonas) sustituyen a la estimación ({_c30['gph']}, {_c30['confidence']})")
+_c0 = OF.combine(_est, {}, _ac, _prices)[0]
+check(_c0["gph"] == 27525 and _c0["source"] == "estimado" and _c0["confidence"] == "baja", "farmeo: sin medir, solo la estimación (confianza baja)")
+_mp = OF.measured_places([_m(1, "Bosque X", 10, 300, 5000), _m(4242, "Cueva", 5, 600, 3000, {2589: 4})],
+                         {4242: {"name": "Kobold", "lvl": 9, "cls": "normal"}}, _ac, _prices)
+_cueva = [r for r in _mp if r["sub"] == "Cueva"]
+check(len(_mp) == 2 and _cueva and abs(_cueva[0]["gph"] - 20400) < 1e-6 and _cueva[0]["mobs"][0]["name"] == "Kobold"
+      and _cueva[0]["confidence"] == "media", "farmeo: una criatura solo medida (no está en AzerothCore) aparece con su oro por hora real")
+_fp = OF.farm_plan(_ac, _gm, _prices, {"Zartch-R": {"level": 11, "professions": {"Herboristería": {}}}},
+                   {"mobs": [_m(1, "Bosque X", 10, 300, 5000)], "npcs": {}})
+_fz = _fp["chars"]["Zartch-R"]
+check(_fz["explore"][0]["source"] == "mixto" and [g["kind"] for g in _fz["gather"]] == ["herb"] and len(_fp["measured"]) == 1,
+      "farmeo: plan por personaje (nivel y profesiones de recolección)")
+check(OF.gather_kinds({"Botánica": {"skill": 192}, "Minería": {}, "Cocina": {}}) == {"herb": 192, "mine": None}
+      and OF.gather_kinds({"Pesca": {}}) == {},
+      "farmeo: «Botánica» (Forever en español) y Minería cuentan como recolección")
 
 # Migración desde la tabla plana del 19/11 (esquema 1)
 arch_v1 = os.path.join(_tf.mkdtemp(), "v1.sqlite")
@@ -921,6 +957,10 @@ check(any("de 20 a 24 h" in w and "/h barato" in w for w in why_x), f"plan: la v
 check(not any("/h barato" in w for o in plan["opportunities"] for w in o.get("why", [])), "plan sin --archive: sin textos de franja")
 check(p4["items"][str(X)]["hours"][5]["ok"] is True, "plan: las franjas del objeto van al JSON")
 check('["horas", "Horas"]' in open(os.path.join(tmp, "p4.html"), encoding="utf-8").read(), "página: pestaña Horas")
+_p4html = open(os.path.join(tmp, "p4.html"), encoding="utf-8").read()
+check('["farmear", "Farmear"]' in _p4html and all(b in _p4html for b in ("Donde ya has farmeado", "Por explorar", "Recolección"))
+      and p4["farm"]["measured"] == [] and p4["farm"]["has_ac"] is False,
+      "página: pestaña Farmear con sus tres bloques; sin AzerothCore, solo lo medido")
 _html = open(os.path.join(tmp, "p4.html"), encoding="utf-8").read()
 check(all(f'[{d}, "{t}"]' in _html for d, t in ((30, "1 mes"), (90, "3 meses"), (180, "6 meses"), (365, "1 año"), (0, "Todo")))
       and 'id="mk-stats"' in _html, "página: Mercado con rangos (1 mes a todo) y tabla de mínimos, máximos y medias")
@@ -1025,7 +1065,7 @@ _r, _c = _launch_case(0, ok=False)
 check(_r is False and _c["run"] == 1, "lanzador: un fallo al procesar se registra y termina")
 
 wtmp = os.path.join(tmp, "watch")
-rw = subprocess.run([sys.executable, os.path.join(ROOT, "tools", "oroboros_watch.py"), os.path.join(tmp, "A.lua"), "--work", wtmp,
+rw = subprocess.run([sys.executable, os.path.join(ROOT, "tools", "oroboros_watch.py"), os.path.join(tmp, "A.lua"), "--work", wtmp, "--azerothcore", "",
                      "--resumen", os.path.join(wtmp, "Resumen.lua"), "--once", "--log", os.path.join(tmp, "vigilante.log")],
                     capture_output=True, text=True, encoding="utf-8", errors="replace")
 check(rw.returncode == 0 and all(os.path.exists(os.path.join(wtmp, f)) for f in ("plan.html", "archivo.sqlite", "Resumen.lua", "oroboros.sqlite")),

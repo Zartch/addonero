@@ -1279,12 +1279,16 @@ def main():
     ap.add_argument("--brief", help="guardar un resumen del mercado en Markdown para pedir más ideas a un LLM")
     ap.add_argument("--synthetic", action="store_true", help="marcar el plan como datos sintéticos")
     ap.add_argument("--archive", help="archivo de escaneos (work/archivo.sqlite) para las franjas horarias")
+    ap.add_argument("--azerothcore", help="carpeta de AzerothCore (work/fuentes/azerothcore) para la estimación del farmeo")
+    ap.add_argument("--wow", help="cualquier ruta dentro de la carpeta de WoW (p. ej. Oroboros.lua), para GatherMate2")
     ap.add_argument("--now", help="hora de referencia (ISO o segundos); por defecto, ahora. Para pruebas")
     a = ap.parse_args()
 
     from make_synthetic import parse_now
     data = Data(a.db, a.catalog, now=parse_now(a.now), archive=a.archive)
     plan = build_plan(data, a.horizon, a.budget, a.synthetic, a.spec, a.banker)
+    import oroboros_farm
+    plan["farm"] = oroboros_farm.for_plan(data, a.archive, a.azerothcore, a.wow)
     if a.brief:
         with open(a.brief, "w", encoding="utf-8") as fh:
             fh.write(oroboros_ideas.brief(data, plan))

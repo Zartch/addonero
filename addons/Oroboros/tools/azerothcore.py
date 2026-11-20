@@ -15,7 +15,7 @@ BASE_URL = "https://raw.githubusercontent.com/azerothcore/azerothcore-wotlk/mast
 TABLES = ("creature_template", "creature", "creature_loot_template", "reference_loot_template",
           "skinning_loot_template", "item_template", "gameobject_template", "gameobject_loot_template")
 CACHE = "cache.json"
-CACHE_VERSION = 3
+CACHE_VERSION = 4
 
 TOKEN = re.compile(r"'(?:[^'\\]|\\.|'')*'|NULL|-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?|[(),;]")
 
@@ -105,8 +105,8 @@ def load(dest_dir):
     templates = {r[0]: dict(zip(ct[1:], r[1:])) for r in read_dump(sqls[0], ct)}
     # zoneId/areaId vienen a 0 en AzerothCore: la posición (x, y) es lo que sirve para agrupar
     spawns = read_dump(sqls[1], ["id1", "map", "zoneId", "areaId", "spawntimesecs", "position_x", "position_y"])
-    items = {r[0]: {"class": r[1], "quality": r[2], "sell": r[3], "bonding": r[4]}
-             for r in read_dump(sqls[5], ["entry", "class", "Quality", "SellPrice", "bonding"])}
+    items = {r[0]: {"class": r[1], "quality": r[2], "sell": r[3], "bonding": r[4], "name": r[5]}
+             for r in read_dump(sqls[5], ["entry", "class", "Quality", "SellPrice", "bonding", "name"])}
     # Nodos de recolección (tipo 3, cofre): Data1 es su botín. Varios nodos comparten nombre (p. ej. «Copper Vein»)
     nodes = {}
     for entry, typ, name, lid in read_dump(sqls[6], ["entry", "type", "name", "Data1"]):

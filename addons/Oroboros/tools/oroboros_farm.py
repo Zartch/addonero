@@ -125,13 +125,46 @@ def node_qty(ac, name):
     return qty
 
 
+_SKILLS = None
+
+
+def gather_skills():
+    """Nivel de profesión de cada nodo (tools/gather_skill.json; valores del clásico, sin comprobar en Forever)."""
+    global _SKILLS
+    if _SKILLS is None:
+        import json
+        with open(os.path.join(HERE, "gather_skill.json"), encoding="utf-8") as fh:
+            _SKILLS = json.load(fh)
+    return _SKILLS
+
+
 def gathering(gm, ac, prices, profs):
-    """Mapas de recolección ordenados por oro por hora. gm: gathermate.load; profs: {"herb", "mine"}.
-    Nodos por hora: GATHER_NPH, menos si el mapa tiene pocos nodos conocidos. El nivel de profesión no se comprueba."""
+    """Mapas de recolección ordenados por oro por hora. gm: gathermate.load.
+    profs: {"herb": nivel, "mine": nivel} (nivel None = sin comprobar) o un conjunto {"herb", "mine"}.
+    Fuera: los nodos por encima de tu nivel y los raros (Loto negro). Nodos por hora: GATHER_NPH, menos si el mapa
+    tiene pocos nodos que puedas recoger."""
+    if not isinstance(profs, dict):
+        profs = {k: None for k in profs}
+    sk = gather_skills()
     out = []
     for kind in sorted(profs):
-        for mapid, nodes in gm.get(kind, {}).items():
+        skill = profs[kind]
+        for mapid, all_nodes in gm.get(kind, {}).items():
+            nodes, above, rare, unchecked = {}, [], [], []
+            for nid, n in all_nodes.items():
+                name = gm["names"].get(nid, str(nid))
+                req = sk.get(kind, {}).get(name)
+                if name in sk.get("rare", []):
+                    rare.append(name)
+                elif skill is not None and req is not None and req > skill:
+                    above.append(name)
+                else:
+                    if req is None:
+                        unchecked.append(name)
+                    nodes[nid] = n
             total = sum(nodes.values())
+            if not total:
+                continue
             nph = GATHER_NPH * min(1.0, total / DENSE_NODES)
             qty_h, unvalued = {}, []
             for nid, n in nodes.items():
@@ -145,7 +178,8 @@ def gathering(gm, ac, prices, profs):
             items_h, saturated = _sell(ac, qty_h, prices)
             out.append({"map": mapid, "kind": kind, "nodes": total, "nph": nph,
                         "gph": sum(v for _, _, v in items_h), "top_items": items_h[:3],
-                        "unvalued": sorted(unvalued), "saturated": saturated})
+                        "unvalued": sorted(unvalued), "saturated": saturated, "skill": skill,
+                        "above_skill": sorted(above), "rare": sorted(rare), "unchecked": sorted(unchecked)})
     out.sort(key=lambda r: -r["gph"])
     return out
 
@@ -212,6 +246,200 @@ def estimate(ac, prices, level, skinning=False):
                     "mobs": sorted(mobs, key=lambda x: -x["share"]), "top_items": items_h[:3], "saturated": saturated})
     out.sort(key=lambda r: -r["gph"])
     return out
+
+
+# ----------------------------------------------------------------------
+# Lo medido en el juego (Farm.lua → archivo) y su combinación con la estimación
+# ----------------------------------------------------------------------
+CONF_KILLS = 30             # con 30 muertes, lo medido sustituye a la estimación
+CONF_SECS = 1200            # y con 20 minutos activos, confianza alta
+MIN_SECS = 60               # menos tiempo activo que esto no da oro por hora
+HERB_WORDS = ("herbor", "herbal", "botán", "botan")    # en Forever en español: «Botánica»
+MINE_WORDS = ("miner", "mining")
+
+
+def unit_value(item, ac, prices):
+    """Valor de una unidad: subasta, o vendedor para grises y lo que no tiene precio."""
+    info = ac["items"].get(item) if ac else None
+    if info:
+        return _unit(item, info, prices)
+    return (prices.get(item) or {}).get("value") or 0
+
+
+def read_measured(archive, market):
+    """{"mobs": [{npc, sub, zone, map, kills, secs, copper, items}], "npcs": {npc: {name, lvl, cls}}} del archivo."""
+    import json
+    import sqlite3
+    out = {"mobs": [], "npcs": {}}
+    if not archive or not os.path.exists(archive):
+        return out
+    con = sqlite3.connect(archive)
+    try:
+        rows = con.execute("SELECT f.npc, f.sub, f.zone, f.map, f.kills, f.secs, f.copper, f.items FROM farm_mobs f "
+                           "JOIN markets m ON m.market_id = f.market_id WHERE m.key = ?", (market,)).fetchall()
+        npcs = con.execute("SELECT npc, name, lvl, cls FROM farm_npcs").fetchall()
+    except sqlite3.OperationalError:        # archivo anterior al farmeo
+        return out
+    finally:
+        con.close()
+    for npc, sub, zone, mapid, kills, secs, copper, items in rows:
+        out["mobs"].append({"npc": npc, "sub": sub, "zone": zone, "map": mapid, "kills": kills or 0, "secs": secs or 0,
+                            "copper": copper or 0, "items": {int(k): v for k, v in json.loads(items or "{}").items()}})
+    out["npcs"] = {n: {"name": name, "lvl": lvl, "cls": cls} for n, name, lvl, cls in npcs}
+    return out
+
+
+def per_npc(mobs):
+    """Suma lo medido de cada criatura en todas las subzonas: {npc: {kills, secs, copper, items}}."""
+    out = {}
+    for m in mobs:
+        o = out.setdefault(m["npc"], {"kills": 0, "secs": 0, "copper": 0, "items": {}})
+        for k in ("kills", "secs", "copper"):
+            o[k] += m[k]
+        for it, q in m["items"].items():
+            o["items"][it] = o["items"].get(it, 0) + q
+    return out
+
+
+def _confidence(kills, secs):
+    return "alta" if kills >= CONF_KILLS and secs >= CONF_SECS else "media"
+
+
+def combine(est_rows, by_npc, ac, prices):
+    """Estimación de cada cuadrícula corregida con lo medido de sus criaturas.
+    Peso de lo medido W = Σ(peso de la criatura × min(1, muertes/30)); oro/h = W × medido + (1 − W) × estimado,
+    donde «medido» usa el oro y los objetos que de verdad soltaron (al mismo ritmo de muertes)."""
+    out = []
+    for r in est_rows:
+        W, kills, secs, gold_h, qty_h, mobs = 0.0, 0, 0, 0.0, {}, []
+        all_measured = True
+        for mob in r["mobs"]:
+            m = by_npc.get(mob["entry"])
+            share, mob = mob["share"], dict(mob)
+            if m and m["kills"]:
+                w = min(1.0, m["kills"] / CONF_KILLS)
+                W += share * w
+                kills, secs = kills + m["kills"], secs + m["secs"]
+                gold_h += r["kph"] * share * m["copper"] / m["kills"]
+                for it, q in m["items"].items():
+                    qty_h[it] = qty_h.get(it, 0) + r["kph"] * share * q / m["kills"]
+                mob["measured"] = {"kills": m["kills"], "per_kill": (m["copper"] + sum(
+                    q * unit_value(it, ac, prices) for it, q in m["items"].items())) / m["kills"]}
+                all_measured = all_measured and m["kills"] >= CONF_KILLS
+            else:
+                all_measured = False
+                v = mob_value(ac, mob["entry"], prices)
+                gold_h += r["kph"] * share * v["gold"]
+                for it, q in v["qty"].items():
+                    qty_h[it] = qty_h.get(it, 0) + r["kph"] * share * q
+            mobs.append(mob)
+        c = dict(r, mobs=mobs)
+        if W > 0:
+            items_h, _ = _sell(ac, qty_h, prices)
+            measured_gph = gold_h + sum(v for _, _, v in items_h)
+            c["gph"] = W * measured_gph + (1 - W) * r["gph"]
+            spread = GPH_SPREAD * (1 - min(1.0, W)) + 0.10 * min(1.0, W)
+            c["gph_range"] = (c["gph"] * (1 - spread), c["gph"] * (1 + spread))
+            if W >= 1 - 1e-9:
+                c["top_items"] = items_h[:3]
+        full = W >= 1 - 1e-9
+        c["source"] = "medido" if full else "mixto" if W > 0 else "estimado"
+        c["confidence"] = ("alta" if full and all_measured and secs >= CONF_SECS else "media") if W > 0 else "baja"
+        c["measured_weight"] = min(1.0, W)
+        out.append(c)
+    out.sort(key=lambda x: -x["gph"])
+    return out
+
+
+def measured_places(mobs, npcs, ac, prices):
+    """«Donde ya has farmeado»: lo medido por subzona, con su oro por hora real."""
+    places = {}
+    for m in mobs:
+        p = places.setdefault((m["zone"], m["sub"]), {"zone": m["zone"], "sub": m["sub"], "map": m["map"], "kills": 0,
+                                                      "secs": 0, "value": 0.0, "qty": {}, "mobs": []})
+        p["kills"] += m["kills"]
+        p["secs"] += m["secs"]
+        p["value"] += m["copper"]
+        for it, q in m["items"].items():
+            p["qty"][it] = p["qty"].get(it, 0) + q
+            p["value"] += q * unit_value(it, ac, prices)
+        t = (ac or {}).get("templates", {}).get(m["npc"]) if ac else None
+        n = npcs.get(m["npc"]) or {}
+        p["mobs"].append({"npc": m["npc"], "name": n.get("name") or (t and t["name"]) or f"npc:{m['npc']}",
+                          "kills": m["kills"], "level": n.get("lvl") or (t and t["maxlevel"]), "cls": n.get("cls")})
+    out = []
+    for p in places.values():
+        enough = p["secs"] >= MIN_SECS
+        top = sorted(((it, q, q * unit_value(it, ac, prices)) for it, q in p["qty"].items()), key=lambda x: -x[2])[:3]
+        out.append({"zone": p["zone"], "sub": p["sub"], "map": p["map"], "kills": p["kills"], "secs": p["secs"],
+                    "kph": p["kills"] / p["secs"] * 3600 if enough else None,
+                    "gph": p["value"] / p["secs"] * 3600 if enough else None,
+                    "per_kill": p["value"] / p["kills"] if p["kills"] else None, "top_items": top,
+                    "mobs": sorted(p["mobs"], key=lambda x: -x["kills"]), "source": "medido",
+                    "confidence": _confidence(p["kills"], p["secs"])})
+    out.sort(key=lambda x: -(x["gph"] if x["gph"] is not None else -1))
+    return out
+
+
+def gather_kinds(professions):
+    """Profesiones de recolección del personaje ({nombre: {skill, …}}, en español o inglés) → {"herb": nivel, "mine": nivel}."""
+    out = {}
+    for name, p in (professions or {}).items():
+        low = name.lower()
+        skill = (p or {}).get("skill") if isinstance(p, dict) else None
+        if any(w in low for w in HERB_WORDS):
+            out["herb"] = skill
+        if any(w in low for w in MINE_WORDS):
+            out["mine"] = skill
+    return out
+
+
+def farm_plan(ac, gm, prices, chars, meas, explore_n=10, gather_n=5):
+    """Bloque «farm» del plan: lo medido (común) y, por personaje, «por explorar» y «recolección»."""
+    by = per_npc(meas["mobs"])
+    out = {"measured": measured_places(meas["mobs"], meas["npcs"], ac, prices),
+           "has_ac": ac is not None, "has_gm": gm is not None, "chars": {}}
+    for ck, c in chars.items():
+        level = c.get("level")
+        explore = combine(estimate(ac, prices, level), by, ac, prices)[:explore_n] if ac and level else []
+        kinds = gather_kinds(c.get("professions"))
+        gather = gathering(gm, ac, prices, kinds)[:gather_n] if ac and gm and kinds else []
+        out["chars"][ck] = {"level": level, "kinds": sorted(kinds), "skills": kinds, "explore": explore, "gather": gather}
+    return out
+
+
+def item_ids(farm):
+    """Objetos que aparecen en el bloque del plan (para ponerles nombre)."""
+    ids = set()
+    rows = list(farm["measured"])
+    for c in farm["chars"].values():
+        rows += c["explore"] + c["gather"]
+    for r in rows:
+        ids.update(it for it, _, _ in r["top_items"])
+    return ids
+
+
+def for_plan(data, archive, ac_dir=None, wow_path=None):
+    """plan["farm"] desde el Data del planificador. Sin AzerothCore solo sale lo medido."""
+    import azerothcore
+    import gathermate
+    ac = azerothcore.load(ac_dir) if ac_dir and azerothcore.available(ac_dir) else None
+    base = gathermate.find(wow_path) if wow_path else None
+    gm = gathermate.load(base) if base else None
+    prices = {}
+    for i in data.prices:
+        st = data.stats(i)
+        prices[i] = {"value": st["mv"], "vol": st["vol"]}
+    farm = farm_plan(ac, gm, prices, {k: {"level": c["level"], "professions": data.professions.get(k, {})}
+                                      for k, c in data.chars.items()}, read_measured(archive, data.market))
+    names = {}
+    for i in item_ids(farm):
+        n = data.name(i)
+        if n.startswith("item:") and ac and ac["items"].get(i):
+            n = ac["items"][i].get("name") or n
+        names[i] = n
+    farm["names"] = names
+    return farm
 
 
 def main():
