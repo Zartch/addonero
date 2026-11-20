@@ -704,6 +704,54 @@ check(_cf.execute("SELECT nodes FROM farm_gather").fetchone() == (1,) and
       "farmeo al archivo: recolección y datos de la criatura")
 _cf.close()
 
+# Farmeo: estimación inicial con AzerothCore (solo materiales; el equipo no se estima)
+import azerothcore as AC
+import oroboros_farm as OF
+def write_fake_ac(d):
+    os.makedirs(d, exist_ok=True)
+    def dump(table, cols, rows):
+        create = "DROP TABLE IF EXISTS `%s`;\nCREATE TABLE `%s` (\n" % (table, table) + ",\n".join("  `%s` int NOT NULL" % c for c in cols) + \
+                 ",\n  PRIMARY KEY (`%s`)\n) ENGINE=InnoDB;\nLOCK TABLES `%s` WRITE;\n" % (cols[0], table)
+        vals = ",\n".join("(" + ",".join(v if isinstance(v, str) else str(v) for v in r) + ")" for r in rows)
+        open(os.path.join(d, table + ".sql"), "w", encoding="utf-8").write(create + "INSERT INTO `%s` VALUES\n%s;\nUNLOCK TABLES;\n" % (table, vals))
+    ct = ["entry", "name", "minlevel", "maxlevel", "rank", "type", "unit_flags", "npcflag", "lootid", "skinloot", "mingold", "maxgold"]
+    dump("creature_template", ct, [
+        (1, "'Lobo, \\'el\\' gris'", 10, 11, 0, 1, 0, 0, 1, 0, 10, 30),
+        (2, "'Elite'", 10, 10, 1, 7, 0, 0, 2, 0, 50, 50),
+        (3, "'Vendedor'", 10, 10, 0, 7, 0, 128, 0, 0, 0, 0),
+        (4, "'Jabali'", 30, 30, 0, 1, 0, 0, 4, 0, 50, 90),
+        (5, "'Ogro'", 10, 10, 0, 7, 0, 0, 5, 0, 10, 10)])
+    # zoneId/areaId vienen a 0 en AzerothCore: se agrupa por cuadrículas de la posición (x, y)
+    dump("creature", ["guid", "id1", "map", "zoneId", "areaId", "spawntimesecs", "position_x", "position_y"],
+         [(g, 1, 0, 0, 0, 300, 100 + g, 100 + g) for g in range(1, 11)] + [(11, 3, 0, 0, 0, 300, 120, 120)] +
+         [(20 + g, 5, 0, 0, 0, 300, 900 + g, 100) for g in range(6)] + [(30 + g, 2, 0, 0, 0, 300, 910 + g, 110) for g in range(4)] +
+         [(40 + g, 1, 0, 0, 0, 300, 1700 + g, 100) for g in range(5)] + [(45 + g, 3, 0, 0, 0, 300, 1710 + g, 110) for g in range(5)] +
+         [(50 + g, 4, 0, 0, 0, 300, 2500 + g, 100) for g in range(10)])
+    lt = ["Entry", "Item", "Reference", "Chance", "QuestRequired", "LootMode", "GroupId", "MinCount", "MaxCount"]
+    dump("creature_loot_template", lt, [
+        (1, 2589, 0, 50, 0, 1, 0, 1, 3), (1, 2592, 0, 0, 0, 1, 1, 1, 1), (1, 4306, 0, 0, 0, 1, 1, 1, 1),
+        (1, 999, 0, 100, 0, 1, 0, 1, 1), (1, 1, 1000, 100, 0, 1, 0, 1, 1), (1, 777, 0, 100, 1, 1, 0, 1, 1)])
+    dump("reference_loot_template", lt, [(1000, 3000, 0, 20, 0, 1, 0, 1, 1)])
+    dump("skinning_loot_template", lt, [])
+    dump("item_template", ["entry", "class", "Quality", "SellPrice", "bonding"],
+         [(2589, 7, 1, 10, 0), (2592, 7, 1, 25, 0), (4306, 7, 1, 38, 0), (999, 4, 2, 500, 2), (3000, 15, 0, 25, 0), (777, 12, 1, 0, 4)])
+_acd = os.path.join(_tf.mkdtemp(), "azerothcore")
+write_fake_ac(_acd)
+_ac = AC.load(_acd)
+check(_ac["templates"][1]["name"] == "Lobo, 'el' gris" and len(_ac["spawns"]) == 41 and _ac["loot"][1][4]["reference"] == 1000,
+      "AzerothCore: lee los volcados SQL (filas seguidas, comas y comillas escapadas, referencias)")
+_prices = {2589: {"value": 100, "vol": None}, 2592: {"value": 400, "vol": 2}, 4306: {"value": 1000, "vol": None}}
+_pk = OF.mob_value(_ac, 1, _prices)
+check(abs(_pk["copper"] - 825) < 1e-6 and 999 not in _pk["qty"] and 777 not in _pk["qty"],
+      f"farmeo: valor por muerte = oro + materiales (sin equipo ni objetos de misión) ({_pk['copper']})")
+_rows = OF.estimate(_ac, _prices, 11)
+check([(r["map"], r["cell"]) for r in _rows] == [(0, (0, 0))] and abs(_rows[0]["x"] - 105.5) < 1e-6,
+      f"farmeo: fuera élites, zona de élites, vendedores, ciudades (muchos PNJ con servicios) y nivel lejano {[(r['map'], r['cell']) for r in _rows]}")
+_r = _rows[0]
+check(abs(_r["kph"] - 42) < 1e-6 and abs(_r["gph"] - 27525) < 1e-6 and _r["saturated"] and _r["top_items"][0][0] == 4306,
+      f"farmeo: oro por hora con ritmo según nivel y saturación de la lana ({_r['kph']}, {_r['gph']})")
+check(OF.estimate(_ac, _prices, 50) == [], "farmeo: con nivel 50, esas criaturas quedan fuera del margen de nivel")
+
 # Migración desde la tabla plana del 19/11 (esquema 1)
 arch_v1 = os.path.join(_tf.mkdtemp(), "v1.sqlite")
 _v1 = sqlite3.connect(arch_v1)
