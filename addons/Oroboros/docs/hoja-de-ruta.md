@@ -98,6 +98,10 @@ También:
 
 Ojo: el beneficio por día de las profesiones nuevas aún usa ventas por día supuestas (hay pocos días de datos) y sale muy alto. Se corregirá solo con más escaneos.
 
+## Farmeo: dónde farmear para vender (en curso, desde el 20/11)
+
+**Qué esperamos:** que Oroboros proponga dónde farmear criaturas de mundo abierto (sin élites) y recolectar, según el nivel. La base es lo que mide el addon; AzerothCore es solo una estimación inicial de materiales para los sitios donde aún no has estado; la recolección sale de GatherMate2. Diseño en `docs/farmeo.md`; plan en `docs/planes/2026-11-20-farmeo.md` (6 tareas, empezando por la medición).
+
 ## Fase 4: cálculos avanzados
 
 **Qué esperamos:** sacar más de los mismos datos. Cada cálculo tiene su propio diseño corto antes de programarlo, cuando haya datos suficientes para comprobar que funciona:
