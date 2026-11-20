@@ -2,7 +2,7 @@
 ## Title: Oroboros
 ## Notes: Escaneo de subasta, base de datos de precios, recetas y cola de compra/venta (un clic por acción).
 ## Author: Zartch
-## Version: 0.8.0
+## Version: 0.9.0
 ## SavedVariables: OroborosDB
 ## OptionalDeps: Auctionator
 ## IconTexture: Interface\Icons\INV_Misc_Coin_02
@@ -17,5 +17,6 @@ Style.lua
 Chart.lua
 UI.lua
 PriceHistory.lua
+Inventory.lua
 # Generado fuera del juego (tools/oroboros_summary.py); si falta, el addon funciona igual
 Resumen.lua

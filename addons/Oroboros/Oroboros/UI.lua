@@ -29,12 +29,16 @@ local function build()
     f.gold:SetJustifyH("RIGHT")
     S.Color(f.gold, "accent")
 
-    local scan = S.Button(f, "Escaneo completo", 150, 26, "neutral")
+    local scan = S.Button(f, "Escaneo completo", 118, 26, "neutral")
     scan:SetPoint("TOPLEFT", PAD, -38)
     scan:SetScript("OnClick", function() ns.Scanner.FullScan() end)
     f.scanButton = scan
 
-    local imp = S.Button(f, "Importar ruta", 150, 26, "neutral")
+    local inv = S.Button(f, "Lo que tienes", 92, 26, "neutral")
+    inv:SetPoint("LEFT", scan, "RIGHT", 4, 0)
+    inv:SetScript("OnClick", function() ns.Inventory.Toggle() end)
+
+    local imp = S.Button(f, "Importar ruta", 88, 26, "neutral")
     imp:SetPoint("TOPRIGHT", -PAD, -38)
     imp:SetScript("OnClick", UI.ShowImport)
 

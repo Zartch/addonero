@@ -264,6 +264,7 @@ end
 -- Debajo de la ventana de Oroboros si está abierta (las dos van a la derecha de la subasta);
 -- si no, a la derecha de la subasta; si tampoco, en el centro.
 function PH.AnchorTarget()
+    if ns.Inventory and ns.Inventory.frame and ns.Inventory.frame:IsShown() then return "OroborosInventoryFrame" end
     if ns.UI and ns.UI.frame and ns.UI.frame:IsShown() then return "OroborosFrame" end
     if AuctionHouseFrame and AuctionHouseFrame.IsShown and AuctionHouseFrame:IsShown() then return "AuctionHouseFrame" end
     return nil
@@ -272,7 +273,9 @@ end
 local function anchor(f)
     f:ClearAllPoints()
     local target = PH.AnchorTarget()
-    if target == "OroborosFrame" then
+    if target == "OroborosInventoryFrame" then
+        f:SetPoint("TOPLEFT", ns.Inventory.frame, "TOPRIGHT", 4, 0)
+    elseif target == "OroborosFrame" then
         f:SetPoint("TOPLEFT", ns.UI.frame, "BOTTOMLEFT", 0, -4)
     elseif target == "AuctionHouseFrame" then
         f:SetPoint("TOPLEFT", AuctionHouseFrame, "TOPRIGHT", 4, 0)
@@ -292,6 +295,32 @@ end
 
 function PH.Hide()
     if PH.frame then PH.frame:Hide() end
+end
+
+-- Para el tooltip del objeto: precio guardado y diferencia con su media de 30 días
+function PH.TooltipInfo(itemID)
+    local p = ns.DB.GetPrice(itemID)
+    local s = PH.Get(itemID)
+    local now = (p and (p.qty or 0) > 0 and (p.mv or p.min)) or (s and s.today)
+    if not now then return nil end
+    local info = { price = ns.Coin(now) }
+    if s and s.avg30 and s.avg30 > 0 then
+        local d = (now / s.avg30 - 1) * 100
+        info.diffPct = d >= 0 and math.floor(d + 0.5) or -math.floor(-d + 0.5)
+        info.tone = (info.diffPct <= -2 and "good") or (info.diffPct >= 2 and "bad") or "neutral"
+    end
+    return info
+end
+
+-- Alt + clic en cualquier objeto (bolsas, banco, enlaces del chat…): su historial, sin estar en la subasta
+if hooksecurefunc and HandleModifiedItemClick then
+    hooksecurefunc("HandleModifiedItemClick", function(link)
+        if not (IsAltKeyDown and IsAltKeyDown()) or type(link) ~= "string" then return end
+        local id = tonumber(link:match("item:(%d+)"))
+        if not id then return end
+        local p = ns.DB.GetPrice(id)
+        PH.Show(id, p and (p.qty or 0) > 0 and p.min or nil)
+    end)
 end
 
 ----------------------------------------------------------------------

@@ -51,9 +51,13 @@ function GetNormalizedRealmName() return "ForeverNormal" end
 function UnitFactionGroup() return "Horde" end
 function UnitLevel() return 60 end
 function hooksecurefunc(tbl, name, hook)
+    if type(tbl) == "string" then tbl, name, hook = _G, tbl, name end   -- forma global: hooksecurefunc("Nombre", f)
     local orig = tbl[name]
     tbl[name] = function(...) local r = { orig(...) }; hook(...); return unpack(r) end
 end
+ALT_DOWN = false
+function IsAltKeyDown() return ALT_DOWN end
+function HandleModifiedItemClick(link) return false end
 MAIL = { { "seller", "Bolt of Linen Cloth", "x", 5388, 0, 0, 270, 0, 0, 0, 12 }, { nil } }
 function GetInboxNumItems() return #MAIL end
 function GetInboxInvoiceInfo(i) return unpack(MAIL[i]) end

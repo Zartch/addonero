@@ -132,9 +132,16 @@ end
 if TooltipDataProcessor and Enum.TooltipDataType and Enum.TooltipDataType.Item then
     TooltipDataProcessor.AddTooltipPostCall(Enum.TooltipDataType.Item, function(tooltip, data)
         if not OroborosDB or not data or not data.id or not tooltip.AddDoubleLine then return end
-        local p = ns.DB.GetPrice(data.id)
-        if p and p.mv then
-            tooltip:AddDoubleLine("Oroboros", ns.Coin(p.mv) .. (p.qty and (" (" .. p.qty .. ")") or ""), 0.9, 0.72, 0, 1, 1, 1)
+        local info = ns.PriceHistory and ns.PriceHistory.TooltipInfo(data.id)
+        if info then
+            local right = info.price
+            if info.diffPct then
+                local S = ns.Style
+                right = right .. "  " .. S.Hex(info.tone == "good" and "good" or (info.tone == "bad" and "bad" or "label"),
+                    string.format("%s%d %% frente a su media de 30 días", info.diffPct > 0 and "+" or "", info.diffPct))
+            end
+            tooltip:AddDoubleLine("Oroboros", right, 0.9, 0.72, 0, 1, 1, 1)
+            tooltip:AddLine("Alt+clic: historial de precios", 0.5, 0.5, 0.55)
         end
         for _, c in ipairs(Professions.Crafters(data.id)) do
             tooltip:AddDoubleLine("Lo fabrica", c.char:match("^([^%-]+)") .. " (" .. c.prof .. ")", 0.9, 0.72, 0, 1, 1, 1)

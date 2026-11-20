@@ -11,7 +11,7 @@ ADDON = os.path.join(ROOT, "Oroboros")
 lua = LuaRuntime(unpack_returned_tuples=True)
 lua.execute(open(os.path.join(ROOT, "tests", "mock_wow.lua"), encoding="utf-8").read())
 ns = lua.eval("{}")
-for f in ["Core.lua", "DB.lua", "Scanner.lua", "Professions.lua", "Ledger.lua", "Queue.lua", "Style.lua", "Chart.lua", "UI.lua", "PriceHistory.lua"]:
+for f in ["Core.lua", "DB.lua", "Scanner.lua", "Professions.lua", "Ledger.lua", "Queue.lua", "Style.lua", "Chart.lua", "UI.lua", "PriceHistory.lua", "Inventory.lua"]:
     chunk = lua.execute("return function(src, name) return assert(loadstring(src, name)) end")(
         open(os.path.join(ADDON, f), encoding="utf-8").read(), "@" + f)
     chunk("Oroboros", ns)
@@ -204,6 +204,18 @@ check(PH.Model(2996, 450).hasHistory is False, "panel: sin resumen, sin historia
 for _id, _live in ((2589, 120), (2996, 450), (2318, 50), (2318, None)):
     PH.Show(_id, _live)
 check(True, "panel: se dibuja con resumen, sin resumen y con todos los valores iguales")
+# Tooltip y Alt+clic: el historial de cualquier objeto, sin estar en la subasta
+ti = PH.TooltipInfo(2589)
+check(ti is not None and ti.price == ns.Coin(ns.DB.GetPrice(2589).mv) and ti.tone in ("good", "bad", "neutral") and ti.diffPct is not None,
+      f"tooltip: precio con iconos y diferencia con su media ({ti and ti.diffPct})")
+fire("AUCTION_HOUSE_CLOSED"); PH.Hide(); PH.current = None
+lua.execute("ALT_DOWN = false")
+G.HandleModifiedItemClick("|cffffffff|Hitem:2589::::::::60:::::|h[Linen Cloth]|h|r")
+check(PH.current is None, "Alt+clic: sin Alt no abre nada")
+lua.execute("ALT_DOWN = true")
+G.HandleModifiedItemClick("|cffffffff|Hitem:2589::::::::60:::::|h[Linen Cloth]|h|r")
+check(PH.current == 2589 and PH.frame.shown, "Alt+clic en un objeto abre su historial sin la subasta abierta")
+lua.execute("ALT_DOWN = false"); PH.Hide()
 lua.execute("OroborosResumen = nil")
 fire("AUCTION_HOUSE_SHOW")
 fire("COMMODITY_SEARCH_RESULTS_UPDATED", 2996)
@@ -329,6 +341,23 @@ ns.Queue.Import("BUY 2589 10 40")
 ns.Queue.Next(); calls(); fire("COMMODITY_SEARCH_RESULTS_UPDATED", 2589)
 ns.Queue.Next(); calls(); fire("COMMODITY_PRICE_UPDATED", 55, 550)
 check(calls() == [("CancelCommoditiesPurchase",)] and ns.Queue.Phase() == "idle", "BUY: cancela si el precio sube")
+
+# Ventana «Lo que tienes»: todos los personajes, bolsas + banco + banda, sin tener el banco abierto
+INV = ns.Inventory
+rows, total = INV.Rows("")
+rows = list(rows.values())
+silk = next((r for r in rows if r.id == 4306), None)
+c_ = G.OroborosDB.chars["Zartch-ForeverNormal"]
+_bags_silk = (c_.bags[4306] or 0) if c_.bags else 0
+check(silk is not None and silk.count == 7 + _bags_silk and abs(silk.value - silk.count * silk.unit) < 1e-6,
+      f"inventario: suma bolsas y banco y el valor es unidades × precio ({silk and silk.count})")
+vals = [r.value for r in rows]
+check(vals == sorted(vals, reverse=True) and abs(total - sum(vals)) < 1e-6, "inventario: ordenado por valor y con el total")
+only = list(INV.Rows("silk")[0].values())
+check(len(only) >= 1 and all("silk" in r.name.lower() for r in only), "inventario: el buscador filtra por nombre")
+G.SlashCmdList.OROBOROS("inventario")
+check(INV.frame is not None and INV.frame.shown, "/oro inventario abre la ventana")
+INV.frame.shown = False
 
 # Exportar a SavedVariables y pasar el exportador
 sv = os.path.join(ROOT, "tests", "Oroboros.lua")

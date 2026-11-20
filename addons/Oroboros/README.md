@@ -148,6 +148,10 @@ Lo que hace queda en `work/vigilante.log`. Para quitarla: `schtasks /Delete /TN 
   - gráficas con escala, fechas, leyenda y detalle al pasar el ratón.
 
   El precio en vivo es el más barato de otros vendedores. `/oro precio debug` muestra en el chat lo que devolvió el juego en la última búsqueda.
+- **Sin estar en la subasta**:
+  - **Alt + clic** en cualquier objeto (bolsas, banco, enlaces del chat…) abre el mismo panel.
+  - El tooltip del objeto muestra su precio con iconos y la diferencia frente a su media de 30 días.
+  - **Lo que tienes** (`/oro inventario` o el botón de la ventana) lista todo lo de tus personajes: bolsas, el último banco visto y el banco de banda. Muestra valor, 14 días y tendencia, ordenado por valor y con buscador. Al hacer clic en una fila se abre su historial.
 - **De dónde salen los datos**: el exportador con `--archive` escribe `Oroboros/Resumen.lua` (unos 0,8 MB; git lo ignora). El juego lo carga al entrar o con `/reload` y solo lo lee, sin engordar `Oroboros.lua`. Con `--resumen RUTA` se cambia el destino y con `--resumen no` no se escribe. A mano: `python tools/oroboros_summary.py work/archivo.sqlite`. Si no existe, el panel muestra solo el precio de hoy.
 - **En la página del plan**: la pestaña **Mercado** muestra el historial completo con rangos de 1 mes, 3 meses, 6 meses, 1 año y todo, y una tabla con el mínimo y el máximo del rango e históricos (con fecha) y las medias de 7, 30 y 90 días.
 - **Nombres**: tras cada escaneo completo, el addon pide en tandas los nombres de los objetos que el juego aún no le ha dado.
@@ -209,6 +213,7 @@ El tooltip de cada objeto muestra el precio guardado y qué personaje tuyo lo fa
 | `/oro set autoscan 0` | Apaga el escaneo automático al abrir la subasta (`1` lo vuelve a encender). |
 | `/oro scan forzar` | Escaneo propio aunque Auctionator haga el suyo (respeta el límite de 15 minutos de los dos). |
 | `/oro precio <itemID o enlace>` | Panel con el historial de precios del objeto. |
+| `/oro inventario` | Lo que tienes en todos tus personajes, con valor, 14 días y tendencia. |
 | `/oro cliente` | Versión, interfaz, reino, conjunto de reglas y clave de mercado. También se guarda al entrar en `OroborosDB.client`. |
 | `/oro price <itemID o enlace>` | Precio guardado: mínimo, valor de mercado, cantidad y hora. |
 | `/oro prof` | Profesiones de todos tus personajes, con recetas aprendidas y vistas. |
