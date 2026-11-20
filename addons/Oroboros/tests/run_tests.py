@@ -479,6 +479,60 @@ check(A[4][2]["price_med"] == 21, f"franjas: precio típico = mediana del mínim
 check(A[6][5]["gone_total_h"] == 10 and A[6][0]["gone_total_h"] == 10, "franjas: un intervalo que cruza la medianoche se reparte en 20–24 y 0–4")
 check(H.summary(A[1]) is None and H.summary(A[5]) is not None, "franjas: resumen solo con franjas fiables")
 
+# ProfessionDB (LibProfessionDB-1.0): lector de sus archivos de datos, sin cargar el addon
+import professiondb as PDB
+def write_fake_pdb(root):
+    base = os.path.join(root, "Interface", "AddOns", "ProfessionDB", "Data", "Forever")
+    os.makedirs(os.path.join(base, "_core")); os.makedirs(os.path.join(base, "esES"))
+    head = 'local lib = LibStub and LibStub("LibProfessionDB-1.0", true)\nif not lib or not lib:IsGameVersion("Forever") then return end\n\n'
+    files = {
+        "_core/Alchemy.lua": head + """lib:LoadCore(171, {
+		[3914] = { ["craftedItemId"] = 2996, ["difficulty"] = { 75, 105, 120, 135 },
+			["reagents"] = { [2589] = 2 }, ["requiredSkill"] = 75, ["teaches"] = 3914 },
+		[7001] = { ["craftedItemId"] = 4306, ["difficulty"] = { 1, 30, 45, 60 }, ["reagents"] = { [2589] = 1, [2320] = 1 },
+			["requiredSkill"] = 120 },
+		[7002] = { ["craftedItemId"] = 6070, ["difficulty"] = { 200, 220, 240, 260 }, ["reagents"] = { [4306] = 3 } },
+		[7003] = { ["craftedItemId"] = 2589, ["difficulty"] = { 1, 10, 20, 30 }, ["reagents"] = { [2318] = 1 }, ["requiredSkill"] = 1 },
+		[7004] = { ["craftedItemId"] = 14047, ["difficulty"] = { 1, 1, 1, 1 }, ["reagents"] = { [2589] = 1 } },
+})
+
+lib:LoadBorrowed("requiredSkill", "Vanilla", {7001})
+""",
+        "_core/Sources.lua": 'local lib = LibStub and LibStub("LibProfessionDB-1.0", true)\nif not lib then return end\n\nlib:LoadSources({\n[3914]={t={1385,1632},tn=29},\n[7001]={d={30,36,40},dn=951},\n})\n',
+        "_core/VendorSources.lua": head + """lib:LoadSources({
+[7002]={v={3085}},
+})
+lib:LoadSourceNames({
+[3085]="Gloria Femmel",
+})
+lib:LoadVendorCosts({
+[7002]={[3085]={{g=450}}},
+})
+""",
+        "_core/AcquireMethods.lua": 'local lib = LibStub and LibStub("LibProfessionDB-1.0", true)\nif not lib then return end\n\nlib:LoadAcquireMethods({\n[7003]=1,\n})\n',
+        "_core/HiddenRecipes.lua": 'local lib = LibStub and LibStub("LibProfessionDB-1.0", true)\nif not lib then return end\n\nlib:LoadHiddenRecipes({\n[7004]=true,\n})\n',
+        "esES/Alchemy.lua": 'if GetLocale() ~= "esES" then return end\n' + head + 'lib:LoadNames(171, {\n\t\t[3914] = {\n\t\t\t["name"] = "Rollo de tela \\"de lino\\"",\n\t\t},\n\t\t[7001] = { ["name"] = "Seda prestada" },\n})\n',
+    }
+    for rel, txt in files.items():
+        with open(os.path.join(base, rel), "w", encoding="utf-8") as fh:
+            fh.write(txt)
+    return base
+_pdb_root = _tf.mkdtemp()
+_pdb_base = write_fake_pdb(_pdb_root)
+_sv_fake = os.path.join(_pdb_root, "WTF", "Account", "X", "SavedVariables", "Oroboros.lua")
+check(PDB.find(_sv_fake) == _pdb_base, f"ProfessionDB: se encuentra subiendo desde Oroboros.lua ({PDB.find(_sv_fake)})")
+R = PDB.load(_pdb_base)
+r1, r2, r3 = R[3914], R[7001], R[7002]
+check((r1["prof"], r1["profession"], r1["required"], r1["borrowed"], r1["crafted"], r1["reagents"], r1["name"], r1["diff"]) ==
+      (171, "Alquimia", 75, False, 2996, {2589: 2}, 'Rollo de tela "de lino"', [75, 105, 120, 135]),
+      f"ProfessionDB: nivel, reactivos, objeto y nombre en español {r1}")
+check(r2["required"] == 120 and r2["borrowed"] is True and r2["sources"] == {"d": 951} and r1["sources"] == {"t": 29},
+      "ProfessionDB: nivel prestado de Vanilla marcado y orígenes con su número real")
+check(r3["required"] is None and r3["sources"] == {"v": 1} and r3["vendor"] == [("Gloria Femmel", 450, None)],
+      f"ProfessionDB: vendedor con nombre y precio {r3['vendor']}")
+check(R[7003]["acquire"] == 1 and R[7004]["hidden"] is True, "ProfessionDB: «con la profesión» y «nunca existió»")
+check(PDB.find(os.path.join(_tf.mkdtemp(), "WTF", "x", "Oroboros.lua")) is None, "ProfessionDB: si no está, no pasa nada")
+
 # Archivo permanente de escaneos (--archive): no duplica y detecta huecos
 import tempfile as _tf
 from oroboros_export import load_savedvariables
