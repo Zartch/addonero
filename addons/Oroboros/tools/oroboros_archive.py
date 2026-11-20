@@ -43,6 +43,14 @@ CREATE TABLE IF NOT EXISTS daily (
     src TEXT,                   -- obs (archivo) > oro (histórico del juego) > atr (Auctionator)
     t INTEGER,                  -- hora del último dato del día, si se conoce
     PRIMARY KEY (market_id, item_id, day)) WITHOUT ROWID;
+CREATE TABLE IF NOT EXISTS farm_mobs (          -- farmeo medido en el juego: totales por criatura y subzona
+    market_id INTEGER, npc INTEGER, sub TEXT, zone TEXT, map INTEGER,
+    kills INTEGER, copper INTEGER, secs INTEGER, items TEXT,      -- items: JSON {itemID: cantidad}
+    PRIMARY KEY (market_id, npc, sub)) WITHOUT ROWID;
+CREATE TABLE IF NOT EXISTS farm_gather (
+    market_id INTEGER, sub TEXT, zone TEXT, map INTEGER, nodes INTEGER, items TEXT,
+    PRIMARY KEY (market_id, sub)) WITHOUT ROWID;
+CREATE TABLE IF NOT EXISTS farm_npcs (npc INTEGER PRIMARY KEY, name TEXT, lvl INTEGER, cls TEXT);
 CREATE TABLE IF NOT EXISTS weekly_band (
     market_id INTEGER, item_id INTEGER, week TEXT, band INTEGER,
     gone_total REAL, gone_cheap REAL, hours REAL, n INTEGER, days INTEGER,
@@ -320,3 +328,35 @@ def plan_from_archive(con, plan_path):
     plan.commit()
     plan.close()
     return {"history": n_hist, "prices_added": n_price}
+
+
+# ----------------------------------------------------------------------
+# Farmeo medido (docs/farmeo.md, sección 5): el juego guarda totales acumulados → se sustituyen
+# ----------------------------------------------------------------------
+def append_farm(con, db, market):
+    """Copia OroborosDB.farm al archivo, en el mercado `market`. Devuelve (criaturas, subzonas de recolección)."""
+    import json
+    farm = (db or {}).get("farm") or {}
+    if not farm or not market:
+        return 0, 0
+    mid = market_id(con, market)
+    items = lambda t: json.dumps({str(k): v for k, v in _as_dict(t).items()})
+    n_m = n_g = 0
+    for m in _as_dict(farm.get("mobs")).values():
+        if not isinstance(m, dict) or not m.get("npc"):
+            continue
+        con.execute("INSERT OR REPLACE INTO farm_mobs VALUES (?,?,?,?,?,?,?,?,?)",
+                    (mid, int(m["npc"]), m.get("sub") or "", m.get("zone"), m.get("map"), m.get("kills") or 0,
+                     m.get("copper") or 0, m.get("secs") or 0, items(m.get("items"))))
+        n_m += 1
+    for g in _as_dict(farm.get("gather")).values():
+        if not isinstance(g, dict):
+            continue
+        con.execute("INSERT OR REPLACE INTO farm_gather VALUES (?,?,?,?,?,?)",
+                    (mid, g.get("sub") or "", g.get("zone"), g.get("map"), g.get("nodes") or 0, items(g.get("items"))))
+        n_g += 1
+    for npc, n in _as_dict(farm.get("npcs")).items():
+        if isinstance(n, dict):
+            con.execute("INSERT OR REPLACE INTO farm_npcs VALUES (?,?,?,?)", (int(npc), n.get("name"), n.get("lvl"), n.get("cls")))
+    con.commit()
+    return n_m, n_g

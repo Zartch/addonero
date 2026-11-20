@@ -298,6 +298,7 @@ def update_archive(archive_path, db, atr_arg, oroboros_path):
     res = A.append_scans(archive_path, db)
     con = A.open_archive(archive_path)
     A.update_daily(con, db)
+    n_farm = A.append_farm(con, db, _main_market(db))
     n_atr = 0
     if atr_arg:
         import auctionator_source
@@ -316,7 +317,8 @@ def update_archive(archive_path, db, atr_arg, oroboros_path):
     con.close()
     print(f"Archivo → {archive_path}: {res['scans']} escaneos nuevos ({res['added']} filas), "
           f"{res['already']} filas ya estaban; {n_scans} escaneos en bruto, histórico diario: {n_daily} filas"
-          f"{f' ({n_atr} nuevas de Auctionator)' if n_atr else ''}; resumidos y borrados: {rolled}.")
+          f"{f' ({n_atr} nuevas de Auctionator)' if n_atr else ''}; resumidos y borrados: {rolled}"
+          f"{f'; farmeo medido: {n_farm[0]} criaturas, {n_farm[1]} subzonas de recolección' if n_farm[0] or n_farm[1] else ''}.")
     if res["gap"]:
         print("Aviso: se han perdido escaneos entre el último archivado y los guardados en el juego "
               "(más de 12 sin exportar).")

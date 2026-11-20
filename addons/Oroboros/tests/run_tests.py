@@ -685,6 +685,25 @@ _mk_tbl = _lr.globals().OroborosResumen.markets[_RARO]
 check(_res["items"] == 1 and _lr.eval("OroborosResumen.v") == 1 and _mk_tbl is not None and _mk_tbl[2589] == _exp,
       "Resumen.lua: Lua válido (con comillas y barras en la clave) y la misma cadena")
 
+# Farmeo medido → archivo (totales acumulados del juego: se sustituyen, no se suman)
+import json
+from oroboros_archive import append_farm
+_fdb = {"chars": {"Zartch-R": {"market": "M"}}, "farm": {
+    "mobs": {"1234@Bosque X": {"npc": 1234, "zone": "Elwynn", "sub": "Bosque X", "map": 1429, "kills": 4, "copper": 57,
+                               "secs": 20, "items": {2589: 2}}},
+    "gather": {"Bosque X": {"zone": "Elwynn", "sub": "Bosque X", "map": 1429, "nodes": 1, "items": {2447: 2}}},
+    "npcs": {1234: {"name": "Lobo", "lvl": 12, "cls": "normal"}}}}
+arch_f = os.path.join(_tf.mkdtemp(), "f.sqlite")
+_cf = open_archive(arch_f)
+append_farm(_cf, _fdb, "M"); append_farm(_cf, _fdb, "M")
+_row = _cf.execute("SELECT npc, sub, zone, map, kills, copper, secs, items FROM farm_mobs").fetchall()
+check(len(_row) == 1 and _row[0][:7] == (1234, "Bosque X", "Elwynn", 1429, 4, 57, 20) and json.loads(_row[0][7]) == {"2589": 2},
+      f"farmeo al archivo: sin duplicar y con las cifras del juego {_row}")
+check(_cf.execute("SELECT nodes FROM farm_gather").fetchone() == (1,) and
+      _cf.execute("SELECT name, lvl, cls FROM farm_npcs WHERE npc=1234").fetchone() == ("Lobo", 12, "normal"),
+      "farmeo al archivo: recolección y datos de la criatura")
+_cf.close()
+
 # Migración desde la tabla plana del 19/11 (esquema 1)
 arch_v1 = os.path.join(_tf.mkdtemp(), "v1.sqlite")
 _v1 = sqlite3.connect(arch_v1)
