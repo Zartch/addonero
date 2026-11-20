@@ -115,7 +115,15 @@ Se cuentan dos cosas entre escaneos seguidos (como mucho 6 h): lo que desaparece
 
 Si Auctionator tiene su escaneo completo activado, no se lanza el propio: se lee el suyo. Se apaga con `/oro set autoscan 0`.
 
-**Vigilante.** `tools/oroboros_watch.py` mira `Oroboros.lua` cada 30 s. Cuando el juego lo guarda (al salir o con `/reload`) y lleva 10 s sin cambiar, exporta al archivo (con Auctionator), escribe `Resumen.lua` y genera `work/plan.html` y las rutas. No toca nada del juego.
+**Lanzador (recomendado).** `tools/oroboros_launch.py` abre Battle.net, espera a que arranque WoW Forever y, mientras juegas, no consume nada (Windows le avisa cuando se cierra el juego). Al cerrar el juego, exporta al archivo, escribe `Resumen.lua` y genera el plan **una sola vez**, y termina. No hay ningún proceso vigilando cuando no juegas.
+
+Accesos directos para el escritorio:
+- **Jugar a Forever con Oroboros**: destino `pythonw.exe "<repo>ddons\Oroboros	ools\oroboros_launch.py" --find "<WoW>\_forever_" --log "<repo>ddons\Oroboros\work\lanzador.log"`. Abre Battle.net; dale a Jugar como siempre.
+- **Oroboros: procesar ahora**: destino `"<repo>ddons\Oroboros	ools\oroboros_procesar.bat" --find "<WoW>\_forever_"`. Procesa al momento y enseña el resultado.
+
+Si entras al juego desde Battle.net directamente, no pasa nada: usa «procesar ahora», o se procesará la próxima vez.
+
+**Vigilante (alternativa).** `tools/oroboros_watch.py` mira `Oroboros.lua` cada 30 s. Cuando el juego lo guarda (al salir o con `/reload`) y lleva 10 s sin cambiar, exporta al archivo (con Auctionator), escribe `Resumen.lua` y genera `work/plan.html` y las rutas. No toca nada del juego.
 
 ```
 python tools/oroboros_watch.py --find "F:/World of Warcraft/_forever_"          # vigilar (Ctrl+C para parar)
