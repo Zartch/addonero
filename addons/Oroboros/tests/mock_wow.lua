@@ -167,3 +167,30 @@ function Serialize(v, indent)
         return tostring(v)
     end
 end
+
+
+-- Farmeo: registro de combate, botín con su origen, subzona y objetivo
+CLEU = {}
+function CombatLogGetCurrentEventInfo() return unpack(CLEU) end
+PLAYER_GUID, PET_GUID = "Player-1-000A1B2C", nil
+TARGET = nil            -- { guid, name, lvl, cls, attack }
+function UnitGUID(u)
+    if u == "player" then return PLAYER_GUID elseif u == "pet" then return PET_GUID
+    elseif u == "target" then return TARGET and TARGET.guid end
+end
+SUBZONE, ZONE, MAPID = "Bosque X", "Elwynn", 1429
+function GetSubZoneText() return SUBZONE end
+function GetZoneText() return ZONE end
+C_Map = C_Map or {}
+C_Map.GetBestMapForUnit = function() return MAPID end
+LOOT = {}               -- { { type = 1|2, link = , qty = , sources = { guid, qty, guid, qty } } }
+function GetNumLootItems() return #LOOT end
+function GetLootSlotType(i) return LOOT[i].type end
+function GetLootSlotLink(i) return LOOT[i].link end
+function GetLootSlotInfo(i) return nil, "x", LOOT[i].qty end
+function GetLootSourceInfo(i) return unpack(LOOT[i].sources) end
+function UnitCanAttack() return TARGET and TARGET.attack or false end
+function UnitClassification() return TARGET and TARGET.cls end
+local _UnitLevel, _UnitName = UnitLevel, UnitName
+function UnitLevel(u) if u == "target" and TARGET then return TARGET.lvl end return _UnitLevel(u) end
+function UnitName(u) if u == "target" and TARGET then return TARGET.name end return _UnitName(u) end

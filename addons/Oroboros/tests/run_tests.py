@@ -13,7 +13,7 @@ CAT_TEST = os.path.join(ROOT, "tests", "catalogo_sintetico.json")
 lua = LuaRuntime(unpack_returned_tuples=True)
 lua.execute(open(os.path.join(ROOT, "tests", "mock_wow.lua"), encoding="utf-8").read())
 ns = lua.eval("{}")
-for f in ["Core.lua", "DB.lua", "Scanner.lua", "Professions.lua", "Ledger.lua", "Queue.lua", "Style.lua", "Chart.lua", "UI.lua", "PriceHistory.lua", "Inventory.lua"]:
+for f in ["Core.lua", "DB.lua", "Scanner.lua", "Professions.lua", "Ledger.lua", "Queue.lua", "Style.lua", "Chart.lua", "UI.lua", "PriceHistory.lua", "Inventory.lua", "Farm.lua"]:
     chunk = lua.execute("return function(src, name) return assert(loadstring(src, name)) end")(
         open(os.path.join(ADDON, f), encoding="utf-8").read(), "@" + f)
     chunk("Oroboros", ns)
@@ -242,6 +242,45 @@ _dbg = " ".join(G.LOG.values())
 check("400" in _dbg and "propia" in _dbg and "450" in _dbg, f"/oro precio debug muestra lo que devolvió el juego ({_dbg[:120]})")
 PH.Hide(); fire("AUCTION_HOUSE_SHOW")      # las pruebas siguientes cuentan con la subasta abierta
 calls()
+
+# Farmeo: medición en el juego (muertes, botín por criatura, recolección, nivel y clasificación)
+FARM = ns.Farm
+check(FARM.NpcFromGUID("Creature-0-3110-0-12345-1234-0000ABCDEF") == 1234 and FARM.NpcFromGUID("Player-1-0001") is None,
+      "farmeo: número de criatura desde su GUID")
+lua.execute("FARM_T = 100000; time = function() return FARM_T end; OroborosDB.farm = nil")
+def _kill(npc, spawn, t):
+    lua.execute(f"FARM_T = {t}")
+    lua.execute(f'CLEU = {{ 0, "PARTY_KILL", false, PLAYER_GUID, "Zartch", 0, 0, "Creature-0-1-0-1-{npc}-{spawn}", "Lobo", 0, 0 }}')
+    fire("COMBAT_LOG_EVENT_UNFILTERED")
+for k in range(3):
+    _kill(1234, 10 + k, 100000 + 10 * k)
+_m = lua.eval('OroborosDB.farm.mobs["1234@Bosque X"]')
+check(_m.kills == 3 and _m.secs == 20 and _m.zone == "Elwynn" and _m.map == 1429, f"farmeo: 3 muertes, 20 s activos ({_m.kills}, {_m.secs})")
+_kill(1234, 13, 100000 + 20 + 300)
+check(_m.kills == 4 and _m.secs == 20, "farmeo: tras 5 minutos sin matar, ese hueco no cuenta como tiempo activo")
+lua.execute('CLEU = { 0, "PARTY_KILL", false, "Player-9-OTRO", "Otro", 0, 0, "Creature-0-1-0-1-1234-99", "Lobo", 0, 0 }')
+fire("COMBAT_LOG_EVENT_UNFILTERED")
+check(_m.kills == 4, "farmeo: no cuenta lo que matan otros")
+lua.execute("""LOOT = {
+  { type = 1, link = "|Hitem:2589::|h[Linen]|h", qty = 3, sources = { "Creature-0-1-0-1-1234-10", 2, "Creature-0-1-0-1-5678-20", 1 } },
+  { type = 2, qty = 0, sources = { "Creature-0-1-0-1-1234-10", 57, "Creature-0-1-0-1-5678-20", 12 } },
+}""")
+fire("LOOT_OPENED"); fire("LOOT_OPENED")
+_m2 = lua.eval('OroborosDB.farm.mobs["5678@Bosque X"]')
+check(_m["items"][2589] == 2 and _m.copper == 57 and _m2["items"][2589] == 1 and _m2.copper == 12,
+      "farmeo: el botín de varios cadáveres se reparte por criatura, y reabrirlo no suma")
+lua.execute("""LOOT = { { type = 1, link = "|Hitem:2447::|h[Peacebloom]|h", qty = 2, sources = { "GameObject-0-1-0-1-1617-55", 2 } } }""")
+fire("LOOT_OPENED")
+_g = lua.eval('OroborosDB.farm.gather["Bosque X"]')
+check(_g.nodes == 1 and _g["items"][2447] == 2, "farmeo: recolección (nodo) aparte")
+lua.execute('TARGET = { guid = "Creature-0-1-0-1-1234-10", name = "Lobo", lvl = 12, cls = "normal", attack = true }')
+fire("PLAYER_TARGET_CHANGED")
+_n = lua.eval("OroborosDB.farm.npcs[1234]")
+check(_n.name == "Lobo" and _n.lvl == 12 and _n.cls == "normal", "farmeo: nivel y clasificación de la criatura objetivo")
+lua.execute('SUBZONE = ""')
+_kill(4321, 1, 200000)
+check(lua.eval('OroborosDB.farm.mobs["4321@Elwynn"]') is not None, "farmeo: sin subzona se usa la zona")
+lua.execute('SUBZONE = "Bosque X"; TARGET = nil; LOOT = {}; CLEU = {}; time = os.time')
 
 # Banco
 c = G.OroborosDB.chars["Zartch-ForeverNormal"]
