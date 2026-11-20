@@ -248,19 +248,26 @@ FARM = ns.Farm
 check(FARM.NpcFromGUID("Creature-0-3110-0-12345-1234-0000ABCDEF") == 1234 and FARM.NpcFromGUID("Player-1-0001") is None,
       "farmeo: número de criatura desde su GUID")
 lua.execute("FARM_T = 100000; time = function() return FARM_T end; OroborosDB.farm = nil")
-def _kill(npc, spawn, t):
+def _kill(npc, spawn, t):        # despojar un cadáver = una muerte
     lua.execute(f"FARM_T = {t}")
-    lua.execute(f'CLEU = {{ 0, "PARTY_KILL", false, PLAYER_GUID, "Zartch", 0, 0, "Creature-0-1-0-1-{npc}-{spawn}", "Lobo", 0, 0 }}')
-    fire("COMBAT_LOG_EVENT_UNFILTERED")
+    lua.execute(f'LOOT = {{ {{ type = 2, qty = 0, sources = {{ "Creature-0-1-0-1-{npc}-{spawn}", 0 }} }} }}')
+    fire("LOOT_OPENED")
 for k in range(3):
-    _kill(1234, 10 + k, 100000 + 10 * k)
+    _kill(1234, 100 + k, 100000 + 10 * k)
 _m = lua.eval('OroborosDB.farm.mobs["1234@Bosque X"]')
 check(_m.kills == 3 and _m.secs == 20 and _m.zone == "Elwynn" and _m.map == 1429, f"farmeo: 3 muertes, 20 s activos ({_m.kills}, {_m.secs})")
-_kill(1234, 13, 100000 + 20 + 300)
+_kill(1234, 103, 100000 + 20 + 300)
 check(_m.kills == 4 and _m.secs == 20, "farmeo: tras 5 minutos sin matar, ese hueco no cuenta como tiempo activo")
-lua.execute('CLEU = { 0, "PARTY_KILL", false, "Player-9-OTRO", "Otro", 0, 0, "Creature-0-1-0-1-1234-99", "Lobo", 0, 0 }')
-fire("COMBAT_LOG_EVENT_UNFILTERED")
-check(_m.kills == 4, "farmeo: no cuenta lo que matan otros")
+_kill(1234, 103, 100000 + 20 + 330)
+check(_m.kills == 4, "farmeo: volver a abrir el mismo cadáver no suma otra muerte")
+check(not any('"COMBAT_LOG_EVENT_UNFILTERED"' in open(os.path.join(ADDON, f), encoding="utf-8").read()
+              for f in os.listdir(ADDON) if f.endswith(".lua") and f not in ("Resumen.lua", "Farmeo.lua")),
+      "ningún archivo del addon se registra en el registro de combate (en Midnight es una acción prohibida)")
+lua.execute("LOG = {}")
+fire("ADDON_ACTION_FORBIDDEN", "Oroboros", "RegisterEvent()")
+fire("ADDON_ACTION_FORBIDDEN", "OtroAddon", "CastSpellByName()")
+check(G.OroborosDB.blocked.func == "RegisterEvent()" and G.OroborosDB.blocked.kind == "prohibida"
+      and sum("bloqueado" in l for l in G.LOG.values()) == 1, "si el juego bloquea una acción de Oroboros, se apunta cuál y se avisa")
 lua.execute("""LOOT = {
   { type = 1, link = "|Hitem:2589::|h[Linen]|h", qty = 3, sources = { "Creature-0-1-0-1-1234-10", 2, "Creature-0-1-0-1-5678-20", 1 } },
   { type = 2, qty = 0, sources = { "Creature-0-1-0-1-1234-10", 57, "Creature-0-1-0-1-5678-20", 12 } },

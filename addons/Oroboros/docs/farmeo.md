@@ -102,7 +102,7 @@ Se calcula **fuera del juego**, como el plan. Dentro solo entra un resumen peque
 
 ### 5. Medición en el juego (`Oroboros/Farm.lua`)
 
-- Cuenta las muertes que haces tú (`COMBAT_LOG_EVENT_UNFILTERED`, `PARTY_KILL` con origen el jugador o su mascota).
+- Cuenta una muerte por cada cadáver de criatura que despojas (cambiado el 20/11: el registro de combate, `COMBAT_LOG_EVENT_UNFILTERED`, es una acción prohibida para los addons en la API de Midnight y el juego bloqueaba Oroboros). Lo que no suelta nada no cuenta.
 - Apunta el botín al despojar: con `LOOT_OPENED`, recoge `GetLootSourceInfo` (de qué criatura sale cada objeto), objetos, cantidades y dinero.
 - Cuando tienes una criatura como objetivo, guarda su nivel y su clasificación (`UnitClassification`).
 - Calcula el tiempo activo: suma de los huecos entre muertes seguidas de menos de 2 minutos.

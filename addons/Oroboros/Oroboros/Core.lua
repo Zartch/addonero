@@ -87,6 +87,15 @@ local frame = CreateFrame("Frame")
 ns.eventFrame = frame
 local handlers = {}
 
+-- Si el juego bloquea una acción de Oroboros, se apunta cuál (OroborosDB.blocked) y se avisa en el chat
+local function onBlocked(kind)
+    return function(addon, func)
+        if addon ~= "Oroboros" then return end
+        if OroborosDB then OroborosDB.blocked = { t = time(), kind = kind, func = tostring(func) } end
+        ns.Print("el juego ha bloqueado " .. tostring(func) .. " (" .. kind .. "). Avísalo para corregirlo.")
+    end
+end
+
 function ns.On(event, fn)
     if not handlers[event] then
         -- pcall: si un evento no existe en esta versión del cliente, no rompemos la carga
@@ -262,3 +271,6 @@ SlashCmdList.OROBOROS = function(msg)
         ns.Print("comando desconocido. /oroboros help")
     end
 end
+
+ns.On("ADDON_ACTION_FORBIDDEN", onBlocked("prohibida"))
+ns.On("ADDON_ACTION_BLOCKED", onBlocked("bloqueada"))

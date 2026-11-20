@@ -1,5 +1,8 @@
 -- Oroboros: medición del farmeo (docs/farmeo.md, sección 5). Lo medido es la base de las propuestas.
 -- Guarda sumas por criatura y subzona en OroborosDB.farm; fuera del juego se valora a precio de subasta.
+-- Una muerte = un cadáver de criatura que despojas. No se usa el registro de combate
+-- (COMBAT_LOG_EVENT_UNFILTERED): en la API de Midnight registrarlo es una acción reservada a Blizzard
+-- y el juego bloquea el addon. Lo que no suelta nada no cuenta como muerte.
 local _, ns = ...
 local Farm = {}
 ns.Farm = Farm
@@ -78,12 +81,6 @@ function Farm.OnKill(destGUID)
     lastKill = now
 end
 
-ns.On("COMBAT_LOG_EVENT_UNFILTERED", function()
-    local _, sub, _, src, _, _, _, dst = CombatLogGetCurrentEventInfo()
-    if sub ~= "PARTY_KILL" or not src then return end
-    if src == UnitGUID("player") or src == UnitGUID("pet") then Farm.OnKill(dst) end
-end)
-
 -- Botín: cada objeto y cada moneda va a la criatura (o al nodo) de donde sale, según GetLootSourceInfo
 ns.On("LOOT_OPENED", function()
     if not OroborosDB or not GetLootSourceInfo then return end
@@ -96,6 +93,7 @@ ns.On("LOOT_OPENED", function()
             if type(guid) == "string" and firstTime(guid .. ":" .. (id or "money")) then
                 local npc = Farm.NpcFromGUID(guid)
                 if npc then
+                    if firstTime(guid .. ":kill") then Farm.OnKill(guid) end
                     local m = mob(npc)
                     if money then m.copper = m.copper + qty
                     elseif id then m.items[id] = (m.items[id] or 0) + qty end

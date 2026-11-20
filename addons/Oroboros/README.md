@@ -168,7 +168,7 @@ Lo que hace queda en `work/vigilante.log`. Para quitarla: `schtasks /Delete /TN 
 
 Oroboros propone dónde farmear criaturas de mundo abierto (sin élites ni zonas de élites) y dónde recolectar, según el nivel del personaje. Diseño en `docs/farmeo.md`.
 
-- **Lo que mides manda.** Con Oroboros activo, el addon apunta tus muertes, el botín de cada criatura (también el equipo) y el tiempo activo, por subzona. Al hacer `/reload` o salir, el exportador lo lleva a `work/archivo.sqlite`. Con 30 muertes de una criatura, lo medido sustituye a la estimación; con menos, pesa muertes/30.
+- **Lo que mides manda.** Con Oroboros activo, el addon apunta cada cadáver que despojas (una muerte), su botín (también el equipo) y el tiempo activo, por subzona. Las criaturas que no sueltan nada no cuentan. Al hacer `/reload` o salir, el exportador lo lleva a `work/archivo.sqlite`. Con 30 muertes de una criatura, lo medido sustituye a la estimación; con menos, pesa muertes/30.
 - **Estimación inicial para sitios nuevos:** la base del mundo de AzerothCore (servidor libre de WotLK). Solo cuenta oro y materiales, no el equipo, y el botín de Forever cambió, así que es aproximada. Se descarga una vez (≈ 48 MB, a `work/fuentes/azerothcore/`, que git ignora):
 
   ```
