@@ -874,6 +874,43 @@ reach = [l.get("reach") for l in p3["learn"] if not l.get("new_profession")]
 first_unknown = reach.index("desconocido") if "desconocido" in reach else len(reach)
 check(all(x == "desconocido" for x in reach[first_unknown:]) and 0 < first_unknown < len(reach),
       f"aprender: primero lo que está a tu alcance, al final el nivel sin comprobar ({reach.count('desconocido')} de {len(reach)})")
+
+# ProfessionDB en el plan: nivel real, dónde se aprende, sin recetas que nunca existieron, profesiones nuevas
+import professiondb as _P
+_pdb_db = os.path.join(tmp, "pdb.sqlite"); _sh.copy(nh, _pdb_db)
+_pc = sqlite3.connect(_pdb_db)
+_pc.execute("UPDATE recipes SET source=NULL WHERE recipe_id=17580")      # en Forever el juego no da el origen
+_priced = _pc.execute("SELECT item_id FROM prices ORDER BY mv DESC LIMIT 1").fetchone()[0]
+_P.write_tables(_pc, {
+    17580: {"prof": 171, "profession": "Alquimia", "name": "Poción de maná superior", "required": 295, "borrowed": False,
+            "diff": [295, 310, 320, 330], "reagents": {}, "crafted": 13444, "sources": {"t": 29}, "vendor": [], "acquire": 0,
+            "hidden": False, "scroll": None},
+    17635: {"prof": 171, "profession": "Alquimia", "name": "Frasco de los titanes", "required": 300, "borrowed": False,
+            "diff": [300, 315, 322, 330], "reagents": {}, "crafted": 13510, "sources": {}, "vendor": [], "acquire": 0,
+            "hidden": True, "scroll": None},
+    990001: {"prof": 202, "profession": "Ingeniería", "name": "Artilugio de prueba", "required": 50, "borrowed": True,
+             "diff": [50, 70, 80, 90], "reagents": {2589: 1}, "crafted": _priced, "sources": {"v": 1},
+             "vendor": [["Gloria Femmel", 450, None]], "acquire": 0, "hidden": False, "scroll": None},
+})
+_pc.commit(); _pc.close()
+_dpdb = _Data(_pdb_db, cat_ns, now=_now)
+from oroboros_plan import learn_suggestions
+_L = {e["recipe"]: e for e in learn_suggestions(_dpdb, 48)}
+_e = _L.get(17580)
+check(_e is not None and _e["skill_req"] == 295 and _e["reach"] in ("ok", "falta") and any("instructor" in v for v in _e["verdict"]),
+      f"aprender: con ProfessionDB, nivel real y dónde se aprende ({_e and _e['reach']}, {_e and _e['verdict']})")
+check(17635 not in _L, "aprender: las recetas que nunca existieron no se proponen")
+_n = _L.get(990001)
+check(_n is not None and _n["new_profession"] and _n["learn_cost"] == 450 and any("Gloria Femmel" in v for v in _n["verdict"])
+      and any("Vanilla" in v for v in _n["verdict"]),
+      f"aprender: «si cambiaras de profesión» sale de ProfessionDB, con vendedor, coste y nivel prestado ({_n and _n['verdict']})")
+r_pdb = subprocess.run([sys.executable, os.path.join(ROOT, "tools", "oroboros_export.py"), os.path.join(tmp, "A.lua"),
+                        "--sqlite", os.path.join(tmp, "pdbx.sqlite"), "--professiondb", _pdb_base],
+                       capture_output=True, text=True, encoding="utf-8", errors="replace")
+_cx2 = sqlite3.connect(os.path.join(tmp, "pdbx.sqlite"))
+check(r_pdb.returncode == 0 and _cx2.execute("SELECT COUNT(*) FROM pdb_recipes").fetchone()[0] == 5 and "ProfessionDB" in r_pdb.stdout,
+      "exportador: --professiondb guarda las recetas en el SQLite del plan " + (r_pdb.stdout + r_pdb.stderr)[-160:])
+_cx2.close()
 check(p2["banker"] is None and any("BUY " in rt["text"] for rt in p2["routes"].values() if rt["short"] == "Zarthrin"),
       "sin banquero, cada personaje compra lo suyo")
 check(not any(c["item"] in (14256, 9206, 4234) for c in I["ideas"]), "no se repite una apuesta que ya está abierta")

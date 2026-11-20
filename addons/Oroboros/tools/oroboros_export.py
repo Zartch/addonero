@@ -322,6 +322,22 @@ def update_archive(archive_path, db, atr_arg, oroboros_path):
               "(más de 12 sin exportar).")
 
 
+def add_professiondb(sqlite_path, pdb_arg, oroboros_path):
+    """Recetas de ProfessionDB (nivel, origen…) en el SQLite del plan. Sin ProfessionDB, sigue sin ella."""
+    import professiondb
+    base = professiondb.find(oroboros_path) if pdb_arg == "auto" else pdb_arg
+    if not base or not os.path.isdir(base):
+        if pdb_arg != "auto":
+            print(f"ProfessionDB: no encuentro {pdb_arg}; sigo sin ella.")
+        return
+    recipes = professiondb.load(base)
+    con = sqlite3.connect(sqlite_path)
+    professiondb.write_tables(con, recipes)
+    con.commit()
+    con.close()
+    print(f"ProfessionDB → {len(recipes)} recetas (nivel requerido, dónde se aprende).")
+
+
 def utf8_output():
     """La consola de Windows usa cp1252: sin esto, «→» rompe la salida."""
     for stream in (sys.stdout, sys.stderr):
@@ -342,6 +358,8 @@ def main():
                     help="añadir los precios de Auctionator (sin ruta: Auctionator.lua junto a Oroboros.lua)")
     ap.add_argument("--archive", metavar="RUTA",
                     help="añadir los escaneos guardados en el juego a un SQLite permanente (p. ej. work/archivo.sqlite)")
+    ap.add_argument("--professiondb", metavar="RUTA", default="auto",
+                    help="carpeta Data/Forever de ProfessionDB (por defecto la busca junto a la instalación; «no» para no usarla)")
     ap.add_argument("--resumen", metavar="RUTA",
                     help="con --archive: dónde escribir Resumen.lua para el panel del juego "
                          "(por defecto Oroboros/Resumen.lua; «no» para no escribirlo)")
@@ -378,6 +396,8 @@ def main():
             print(f"Plan desde el archivo: {r['history']} días de histórico, {r['prices_added']} precios completados.")
         elif args.auctionator:
             add_auctionator(args.sqlite, args.auctionator, path)
+        if (args.professiondb or "").lower() != "no":
+            add_professiondb(args.sqlite, args.professiondb, path)
     if not args.json and not args.sqlite and not args.archive:
         print(json.dumps({k: (len(v) if hasattr(v, "__len__") else v) for k, v in db.items()}, indent=1))
 

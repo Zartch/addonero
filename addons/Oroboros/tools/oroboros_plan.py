@@ -142,6 +142,18 @@ class Data:
                 "learn_note": extra.get("learn_note"),
                 "difficulty": r["difficulty"],
             })
+        # ProfessionDB (si el exportador la encontró): nivel requerido, origen, vendedor…
+        self.pdb, self.pdb_reagents = {}, defaultdict(list)
+        try:
+            for r in q("SELECT * FROM pdb_recipes"):
+                d = dict(r)
+                d["sources"] = json.loads(d["sources"] or "{}")
+                d["vendor"] = json.loads(d["vendor"] or "[]")
+                self.pdb[d["recipe_id"]] = d
+            for r in q("SELECT * FROM pdb_reagents"):
+                self.pdb_reagents[r["recipe_id"]].append((r["item_id"], num(r["qty"])))
+        except sqlite3.OperationalError:
+            pass                                    # SQLite sin ProfessionDB
         # recetas aprendidas sin enfriamiento → fuentes para fabricar intermedios
         self.craft_sources = defaultdict(list)
         for r in self.recipes:
@@ -162,6 +174,10 @@ class Data:
     # ------------------------------------------------------------------
     # Estadísticas de mercado
     # ------------------------------------------------------------------
+    def recipes_catalog_skill(self, recipe_id):
+        """Nivel de la receta en catalog.json, si lo trae (manda sobre ProfessionDB)."""
+        return (self.catalog.get("recipes") or {}).get(str(recipe_id), {}).get("skill")
+
     def stats(self, item_id):
         if item_id in self._stats:
             return self._stats[item_id]
@@ -628,10 +644,68 @@ def apply_flip(plan, f):
 # ----------------------------------------------------------------------
 # Paso 4: qué aprender
 # ----------------------------------------------------------------------
+NEW_PROF_TOP = 30           # «si cambiaras de profesión»: las mejores 30
+
+
+def pdb_source_text(info):
+    """Dónde se aprende una receta, en una línea, a partir de ProfessionDB."""
+    if not info:
+        return None
+    parts, src = [], info.get("sources") or {}
+    if info.get("acquire") == 1:
+        parts.append("se aprende con la profesión")
+    if "t" in src:
+        parts.append("instructor")
+    if "v" in src:
+        vs = info.get("vendor") or []
+        best = next((v for v in vs if v[1]), vs[0] if vs else None)
+        txt = "vendedor" if not best else f"vendedor {best[0]}" + (f" ({money(best[1])})" if best[1] else "")
+        if len(vs) > 1:
+            txt += f" y {len(vs) - 1} más"
+        parts.append(txt)
+    if "q" in src:
+        parts.append("misión")
+    if "c" in src:
+        parts.append("contenedor")
+    if "d" in src:
+        parts.append(f"botín ({src['d']} criaturas)" if src["d"] > 1 else "botín")
+    return " · ".join(parts) or None
+
+
+def pdb_vendor_cost(info):
+    return next((v[1] for v in (info or {}).get("vendor") or [] if v[1]), None)
+
+
 def learn_suggestions(data, horizon_h):
     out = []
-    cands = [r for r in data.recipes if not r["learned"]]
-    for prof, info in data.catalog.get("professions", {}).items():
+    cands = []
+    for r in data.recipes:
+        if r["learned"]:
+            continue
+        info = data.pdb.get(r["id"])
+        if info and info["hidden"]:
+            continue                                # nunca existió en el juego
+        if info:
+            r = dict(r)
+            r["skill_req"] = r.get("skill_req") or info["required_skill"]
+            r["borrowed"] = bool(info["req_borrowed"]) and not data.recipes_catalog_skill(r["id"])
+            r["learn_cost"] = r.get("learn_cost") or pdb_vendor_cost(info)
+            r["source"] = r.get("source") or pdb_source_text(info)
+        cands.append(r)
+    my_profs = {p for profs in data.professions.values() for p in profs}
+    if data.pdb:
+        for rid, info in data.pdb.items():
+            out_item = info["crafted_item"]
+            if (info["profession"] in my_profs or info["hidden"] or not out_item
+                    or out_item not in data.prices or not data.pdb_reagents.get(rid)):
+                continue
+            cands.append({"id": rid, "char": None, "prof": info["profession"],
+                          "name": info["name"] or data.name(out_item), "learned": False, "out": out_item,
+                          "yield": 1, "reagents": data.pdb_reagents[rid], "source": pdb_source_text(info),
+                          "cd_until": None, "enchant": False, "cooldown_h": None,
+                          "skill_req": info["required_skill"], "learn_cost": pdb_vendor_cost(info),
+                          "learn_note": None, "new_profession": True, "borrowed": bool(info["req_borrowed"])})
+    for prof, info in ({} if data.pdb else data.catalog.get("professions", {})).items():
         if any(prof in p for p in data.professions.values()):
             continue
         for rid, cr in info.get("recipes", {}).items():
@@ -700,12 +774,24 @@ def learn_suggestions(data, horizon_h):
                 verdict.append("Ventas por día supuestas: aún no hay días de escaneo suficientes.")
             if r.get("learn_note"):
                 verdict.append(r["learn_note"])
-            if r.get("source"):
-                verdict.append(f"Dónde: {r['source']}.")
+
+        if r.get("source"):
+            verdict.append(f"Dónde: {r['source']}.")
+        if r.get("borrowed") and r.get("skill_req"):
+            verdict.append("El nivel requerido viene de Vanilla: en Forever puede ser otro.")
         e["verdict"] = verdict
         out.append(e)
     out.sort(key=lambda e: (e.get("reach") == "desconocido", e.get("daily_profit") is None,
                             -(e.get("daily_profit") or -1e12)))
+    # «si cambiaras de profesión»: solo las mejores, para que la página no se llene de miles de recetas
+    keep, n_new = [], 0
+    for e in out:
+        if e.get("new_profession"):
+            n_new += 1
+            if n_new > NEW_PROF_TOP:
+                continue
+        keep.append(e)
+    out = keep
     return out
 
 

@@ -140,3 +140,29 @@ def load(base):
             "vendor": vendor, "acquire": acquire.get(sid, 0), "hidden": sid in hidden, "scroll": scrolls.get(sid),
         }
     return out
+
+
+# ----------------------------------------------------------------------
+# SQLite del plan
+# ----------------------------------------------------------------------
+SCHEMA = """
+CREATE TABLE IF NOT EXISTS pdb_recipes (
+    recipe_id INTEGER PRIMARY KEY, prof_id INTEGER, profession TEXT, name TEXT,
+    required_skill INTEGER, req_borrowed INTEGER, d1 INTEGER, d2 INTEGER, d3 INTEGER, d4 INTEGER,
+    crafted_item INTEGER, sources TEXT, vendor TEXT, acquire INTEGER, hidden INTEGER);
+CREATE TABLE IF NOT EXISTS pdb_reagents (recipe_id INTEGER, item_id INTEGER, qty REAL, PRIMARY KEY (recipe_id, item_id));
+"""
+
+
+def write_tables(con, recipes):
+    """Guarda las recetas de ProfessionDB en el SQLite del plan (sources y vendor en JSON)."""
+    import json
+    con.executescript(SCHEMA)
+    for sid, r in recipes.items():
+        d = (list(r.get("diff") or []) + [None] * 4)[:4]
+        con.execute("INSERT OR REPLACE INTO pdb_recipes VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                    (sid, r["prof"], r["profession"], r["name"], r["required"], int(bool(r["borrowed"])), *d,
+                     r["crafted"], json.dumps(r["sources"]), json.dumps(r["vendor"], ensure_ascii=False),
+                     r["acquire"], int(bool(r["hidden"]))))
+        for item, qty in (r.get("reagents") or {}).items():
+            con.execute("INSERT OR REPLACE INTO pdb_reagents VALUES (?,?,?)", (sid, int(item), qty))
