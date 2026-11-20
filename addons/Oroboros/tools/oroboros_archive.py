@@ -337,7 +337,7 @@ def append_farm(con, db, market):
     """Copia OroborosDB.farm al archivo, en el mercado `market`. Devuelve (criaturas, subzonas de recolección)."""
     import json
     farm = (db or {}).get("farm") or {}
-    if not farm or not market:
+    if not (farm or (db or {}).get("farmPlaces") or (db or {}).get("farmMaps")) or not market:
         return 0, 0
     mid = market_id(con, market)
     items = lambda t: json.dumps({str(k): v for k, v in _as_dict(t).items()})
@@ -358,5 +358,11 @@ def append_farm(con, db, market):
     for npc, n in _as_dict(farm.get("npcs")).items():
         if isinstance(n, dict):
             con.execute("INSERT OR REPLACE INTO farm_npcs VALUES (?,?,?,?)", (int(npc), n.get("name"), n.get("lvl"), n.get("cls")))
+    # nombres que el juego resolvió para los sitios de Farmeo.lua (FarmPanel.lua): para la página
+    for key, field in (("farm_places", "farmPlaces"), ("farm_maps", "farmMaps")):
+        val = _as_dict((db or {}).get(field))
+        if val:
+            con.execute("INSERT OR REPLACE INTO meta VALUES (?, ?)", (key, json.dumps({str(k): v for k, v in val.items()},
+                                                                                     ensure_ascii=False)))
     con.commit()
     return n_m, n_g

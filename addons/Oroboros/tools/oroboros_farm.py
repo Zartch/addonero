@@ -270,11 +270,15 @@ def read_measured(archive, market):
     """{"mobs": [{npc, sub, zone, map, kills, secs, copper, items}], "npcs": {npc: {name, lvl, cls}}} del archivo."""
     import json
     import sqlite3
-    out = {"mobs": [], "npcs": {}}
+    out = {"mobs": [], "npcs": {}, "places": {}, "maps": {}}
     if not archive or not os.path.exists(archive):
         return out
     con = sqlite3.connect(archive)
     try:
+        for key, field in (("farm_places", "places"), ("farm_maps", "maps")):
+            row = con.execute("SELECT value FROM meta WHERE key = ?", (key,)).fetchone()
+            if row:
+                out[field] = json.loads(row[0])
         rows = con.execute("SELECT f.npc, f.sub, f.zone, f.map, f.kills, f.secs, f.copper, f.items FROM farm_mobs f "
                            "JOIN markets m ON m.market_id = f.market_id WHERE m.key = ?", (market,)).fetchall()
         npcs = con.execute("SELECT npc, name, lvl, cls FROM farm_npcs").fetchall()
@@ -408,6 +412,73 @@ def farm_plan(ac, gm, prices, chars, meas, explore_n=10, gather_n=5):
     return out
 
 
+# ----------------------------------------------------------------------
+# Farmeo.lua: lo que lee el juego (panel /oro farmear y aviso al entrar en un sitio)
+# ----------------------------------------------------------------------
+BAND = 5                    # tramos de 5 niveles
+MAX_LEVEL = 60
+FARMEO_ROWS = 15            # sitios por tramo
+SKILL_BAND = 25             # tramos de nivel de profesión para la recolección
+MAX_SKILL = 300
+GATHER_ROWS = 5
+MEASURED_ROWS = 15
+
+
+def farmeo_data(ac, gm, prices, meas):
+    """Lo que va a Farmeo.lua: {"bands": {nivel: filas}, "gather": {kind: {skill: filas}}, "measured": filas}."""
+    by = per_npc(meas["mobs"])
+    bands, gather = {}, {}
+    if ac:
+        for b in range(0, MAX_LEVEL + 1, BAND):
+            level = max(1, min(MAX_LEVEL, b + BAND // 2))
+            bands[b] = combine(estimate(ac, prices, level), by, ac, prices)[:FARMEO_ROWS]
+        if gm:
+            for kind in ("herb", "mine"):
+                gather[kind] = {s: gathering(gm, ac, prices, {kind: s})[:GATHER_ROWS]
+                                for s in range(0, MAX_SKILL + 1, SKILL_BAND)}
+    measured = measured_places(meas["mobs"], meas["npcs"], ac, prices)[:MEASURED_ROWS]
+    return {"bands": bands, "gather": gather, "measured": measured}
+
+
+def write_farmeo(path, fd, now=None):
+    """Escribe Oroboros/Farmeo.lua (ignorado en git). Devuelve su tamaño en bytes."""
+    import time
+    from oroboros_summary import lua_str
+    n = lambda x: "nil" if x is None else str(int(round(x)))
+    ids = lambda items: "{" + ",".join(str(it) for it, _, _ in items) + "}"
+    lines = ["-- Generado por tools/oroboros_farm.py (docs/farmeo.md). No editar.",
+             f"OroborosFarmeo = {{ v = 1, t = {int(now or time.time())}, cell = {CELL},", "bands = {"]
+    for b, rows in sorted(fd["bands"].items()):
+        lines.append(f"[{b}] = {{")
+        for r in rows:
+            mobs = ", ".join(m["name"] for m in r["mobs"][:3])
+            lines.append(f'{{m={r["map"]},cx={r["cell"][0]},cy={r["cell"][1]},x={n(r["x"])},y={n(r["y"])},'
+                         f'lv="{r["levels"][0]}-{r["levels"][1]}",'
+                         f'g={n(r["gph"])},lo={n(r["gph_range"][0])},hi={n(r["gph_range"][1])},src="{r["source"]}",'
+                         f'conf="{r["confidence"]}",sat={"true" if r["saturated"] else "false"},'
+                         f'mobs={lua_str(mobs)},it={ids(r["top_items"])}}},')
+        lines.append("},")
+    lines.append("},")
+    lines.append("gather = {")
+    for kind, by_skill in sorted(fd["gather"].items()):
+        lines.append(f"{kind} = {{")
+        for s, rows in sorted(by_skill.items()):
+            lines.append(f"[{s}] = {{" + "".join(f"{{map={g['map']},g={n(g['gph'])},nph={n(g['nph'])},it={ids(g['top_items'])}}},"
+                                                   for g in rows) + "},")
+        lines.append("},")
+    lines.append("},")
+    lines.append("measured = {")
+    for r in fd["measured"]:
+        lines.append(f'{{sub={lua_str(r["sub"])},zone={lua_str(r["zone"])},g={n(r["gph"])},kills={r["kills"]},'
+                     f'secs={r["secs"]},conf="{r["confidence"]}",it={ids(r["top_items"])}}},')
+    lines.append("},")
+    lines.append("}")
+    text = "\n".join(lines) + "\n"
+    with open(path, "w", encoding="utf-8", newline="\n") as fh:
+        fh.write(text)
+    return len(text.encode("utf-8"))
+
+
 def item_ids(farm):
     """Objetos que aparecen en el bloque del plan (para ponerles nombre)."""
     ids = set()
@@ -419,8 +490,9 @@ def item_ids(farm):
     return ids
 
 
-def for_plan(data, archive, ac_dir=None, wow_path=None):
-    """plan["farm"] desde el Data del planificador. Sin AzerothCore solo sale lo medido."""
+def for_plan(data, archive, ac_dir=None, wow_path=None, farmeo_path=None):
+    """plan["farm"] desde el Data del planificador. Sin AzerothCore solo sale lo medido.
+    Con farmeo_path (y AzerothCore), escribe también Farmeo.lua para el juego."""
     import azerothcore
     import gathermate
     ac = azerothcore.load(ac_dir) if ac_dir and azerothcore.available(ac_dir) else None
@@ -430,8 +502,12 @@ def for_plan(data, archive, ac_dir=None, wow_path=None):
     for i in data.prices:
         st = data.stats(i)
         prices[i] = {"value": st["mv"], "vol": st["vol"]}
+    meas = read_measured(archive, data.market)
     farm = farm_plan(ac, gm, prices, {k: {"level": c["level"], "professions": data.professions.get(k, {})}
-                                      for k, c in data.chars.items()}, read_measured(archive, data.market))
+                                      for k, c in data.chars.items()}, meas)
+    farm["places"], farm["maps"] = meas["places"], meas["maps"]
+    if farmeo_path and ac:
+        farm["farmeo_bytes"] = write_farmeo(farmeo_path, farmeo_data(ac, gm, prices, meas))
     names = {}
     for i in item_ids(farm):
         n = data.name(i)

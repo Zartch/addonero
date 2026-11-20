@@ -12,3 +12,5 @@ addons/*/tests/*.lua
 !addons/*/tests/mock_wow.lua
 # resumen de precios generado fuera del juego (datos del mercado del usuario)
 addons/*/Oroboros/Resumen.lua
+# dónde farmear, generado fuera del juego (precios del mercado del usuario)
+addons/*/Oroboros/Farmeo.lua

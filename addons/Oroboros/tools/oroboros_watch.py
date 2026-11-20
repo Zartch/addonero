@@ -57,6 +57,9 @@ def watch(path, run, interval=30, settle=10, cycles=None, clock=time.time, sleep
     return ok
 
 
+DEFAULT_RESUMEN = os.path.join(HERE, "..", "Oroboros", "Resumen.lua")
+
+
 def pipeline(sv_path, work_dir, resumen=None, log=_log, ac_dir=None):
     """Exporta y genera el plan. Lanza RuntimeError si algún paso falla.
     Con AzerothCore descargado (ac_dir), el plan lleva también la estimación del farmeo."""
@@ -70,7 +73,8 @@ def pipeline(sv_path, work_dir, resumen=None, log=_log, ac_dir=None):
         ("plan", [py, os.path.join(HERE, "oroboros_plan.py"), "--db", sqlite_, "--archive", archive,
                   "--html", os.path.join(work_dir, "plan.html"), "--json", os.path.join(work_dir, "plan.json"),
                   "--routes", os.path.join(work_dir, "rutas"), "--wow", sv_path]
-                 + (["--azerothcore", ac_dir] if ac_dir else [])),
+                 + (["--azerothcore", ac_dir, "--farmeo", os.path.join(os.path.dirname(resumen or DEFAULT_RESUMEN), "Farmeo.lua")]
+                    if ac_dir else [])),
     ]
     for name, cmd in steps:
         r = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8", errors="replace")

@@ -13,7 +13,7 @@ CAT_TEST = os.path.join(ROOT, "tests", "catalogo_sintetico.json")
 lua = LuaRuntime(unpack_returned_tuples=True)
 lua.execute(open(os.path.join(ROOT, "tests", "mock_wow.lua"), encoding="utf-8").read())
 ns = lua.eval("{}")
-for f in ["Core.lua", "DB.lua", "Scanner.lua", "Professions.lua", "Ledger.lua", "Queue.lua", "Style.lua", "Chart.lua", "UI.lua", "PriceHistory.lua", "Inventory.lua", "Farm.lua"]:
+for f in ["Core.lua", "DB.lua", "Scanner.lua", "Professions.lua", "Ledger.lua", "Queue.lua", "Style.lua", "Chart.lua", "UI.lua", "PriceHistory.lua", "Inventory.lua", "Farm.lua", "FarmPanel.lua"]:
     chunk = lua.execute("return function(src, name) return assert(loadstring(src, name)) end")(
         open(os.path.join(ADDON, f), encoding="utf-8").read(), "@" + f)
     chunk("Oroboros", ns)
@@ -827,6 +827,50 @@ check(OF.gather_kinds({"Botánica": {"skill": 192}, "Minería": {}, "Cocina": {}
       and OF.gather_kinds({"Pesca": {}}) == {},
       "farmeo: «Botánica» (Forever en español) y Minería cuentan como recolección")
 
+# Farmeo.lua (juego): Lua válido y pequeño; panel, aviso al entrar y nombres resueltos en el juego
+_fd = OF.farmeo_data(_ac, _gm, _prices, {"mobs": [_m(1, "Bosque X", 10, 300, 5000)], "npcs": {}})
+_fpath = os.path.join(_tf.mkdtemp(), "Farmeo.lua")
+_fbytes = OF.write_farmeo(_fpath, _fd, now=1795000000)
+_fl = LuaRuntime(unpack_returned_tuples=True); _fl.execute(open(_fpath, encoding="utf-8").read())
+_F = _fl.globals().OroborosFarmeo
+check(_fbytes < 50 * 1024 and _F.bands[10][1].m == 0 and _F.bands[10][1].cx == 0 and _F.bands[10][1].src == "mixto"
+      and _F.bands[10][1].it[1] == 4306 and _F.bands[50] is not None and _F.measured[1].sub == "Bosque X" and _F.gather.herb[0][1].map == 1411,
+      f"Farmeo.lua: Lua válido, menos de 50 KB, por tramos de 5 niveles, recolección y lo medido ({_fbytes} bytes)")
+lua.execute(open(_fpath, encoding="utf-8").read())
+lua.execute("""_UL = UnitLevel; UnitLevel = function(u) if u == 'player' then return 11 end return _UL(u) end
+WORLD = { X = 105, Y = 300, inst = 0 }; OroborosDB.farmAxis = nil; OroborosDB.farmPlaces = nil; OroborosDB.farmMaps = nil
+SUBZONE = "Otra"; LOG = {}""")
+FP = ns.FarmPanel
+check(FP.PlayerCell() == "0:0:0", "farmeo en el juego: la cuadrícula del jugador sale de su posición en el mundo")
+fire("ZONE_CHANGED"); fire("ZONE_CHANGED_NEW_AREA")
+_alerts = [l for l in G.LOG.values() if "Farmeo aquí" in l]
+check(len(_alerts) == 1 and "medido en parte" in _alerts[0], f"farmeo: al entrar en un sitio de la lista avisa una vez {_alerts}")
+_pl = G.OroborosDB.farmPlaces["0:0:0"]
+check(G.OroborosDB.farmAxis == "ba" and _pl is not None and _pl.zone == "Bosque del Mock" and abs(_pl.x - 10.6) < 1e-6
+      and G.OroborosDB.farmMaps[1411] == "Durotar",
+      "farmeo: el juego resuelve zona y coordenadas de cada sitio (calibrando el orden x/y con la posición del jugador)")
+lua.execute('LOG = {}; WORLD = { X = 900, Y = 900, inst = 0 }; SUBZONE = "Bosque X"')
+fire("ZONE_CHANGED")
+check(any("Farmeo aquí" in l and "medido" in l for l in G.LOG.values()), "farmeo: también avisa en una subzona donde ya has farmeado")
+ns.DB.Char().professions["Botánica"] = lua.eval("{ skill = 0 }")
+G.SlashCmdList.OROBOROS("farmear")
+_ent = [e for e in FP.entries.values()]
+_heads = [e.head for e in _ent if e.head]
+check(FP.frame is not None and FP.frame.shown and any("DONDE YA HAS FARMEADO" in h for h in _heads)
+      and any("POR EXPLORAR" in h and "10" in h for h in _heads) and any("RECOLECCIÓN" in h for h in _heads)
+      and any(e.t1 and "Bosque del Mock" in e.t1 for e in _ent) and any(e.t1 == "Durotar" for e in _ent),
+      f"/oro farmear abre el panel: lo medido, por explorar (tramo 10–14, con el nombre resuelto) y recolección {_heads}")
+ns.DB.Char().professions["Botánica"] = None
+lua.execute("WORLD = { X = 105, Y = 300, inst = 0 }; UnitLevel = _UL; LOG = {}")
+# El exportador lleva los nombres resueltos al archivo y el plan los usa
+arch_fp = os.path.join(_tf.mkdtemp(), "fp.sqlite")
+_cfp = open_archive(arch_fp)
+append_farm(_cfp, {"farmPlaces": {"0:0:0": {"zone": "Bosque del Mock", "x": 10.6, "y": 10.6}}, "farmMaps": {1411: "Durotar"}}, "M")
+_cfp.close()
+_mfp = OF.read_measured(arch_fp, "M")
+check(_mfp["places"]["0:0:0"]["zone"] == "Bosque del Mock" and _mfp["maps"]["1411"] == "Durotar",
+      "farmeo: los nombres resueltos en el juego llegan al archivo para la página")
+
 # Migración desde la tabla plana del 19/11 (esquema 1)
 arch_v1 = os.path.join(_tf.mkdtemp(), "v1.sqlite")
 _v1 = sqlite3.connect(arch_v1)
@@ -961,6 +1005,13 @@ _p4html = open(os.path.join(tmp, "p4.html"), encoding="utf-8").read()
 check('["farmear", "Farmear"]' in _p4html and all(b in _p4html for b in ("Donde ya has farmeado", "Por explorar", "Recolección"))
       and p4["farm"]["measured"] == [] and p4["farm"]["has_ac"] is False,
       "página: pestaña Farmear con sus tres bloques; sin AzerothCore, solo lo medido")
+_fl_out = os.path.join(tmp, "Farmeo.lua")
+r5 = subprocess.run([sys.executable, os.path.join(ROOT, "tools", "oroboros_plan.py"), "--db", os.path.join(tmp, "a.sqlite"),
+                     "--json", os.path.join(tmp, "p5.json"), "--synthetic", "--now", NOW, "--archive", arch_p, "--catalog", CAT_TEST,
+                     "--azerothcore", _acd, "--farmeo", _fl_out], capture_output=True, text=True, encoding="utf-8", errors="replace")
+check(r5.returncode == 0 and os.path.exists(_fl_out) and "OroborosFarmeo" in open(_fl_out, encoding="utf-8").read()
+      and json.load(open(os.path.join(tmp, "p5.json"), encoding="utf-8"))["farm"]["has_ac"] is True,
+      f"plan con --azerothcore y --farmeo: escribe Farmeo.lua para el juego {r5.stderr[-300:]}")
 _html = open(os.path.join(tmp, "p4.html"), encoding="utf-8").read()
 check(all(f'[{d}, "{t}"]' in _html for d, t in ((30, "1 mes"), (90, "3 meses"), (180, "6 meses"), (365, "1 año"), (0, "Todo")))
       and 'id="mk-stats"' in _html, "página: Mercado con rangos (1 mes a todo) y tabla de mínimos, máximos y medias")

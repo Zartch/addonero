@@ -177,6 +177,7 @@ SlashCmdList.OROBOROS = function(msg)
         ns.Print("  /oro quien <itemID|link> – qué personaje lo fabrica")
         ns.Print("  /oro precio <itemID|link> – historial de precios del objeto (o Alt+clic en el objeto)")
         ns.Print("  /oro inventario – lo que tienes en todos tus personajes, con valor y tendencia")
+        ns.Print("  /oro farmear  – dónde farmear para vender en la subasta (a tu nivel)")
         ns.Print("  /oro banquero – marcar este personaje como el que compra y vende")
         ns.Print("  /oro import   – pegar una ruta generada fuera del juego")
         ns.Print("  /oro compras  – últimas compras y ventas registradas")
@@ -205,6 +206,8 @@ SlashCmdList.OROBOROS = function(msg)
             date("%d/%m %H:%M", p.t or 0)))
     elseif cmd == "inventario" then
         ns.Inventory.Toggle()
+    elseif cmd == "farmear" then
+        ns.FarmPanel.Toggle()
     elseif cmd == "precio" and rest:lower() == "debug" then
         ns.PriceHistory.Debug()
     elseif cmd == "precio" then

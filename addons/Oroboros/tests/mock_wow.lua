@@ -194,3 +194,27 @@ function UnitClassification() return TARGET and TARGET.cls end
 local _UnitLevel, _UnitName = UnitLevel, UnitName
 function UnitLevel(u) if u == "target" and TARGET then return TARGET.lvl end return _UnitLevel(u) end
 function UnitName(u) if u == "target" and TARGET then return TARGET.name end return _UnitName(u) end
+
+
+-- Farmeo en el juego: posición en el mundo (X, Y como en AzerothCore) y mapas.
+-- El juego de esta simulación espera el vector al revés (x = Y, y = X): la calibración debe elegir "ba".
+WORLD = { X = 105, Y = 300, inst = 0 }
+function UnitPosition() return WORLD.X, WORLD.Y, 0, WORLD.inst end
+function CreateVector2D(x, y) return { x = x, y = y } end
+local MAPNAMES = { [1415] = "Reinos del Este", [1429] = "Bosque del Mock", [1411] = "Durotar" }
+local function inZone(X, Y) return X >= 0 and X < 1000 and Y >= 0 and Y < 1000 end
+C_Map.GetMapInfo = function(id) return MAPNAMES[id] and { mapID = id, name = MAPNAMES[id] } or nil end
+C_Map.GetMapPosFromWorldPos = function(inst, v, override)
+    local X, Y = v.y, v.x
+    if override == 1429 or (not override and false) then return 1429, { x = X / 1000, y = Y / 1000 } end
+    if override == 1415 or not override then return 1415, { x = X / 10000, y = Y / 10000 } end
+    return nil
+end
+C_Map.GetMapInfoAtPosition = function(id, px, py)
+    if id == 1415 and inZone(px * 10000, py * 10000) then return { mapID = 1429, name = MAPNAMES[1429] } end
+    return { mapID = id, name = MAPNAMES[id] }
+end
+C_Map.GetPlayerMapPosition = function(id)
+    if id == 1429 then return { x = WORLD.X / 1000, y = WORLD.Y / 1000 } end
+    return { x = WORLD.X / 10000, y = WORLD.Y / 10000 }
+end
