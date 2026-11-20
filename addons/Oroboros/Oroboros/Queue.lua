@@ -342,17 +342,20 @@ function Queue.Next()
         local _, loc = findInBags(a.itemID)
         if not loc then setStatus("Objeto bloqueado o no encontrado; vuelve a pulsar en un momento.") return end
         local duration = ns.Cfg("postDuration")
+        local hours = ns.PostHours(duration) or "?"
         if step.commodity then
             C_AuctionHouse.PostCommodity(loc, duration, step.n, step.price)
             a.done = a.done + step.n
+            setStatus(string.format("Publicadas %d a %s (dura %s h).", step.n, ns.Money(step.price), hours))
             step = { phase = "idle" }
         else
             C_AuctionHouse.PostItem(loc, duration, 1, nil, step.price)
             a.done = a.done + 1
             if a.done < a.qty and findInBags(a.itemID) > 1 then
-                setStatus(string.format("Publicado. Quedan %d; pulsa para el siguiente a %s.",
-                    a.qty - a.done, ns.Money(step.price)))
+                setStatus(string.format("Publicado (dura %s h). Quedan %d; pulsa para el siguiente a %s.",
+                    hours, a.qty - a.done, ns.Money(step.price)))
             else
+                setStatus(string.format("Publicado a %s (dura %s h).", ns.Money(step.price), hours))
                 step = { phase = "idle" }
             end
         end

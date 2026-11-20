@@ -6,7 +6,7 @@ ns.version = "0.9.0"
 local DEFAULTS = {
     historyDays   = 14,     -- días de histórico diario en el juego (el completo vive en work/archivo.sqlite)
     mvPercent     = 0.15,   -- % más barato de la cantidad usado para el "valor de mercado"
-    postDuration  = 2,      -- 1 = 12h, 2 = 24h, 3 = 48h
+    postDuration  = 3,      -- código del juego; en Forever 1 = 2 h, 2 = 8 h, 3 = 24 h (el máximo)
     undercut      = 1,      -- cobre que se rebaja respecto al más barato ajeno
     ahCut         = 0.05,   -- comisión de la casa de subastas
     autoscan      = 1,      -- 1 = escaneo completo automático al abrir la subasta (si han pasado 15 min)
@@ -49,6 +49,11 @@ function ns.Coin(copper)
     if c > 0 or #parts == 0 then parts[#parts + 1] = c .. COIN_ICON.c end
     return table.concat(parts, " ")
 end
+
+-- Horas que dura una subasta según el código de duración del juego (Forever: 2/8/24 h,
+-- no 12/24/48 como en el juego normal; Auctionator usa las mismas en Source_Forever/Constants.lua)
+local POST_HOURS = { [1] = 2, [2] = 8, [3] = 24 }
+function ns.PostHours(code) return POST_HOURS[tonumber(code)] end
 
 function ns.Today()
     return date("%Y-%m-%d")
@@ -243,8 +248,13 @@ SlashCmdList.OROBOROS = function(msg)
             ns.Print("claves: historyDays, mvPercent, postDuration, undercut, ahCut, autoscan")
             return
         end
+        if k == "postDuration" and not ns.PostHours(v) then
+            ns.Print("postDuration: 1 = 2 h, 2 = 8 h, 3 = 24 h (duraciones de Forever).")
+            return
+        end
         OroborosDB.config[k] = tonumber(v) or v
-        ns.Print(k .. " = " .. tostring(OroborosDB.config[k]))
+        ns.Print(k .. " = " .. tostring(OroborosDB.config[k])
+            .. (k == "postDuration" and (" (" .. ns.PostHours(v) .. " h)") or ""))
     else
         ns.Print("comando desconocido. /oroboros help")
     end

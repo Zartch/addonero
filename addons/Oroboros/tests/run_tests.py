@@ -31,6 +31,10 @@ def check(cond, msg):
 
 fire("ADDON_LOADED", "Oroboros"); fire("PLAYER_LOGIN"); fire("BAG_UPDATE_DELAYED")
 check(G.OroborosDB is not None, "BD inicializada")
+# Duraciones de Forever: el código 1, 2, 3 del juego son 2, 8 y 24 h (no 12, 24, 48 como en el juego normal)
+check([ns.PostHours(k) for k in (1, 2, 3)] == [2, 8, 24] and ns.Cfg("postDuration") == 3, "publicar: 24 h por defecto (el máximo en Forever)")
+G.SlashCmdList.OROBOROS("set postDuration 4")
+check(G.OroborosDB.config.postDuration is None, "publicar: /oro set postDuration solo acepta 1, 2 o 3")
 check(ns.Cfg("historyDays") == 14, "el juego guarda 14 días de histórico (el resto, en el archivo)")
 cl = G.OroborosDB.client
 check(cl is not None and cl.realm == "Forever Normal" and cl.faction == "Horde" and cl.t,
@@ -284,12 +288,13 @@ ns.Queue.Next(); check(calls() == [("PlaceBid", 9, 250000)], "BUY equipo: PlaceB
 # SELL commodity: el más barato ajeno es 450 (el de 400 es mío) -> 449
 ns.Queue.Next(); calls(); fire("COMMODITY_SEARCH_RESULTS_UPDATED", 2996)
 check(ns.Queue.Phase() == "post", "SELL: listo para publicar")
-ns.Queue.Next(); check(calls() == [("PostCommodity", 1, 2, 12, 449)], "SELL: PostCommodity 12 a 449c (rebaja 1c al ajeno)")
+ns.Queue.Next(); check(calls() == [("PostCommodity", 1, 3, 12, 449)], "SELL: PostCommodity 12 a 449c (rebaja 1c al ajeno), 24 h")
+check("24 h" in (ns.UI.lastStatus or ""), f"SELL: el estado dice cuánto dura la subasta ({ns.UI.lastStatus})")
 
 # SELL equipo: mercado 250000 < mínimo 20g? 25g > 20g -> publica a 249999, uno por clic
 ns.Queue.Next(); calls(); fire("ITEM_SEARCH_RESULTS_UPDATED", lua.eval("{itemID=6070}"))
 ns.Queue.Next(); c1 = calls()
-check(c1 == [("PostItem", 2, 2, 1, 249999)], f"SELL equipo: PostItem {c1}")
+check(c1 == [("PostItem", 2, 3, 1, 249999)], f"SELL equipo: PostItem a 24 h {c1}")
 ns.Queue.Next(); c2 = calls()
 check(len(c2) == 1 and c2[0][0] == "PostItem", "SELL equipo: segundo clic publica otro")
 
