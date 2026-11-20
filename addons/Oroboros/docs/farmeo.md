@@ -1,6 +1,6 @@
 # Dónde farmear para vender en la subasta
 
-Diseño del 20/11/2026. Estado: **propuesta revisada, pendiente de aprobar**. Enfoque elegido por el usuario (ajustado el 20/11): **la base es lo que mide el addon**; AzerothCore es solo una **estimación inicial** para proponer sitios donde aún no se ha farmeado, y la recolección sale de GatherMate2 (datos de Forever). Se calcula fuera del juego.
+Diseño del 20/11/2026. Estado: **aprobado y construido el 20/11** (falta probarlo en el juego; ver «Cambios al construirlo» al final). Enfoque elegido por el usuario (ajustado el 20/11): **la base es lo que mide el addon**; AzerothCore es solo una **estimación inicial** para proponer sitios donde aún no se ha farmeado, y la recolección sale de GatherMate2 (datos de Forever). Se calcula fuera del juego.
 
 ## Para qué
 
@@ -141,6 +141,20 @@ Se calcula **fuera del juego**, como el plan. Dentro solo entra un resumen peque
 - Python solo con biblioteca estándar. Lua 5.1, interfaz 16001, todo en `ns`.
 - Los datos de AzerothCore no se suben al repositorio: se descargan a `work/`.
 - Cada parte, con pruebas en `tests/run_tests.py`, usando volcados de AzerothCore y nodos de GatherMate2 en miniatura escritos por la prueba.
+
+## Cambios al construirlo (20/11)
+
+- **Cuadrículas en vez de subzonas.** En los volcados reales de AzerothCore, `creature.zoneId` y `areaId` vienen a 0. Las criaturas se agrupan en cuadrículas de 400 m del continente (`CELL`), por su posición. Una cuadrícula con ≥ 20 % de PNJ con servicios (`npcflag` ≠ 0) se considera ciudad o campamento y queda fuera (`CITY_SHARE`). La regla de capitales se mantiene, pero con zona 0 no hace nada.
+- **Nombres resueltos en el juego.** En lugar de `C_Map.GetAreaInfo` por `areaId`, `FarmPanel.lua` traduce la posición media de cada cuadrícula con `C_Map.GetMapPosFromWorldPos` y guarda la zona y las coordenadas en `OroborosDB.farmPlaces`; los mapas de la recolección van a `farmMaps`. El orden x/y que espera el juego se calibra con la posición del jugador (`UnitPosition` frente a `C_Map.GetPlayerMapPosition`). Se supone que (`position_x`, `position_y`) de AzerothCore son los dos primeros valores de `UnitPosition`. El exportador guarda los nombres en `meta` del archivo y la página los usa.
+- **Aviso al entrar:** el addon compara la cuadrícula del jugador con las de su tramo de nivel y, para lo medido, la subzona. Salta con los eventos de cambio de zona y de subzona.
+- **Lo medido se empareja por criatura**, sumando todas sus subzonas. La combinación es W × medido + (1 − W) × estimado, donde W es la media de min(1, muertes/30) ponderada por las apariciones. «Medido» usa el oro y los objetos que soltaron, al ritmo de muertes estimado. Lo medido por subzona se muestra aparte («Donde ya has farmeado»), con su oro por hora real.
+- **Recolección:** el botín de cada tipo de nodo sale de los nodos de AzerothCore con el mismo nombre (`gameobject_template` tipo 3 → `gameobject_loot_template`). Todos los nodos de Forever lo tienen. Ni GatherMate2 ni ProfessionDB dan el nivel de profesión, así que va en `tools/gather_skill.json`, con niveles del clásico sin comprobar en Forever. El Loto negro está marcado como raro: GatherMate2 guarda cada punto donde ha salido, pero solo aparece en uno de vez en cuando, y sin esto inflaba el oro por hora a más de 100 de oro. En Forever en español, Herboristería se llama «Botánica».
+- **`Farmeo.lua`:**
+  - las 15 mejores cuadrículas de cada tramo de 5 niveles (0 a 60);
+  - la recolección, por tramos de 25 de nivel de profesión;
+  - lo medido.
+
+  Con los datos reales ocupa unos 40 KB. Generarlo, con el plan, tarda unos 20 s.
 
 ## Decisiones del constructor (propuestas)
 

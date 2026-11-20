@@ -98,9 +98,15 @@ También:
 
 Ojo: el beneficio por día de las profesiones nuevas aún usa ventas por día supuestas (hay pocos días de datos) y sale muy alto. Se corregirá solo con más escaneos.
 
-## Farmeo: dónde farmear para vender (en curso, desde el 20/11)
+## Farmeo: dónde farmear para vender (hecho el 20/11; falta probarlo en el juego)
 
 **Qué esperamos:** que Oroboros proponga dónde farmear criaturas de mundo abierto (sin élites) y recolectar, según el nivel. La base es lo que mide el addon; AzerothCore es solo una estimación inicial de materiales para los sitios donde aún no has estado; la recolección sale de GatherMate2. Diseño en `docs/farmeo.md`; plan en `docs/planes/2026-11-20-farmeo.md` (6 tareas, empezando por la medición).
+
+**Estado:** las 6 tareas hechas, con pruebas (`Farm.lua`, `FarmPanel.lua`, `tools/oroboros_farm.py`, `azerothcore.py`, `gathermate.py`, pestaña Farmear, `Farmeo.lua` y `/oro farmear`). Cambios respecto al diseño, en `docs/farmeo.md` («Cambios al construirlo»). Por comprobar en el juego:
+- que se cuentan las muertes y el botín;
+- que el aviso salta al entrar en un sitio de la lista;
+- que los nombres resueltos de los sitios caen donde están las criaturas (si no, el orden x/y de AzerothCore respecto a `UnitPosition` es otro);
+- que los niveles de `tools/gather_skill.json` son los de Forever.
 
 ## Fase 4: cálculos avanzados
 

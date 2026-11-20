@@ -16,6 +16,7 @@ Lee `README.md` (uso y funciones) y `docs/arquitectura.md` (decisiones y reglas)
 - `tools/oroboros_watch.py` — vigilante: cuando el juego guarda Oroboros.lua, exporta, archiva y genera el plan y Resumen.lua (`--once` para una vez).
 - `tools/oroboros_summary.py` — resumen de precios por objeto → `Oroboros/Resumen.lua` (ignorado en git), que lee el panel `Oroboros/PriceHistory.lua`.
 - `tools/oroboros_plan.py` — planificador: rutas, transformaciones, qué aprender, inventario → `plan.html`.
+- `tools/oroboros_farm.py` — dónde farmear (`docs/farmeo.md`): combina lo medido (`Oroboros/Farm.lua`) con la estimación de AzerothCore (`tools/azerothcore.py`, en `work/fuentes/`) y la recolección de GatherMate2 (`tools/gathermate.py`, `tools/gather_skill.json`); escribe la pestaña Farmear y `Oroboros/Farmeo.lua` (ignorado en git), que lee `Oroboros/FarmPanel.lua` (`/oro farmear`).
 - `tools/oroboros_ideas.py` — ideas de especulación y cartera.
 - `tools/planner_ui.html` — plantilla de la página (el plan se incrusta en `/*__PLAN__*/null`).
 - `tools/make_synthetic.py` — datos inventados para probar.
@@ -54,6 +55,7 @@ Para probar el addon en el juego, enlaza la carpeta en vez de copiarla (así los
 
 - Probado en el cliente real: carga del addon, interfaz 16001 y escaneo completo propio. El resto solo con la simulación y datos sintéticos.
 - Lo siguiente que hay que validar en el juego: lectura del banco (¿pestañas o clásico?), libro de compras (compra de equipo, facturas del correo), tooltip.
+- Farmeo, por validar en el juego: que se cuentan muertes y botín, el aviso al entrar en un sitio, que los nombres resueltos (`OroborosDB.farmPlaces`) caen donde están las criaturas, y los niveles de `tools/gather_skill.json`.
 
 ## Fuente de precios: Auctionator (hecho, sin probar en el juego)
 

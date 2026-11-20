@@ -164,6 +164,24 @@ Lo que hace queda en `work/vigilante.log`. Para quitarla: `schtasks /Delete /TN 
 - **En la página del plan**: la pestaña **Mercado** muestra el historial completo con rangos de 1 mes, 3 meses, 6 meses, 1 año y todo, y una tabla con el mínimo y el máximo del rango e históricos (con fecha) y las medias de 7, 30 y 90 días.
 - **Nombres**: tras cada escaneo completo, el addon pide en tandas los nombres de los objetos que el juego aún no le ha dado.
 
+## Dónde farmear
+
+Oroboros propone dónde farmear criaturas de mundo abierto (sin élites ni zonas de élites) y dónde recolectar, según el nivel del personaje. Diseño en `docs/farmeo.md`.
+
+- **Lo que mides manda.** Con Oroboros activo, el addon apunta tus muertes, el botín de cada criatura (también el equipo) y el tiempo activo, por subzona. Al hacer `/reload` o salir, el exportador lo lleva a `work/archivo.sqlite`. Con 30 muertes de una criatura, lo medido sustituye a la estimación; con menos, pesa muertes/30.
+- **Estimación inicial para sitios nuevos:** la base del mundo de AzerothCore (servidor libre de WotLK). Solo cuenta oro y materiales, no el equipo, y el botín de Forever cambió, así que es aproximada. Se descarga una vez (≈ 48 MB, a `work/fuentes/azerothcore/`, que git ignora):
+
+  ```
+  python tools/oroboros_farm.py --descargar
+  ```
+
+  AzerothCore no trae la zona de cada criatura: los sitios son cuadrículas de 400 m. Quedan fuera las ciudades y los campamentos (muchos PNJ con servicios).
+- **Recolección:** los nodos de GatherMate2_Data (carpeta Forever), valorados con lo que suelta cada nodo. Solo cuenta los nodos de tu nivel de Botánica o Minería, con la tabla `tools/gather_skill.json` (niveles del juego clásico, sin comprobar en Forever). El Loto negro no se estima, porque aparece de vez en cuando en uno de muchos sitios.
+- **En la página del plan**, pestaña **Farmear**, por personaje: «Donde ya has farmeado» (oro por hora real), «Por explorar» (las 10 mejores a tu nivel) y «Recolección» (las 5 mejores).
+- **En el juego:** el plan escribe `Oroboros/Farmeo.lua` (unos 40 KB; git lo ignora) y el addon lo lee al entrar. `/oro farmear` abre el panel con lo medido, lo que puedes explorar a tu nivel y la recolección. Al entrar en un sitio de la lista, una línea en el chat: «Farmeo aquí: ≈ X/h (estimado)».
+- **Nombres de los sitios:** el juego traduce las coordenadas de cada sitio a zona y coordenadas del mapa, en español, y las guarda en `OroborosDB.farmPlaces`. Después del siguiente `/reload` y exportación, la página los muestra.
+- El vigilante y el lanzador regeneran todo esto al cerrar el juego, si AzerothCore está descargado. A mano: `oroboros_plan.py … --azerothcore work/fuentes/azerothcore --wow "<ruta de Oroboros.lua>" --farmeo Oroboros/Farmeo.lua`.
+
 ## Varios personajes y banquero
 
 Los datos del addon son **de la cuenta**: lo que lee un personaje lo ven todos. Un personaje de nivel bajo parado en la subasta conoce las recetas de los demás.
@@ -222,6 +240,7 @@ El tooltip de cada objeto muestra el precio guardado y qué personaje tuyo lo fa
 | `/oro scan forzar` | Escaneo propio aunque Auctionator haga el suyo (respeta el límite de 15 minutos de los dos). |
 | `/oro precio <itemID o enlace>` | Panel con el historial de precios del objeto. |
 | `/oro inventario` | Lo que tienes en todos tus personajes, con valor, 14 días y tendencia. |
+| `/oro farmear` | Dónde farmear a tu nivel: lo que has medido, lo que puedes explorar y la recolección. |
 | `/oro cliente` | Versión, interfaz, reino, conjunto de reglas y clave de mercado. También se guarda al entrar en `OroborosDB.client`. |
 | `/oro price <itemID o enlace>` | Precio guardado: mínimo, valor de mercado, cantidad y hora. |
 | `/oro prof` | Profesiones de todos tus personajes, con recetas aprendidas y vistas. |
@@ -593,6 +612,7 @@ No expone funciones. Escucha:
 - **En catalog.json, los multiplicadores de eventos y progresión son suposiciones**; las fechas y los objetos son reales.
 - **Las subastas duran como mucho 24 h en Forever**: lo que no se venda en ese tiempo vuelve por correo y hay que publicarlo otra vez (el plan cuenta con 48 h para vender).
 - **Encantamientos sobre equipo:** no se evalúan, porque no producen un objeto vendible.
+- **Farmeo:** la estimación de sitios nuevos sale de AzerothCore (WotLK), solo con materiales. Los niveles de profesión de los nodos son los del clásico. Lo que mides corrige las dos cosas.
 
 ## Problemas frecuentes
 
