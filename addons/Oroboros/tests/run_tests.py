@@ -289,6 +289,33 @@ _kill(4321, 1, 200000)
 check(lua.eval('OroborosDB.farm.mobs["4321@Elwynn"]') is not None, "farmeo: sin subzona se usa la zona")
 lua.execute('SUBZONE = "Bosque X"; TARGET = nil; LOOT = {}; CLEU = {}; time = os.time')
 
+# Reino vacío (pasó en Forever el 20/11): se usa el último bueno y se arreglan los datos guardados sin reino
+_rk = ns.MarketKey()
+lua.execute('_GNRN, _GRN = GetNormalizedRealmName, GetRealmName; GetNormalizedRealmName = function() return "" end; GetRealmName = function() return "" end')
+check(ns.MarketKey() == _rk and ns.CharKey().endswith("-ForeverNormal"),
+      f"reino vacío: la clave de mercado sigue siendo la buena ({ns.MarketKey()})")
+lua.execute("""
+local good = OroborosDB.markets[ns_MK]
+good.prices[9001] = { min = 100, mv = 100, qty = 5, t = 1000 }
+good.prices[9002] = { min = 300, mv = 300, qty = 5, t = 3000 }
+good.history[9001] = { ["2026-11-20"] = { min = 90, mv = 100, qty = 5, t = 1000 } }
+OroborosDB.markets["-Horde"] = { lastFull = 2000, scans = { { t = 2000, data = "9001,80,80,3,1,1" } },
+  prices = { [9001] = { min = 80, mv = 80, qty = 3, t = 2000 }, [9002] = { min = 999, mv = 999, qty = 1, t = 2000 } },
+  history = { [9001] = { ["2026-11-20"] = { min = 80, mv = 85, qty = 3, t = 2000 }, ["2026-11-19"] = { min = 70, mv = 70, qty = 1, t = 500 } } } }
+OroborosDB.chars["Zartch-"] = { market = "-Horde", level = 2, t = time() + 100, bags = { [2589] = 7 }, professions = {} }
+""".replace("ns_MK", repr(_rk)))
+_fx = ns.DB.FixEmptyRealm()
+_gm_ = G.OroborosDB.markets[_rk]
+_h = _gm_.history[9001]
+_ch = G.OroborosDB.chars[ns.CharKey()]
+check(G.OroborosDB.markets["-Horde"] is None and _gm_.prices[9001].min == 80 and _gm_.prices[9002].min == 300
+      and _h["2026-11-20"].min == 80 and _h["2026-11-20"].mv == 85 and _h["2026-11-19"].min == 70
+      and any(s.t == 2000 for s in _gm_.scans.values()),
+      "reino vacío: el mercado «-Facción» se fusiona con el bueno (gana lo más reciente; mínimo del día)")
+check(G.OroborosDB.chars["Zartch-"] is None and _ch.level == 2 and _ch.market == _rk and _ch.bags[2589] == 7,
+      "reino vacío: el personaje «Nombre-» se une al bueno")
+lua.execute("GetNormalizedRealmName, GetRealmName = _GNRN, _GRN")
+
 # Banco
 c = G.OroborosDB.chars["Zartch-ForeverNormal"]
 check(c.bank is None, "banco no se lee con el banco cerrado")

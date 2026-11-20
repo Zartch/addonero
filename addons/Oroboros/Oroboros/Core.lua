@@ -62,16 +62,26 @@ end
 -- Clave de mercado: Forever no tiene reinos clásicos, pero la subasta va por
 -- conjunto de reglas (ruleset) y facción. GetNormalizedRealmName devuelve el
 -- identificador que use el cliente; lo combinamos con la facción.
+-- Reino. El 20/11 Forever lo dio vacío ("") al entrar y los datos fueron a un mercado «-Alliance»: se usa el
+-- último reino bueno (OroborosDB.realm). En Lua "" cuenta como valor, así que hay que comprobarlo a mano.
+function ns.Realm()
+    local r = GetNormalizedRealmName and GetNormalizedRealmName()
+    if not r or r == "" then r = GetRealmName and GetRealmName() end
+    if r and r ~= "" then
+        if OroborosDB then OroborosDB.realm = r end
+        return r
+    end
+    return (OroborosDB and OroborosDB.realm) or "?"
+end
+
 function ns.MarketKey()
-    local realm = (GetNormalizedRealmName and GetNormalizedRealmName()) or GetRealmName() or "?"
     local faction = UnitFactionGroup("player") or "Neutral"
-    return realm .. "-" .. faction
+    return ns.Realm() .. "-" .. faction
 end
 
 function ns.CharKey()
     local name = UnitName("player") or "?"
-    local realm = (GetNormalizedRealmName and GetNormalizedRealmName()) or GetRealmName() or "?"
-    return name .. "-" .. realm
+    return name .. "-" .. ns.Realm()
 end
 
 function ns.Cfg(key)
@@ -117,6 +127,7 @@ end)
 ns.On("ADDON_LOADED", function(name)
     if name ~= ADDON then return end
     ns.DB.Init(DEFAULTS)
+    ns.DB.FixEmptyRealm()
     ns.Print("v" .. ns.version .. " cargado. /oroboros para ayuda.")
 end)
 

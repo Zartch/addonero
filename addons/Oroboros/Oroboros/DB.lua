@@ -4,6 +4,7 @@ local DB = {}
 ns.DB = DB
 
 local SCHEMA = 1
+local SCAN_BUFFER = 12     -- escaneos en bruto que se guardan (ver más abajo)
 
 --[[ Estructura
 OroborosDB = {
@@ -50,6 +51,96 @@ function DB.Init(defaults)
     db.seenMail = db.seenMail or {}
     db.population = nil       -- ya no se usa
     DB.PruneHistory()
+end
+
+----------------------------------------------------------------------
+-- Reino vacío: mercados «-Facción» y personajes «Nombre-» que se guardaron cuando el juego dio el reino
+-- vacío. Se fusionan con los buenos (mismo criterio que al guardar: gana el dato más reciente).
+----------------------------------------------------------------------
+local function knownRealm()
+    local r = ns.Realm()
+    if r ~= "?" then return r end
+    local found
+    for mk in pairs(OroborosDB.markets) do
+        local realm = mk:match("^(.+)%-[^%-]+$")
+        if realm and realm ~= "" and realm ~= "?" then
+            if found and found ~= realm then return nil end      -- varios reinos: no se adivina
+            found = realm
+        end
+    end
+    if found then OroborosDB.realm = found end
+    return found
+end
+
+local function mergeMarket(src, dst)
+    for id, p in pairs(src.prices or {}) do
+        local q = dst.prices[id]
+        if not q or (p.t or 0) > (q.t or 0) then dst.prices[id] = p end
+    end
+    for id, days in pairs(src.history or {}) do
+        local h = dst.history[id]
+        if not h then h = {}; dst.history[id] = h end
+        for day, d in pairs(days) do
+            local e = h[day]
+            if not e then
+                h[day] = d
+            else
+                local lo = (d.min and e.min) and math.min(d.min, e.min) or (d.min or e.min)
+                if (d.t or 0) > (e.t or 0) then e.mv, e.qty, e.t = d.mv, d.qty, d.t end
+                e.min = lo
+            end
+        end
+    end
+    if src.scans and #src.scans > 0 then
+        dst.scans = dst.scans or {}
+        for _, s in ipairs(src.scans) do table.insert(dst.scans, s) end
+        table.sort(dst.scans, function(a, b) return (a.t or 0) < (b.t or 0) end)
+        while #dst.scans > SCAN_BUFFER do table.remove(dst.scans, 1) end
+    end
+    if (src.lastFull or 0) > (dst.lastFull or 0) then dst.lastFull = src.lastFull end
+end
+
+-- Devuelve cuántos mercados y personajes se han arreglado
+function DB.FixEmptyRealm()
+    local nm, nc = 0, 0
+    local realm
+    for mk, m in pairs(OroborosDB.markets) do
+        local faction = mk:match("^%-([^%-]+)$")
+        if faction then
+            realm = realm or knownRealm()
+            if not realm then return 0, 0 end
+            mergeMarket(m, DB.Market(realm .. "-" .. faction))
+            OroborosDB.markets[mk] = nil
+            nm = nm + 1
+        end
+    end
+    for ck, c in pairs(OroborosDB.chars) do
+        local name = ck:match("^(.+)%-$")
+        if name then
+            realm = realm or knownRealm()
+            if not realm then break end
+            local good = name .. "-" .. realm
+            local g = OroborosDB.chars[good]
+            if not g or (c.t or 0) > (g.t or 0) then
+                OroborosDB.chars[good] = c
+                for k, v in pairs(g or {}) do if c[k] == nil then c[k] = v end end      -- lo que el duplicado no trae
+                for k, v in pairs((g and g.professions) or {}) do
+                    c.professions = c.professions or {}
+                    if c.professions[k] == nil then c.professions[k] = v end
+                end
+            end
+            OroborosDB.chars[ck] = nil
+            nc = nc + 1
+        end
+    end
+    for _, c in pairs(OroborosDB.chars) do
+        local faction = type(c.market) == "string" and c.market:match("^%-([^%-]+)$")
+        if faction and realm then c.market = realm .. "-" .. faction end
+    end
+    if nm + nc > 0 then
+        ns.Print(string.format("arreglados %d mercados y %d personajes guardados sin reino (el juego dio el reino vacío).", nm, nc))
+    end
+    return nm, nc
 end
 
 function DB.Market(mk)
@@ -154,7 +245,6 @@ end
 
 -- Escaneos en bruto para analizar franjas horarias fuera del juego (docs/franjas-horarias.md).
 -- Se guardan los últimos SCAN_BUFFER; el exportador (--archive) los pasa a un SQLite permanente.
-local SCAN_BUFFER = 12
 local CHEAP = 1.25        -- barato = a ≤ mínimo × 1,25
 
 function DB.ScanCount(mk)
