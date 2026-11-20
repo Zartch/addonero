@@ -8,6 +8,8 @@ from lupa.lua51 import LuaRuntime
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 ADDON = os.path.join(ROOT, "Oroboros")
+# catálogo de las pruebas (datos inventados); tools/catalog.json lleva los datos reales de Forever
+CAT_TEST = os.path.join(ROOT, "tests", "catalogo_sintetico.json")
 lua = LuaRuntime(unpack_returned_tuples=True)
 lua.execute(open(os.path.join(ROOT, "tests", "mock_wow.lua"), encoding="utf-8").read())
 ns = lua.eval("{}")
@@ -440,7 +442,7 @@ check(con.execute("SELECT COUNT(*) FROM prices WHERE item_id IN (6070, 123)").fe
       "Auctionator: ignora claves de equipo por nivel y mascotas")
 con.close()
 from oroboros_plan import Data
-dd = Data(out, os.path.join(ROOT, "tools", "catalog.json"))
+dd = Data(out, CAT_TEST)
 st_ = dd.stats(9999)
 check(st_["depth_est"] and st_["src"] == "atr" and st_["conf"] != "alta", f"planificador: profundidad estimada y confianza {st_['conf']}")
 check(dd.stats(2589)["depth_est"] is False, "planificador: profundidad real de Oroboros")
@@ -670,7 +672,7 @@ NOW = "2026-11-16T19:30"
 subprocess.run([sys.executable, os.path.join(ROOT, "tools", "make_synthetic.py"), "--out", os.path.join(tmp, "A.lua"), "--now", NOW], check=True, capture_output=True)
 subprocess.run([sys.executable, os.path.join(ROOT, "tools", "oroboros_export.py"), os.path.join(tmp, "A.lua"), "--sqlite", os.path.join(tmp, "a.sqlite")], check=True, capture_output=True)
 r = subprocess.run([sys.executable, os.path.join(ROOT, "tools", "oroboros_plan.py"), "--db", os.path.join(tmp, "a.sqlite"),
-                    "--json", os.path.join(tmp, "p.json"), "--html", os.path.join(tmp, "p.html"), "--synthetic", "--now", NOW], capture_output=True, text=True, encoding="utf-8", errors="replace")
+                    "--json", os.path.join(tmp, "p.json"), "--html", os.path.join(tmp, "p.html"), "--synthetic", "--now", NOW, "--catalog", CAT_TEST], capture_output=True, text=True, encoding="utf-8", errors="replace")
 check(r.returncode == 0, "planificador se ejecuta " + r.stderr[-300:])
 plan = json.load(open(os.path.join(tmp, "p.json"), encoding="utf-8"))
 s_ = plan["summary"]
@@ -727,7 +729,7 @@ for ck, t in list(parts.items()) + [(p.char, p.text) for p in ns.Queue.Split(I["
     n, nerr = ns.Queue.Parse(t)
     check(len(list(nerr.values())) == 0 and len(list(n.values())) > 0, f"ruta única: el addon entiende la parte de {ck.split('-')[0]}")
 r2 = subprocess.run([sys.executable, os.path.join(ROOT, "tools", "oroboros_plan.py"), "--db", os.path.join(tmp, "a.sqlite"),
-                     "--json", os.path.join(tmp, "p2.json"), "--banker", "none", "--now", NOW], capture_output=True, text=True, encoding="utf-8", errors="replace")
+                     "--json", os.path.join(tmp, "p2.json"), "--banker", "none", "--now", NOW, "--catalog", CAT_TEST], capture_output=True, text=True, encoding="utf-8", errors="replace")
 p2 = json.load(open(os.path.join(tmp, "p2.json"), encoding="utf-8"))
 
 # Franjas en el plan: con --archive, la venta dice en qué franja desaparece más
@@ -751,7 +753,7 @@ for j, r_ in enumerate(rows_):
 arch_write(arch_p, fixed)
 r4 = subprocess.run([sys.executable, os.path.join(ROOT, "tools", "oroboros_plan.py"), "--db", os.path.join(tmp, "a.sqlite"),
                      "--json", os.path.join(tmp, "p4.json"), "--html", os.path.join(tmp, "p4.html"), "--synthetic",
-                     "--now", NOW, "--archive", arch_p], capture_output=True, text=True, encoding="utf-8", errors="replace")
+                     "--now", NOW, "--archive", arch_p, "--catalog", CAT_TEST], capture_output=True, text=True, encoding="utf-8", errors="replace")
 p4 = json.load(open(os.path.join(tmp, "p4.json"), encoding="utf-8"))
 why_x = [w for o in p4["opportunities"] if o["out_item"] == X for w in o.get("why", [])]
 check(any("de 20 a 24 h" in w and "/h barato" in w for w in why_x), f"plan: la venta dice en qué franja desaparece más ({X})")
@@ -788,7 +790,7 @@ def _flip_case(mv_yesterday):
     for k, (mv, q) in zip((4, 3, 2, 1), ((1000, 300), (1000, 280), (1000, 260), (mv_yesterday, 240))):
         _f.execute("INSERT INTO history VALUES (?,777777,?,?,?,?,'oro',NULL)", (mk, _day(k), mv, mv, q))
     _f.commit(); _f.close()
-    dd = _Data(fdb, os.path.join(ROOT, "tools", "catalog.json"), now=_now)
+    dd = _Data(fdb, CAT_TEST, now=_now)
     return [f for f in find_flips(dd, 48, next(iter(dd.chars))) if f["out_item"] == 777777]
 check(len(_flip_case(1000)) == 1, "reventa: bajada puntual frente a su mediana")
 check(len(_flip_case(310)) == 0, "reventa: no si ayer ya estaba a ese precio")
@@ -811,7 +813,7 @@ check(_ce.execute("SELECT qty, src FROM history WHERE item_id=2589 AND day='2026
       "exportador con archivo: el histórico del plan sale del diario (incluye días que el juego ya no tiene)")
 _ce.close(); _ca.close()
 r6 = subprocess.run([sys.executable, os.path.join(ROOT, "tools", "oroboros_plan.py"), "--db", os.path.join(tmp, "e.sqlite"),
-                     "--json", os.path.join(tmp, "p6.json"), "--synthetic", "--now", NOW],
+                     "--json", os.path.join(tmp, "p6.json"), "--synthetic", "--now", NOW, "--catalog", CAT_TEST],
                     capture_output=True, text=True, encoding="utf-8", errors="replace")
 p6 = json.load(open(os.path.join(tmp, "p6.json"), encoding="utf-8"))
 _sel = lambda pl: sorted((o["name"], o["units"]) for o in pl["opportunities"] if o.get("included"))
@@ -862,7 +864,7 @@ def _strip_skill(x):
         return {k: _strip_skill(v) for k, v in x.items() if k != "skill"}
     return [_strip_skill(v) for v in x] if isinstance(x, list) else x
 cat_ns = os.path.join(tmp, "catalog_noskill.json")
-json.dump(_strip_skill(json.load(open(os.path.join(ROOT, "tools", "catalog.json"), encoding="utf-8"))),
+json.dump(_strip_skill(json.load(open(CAT_TEST, encoding="utf-8"))),
           open(cat_ns, "w", encoding="utf-8"), ensure_ascii=False)
 r3 = subprocess.run([sys.executable, os.path.join(ROOT, "tools", "oroboros_plan.py"), "--db", nh,
                      "--json", os.path.join(tmp, "p3.json"), "--now", NOW, "--catalog", cat_ns], capture_output=True, text=True, encoding="utf-8", errors="replace")
@@ -902,7 +904,7 @@ _cv.execute("DELETE FROM inventory WHERE item_id=?", (_vi,))
 _cv.execute("INSERT INTO inventory VALUES (?, 'bags', ?, 3)", (_ck, _vi))
 _cv.execute("INSERT INTO inventory VALUES (?, 'bank', ?, 40)", (_ck, _vi))
 _cv.commit(); _cv.close()
-_pv = _OP.build_plan(_Data(_vdb, os.path.join(ROOT, "tools", "catalog.json"), now=_now))
+_pv = _OP.build_plan(_Data(_vdb, CAT_TEST, now=_now))
 _acts = {e["loc"]: e["action"] for v in _pv["inventory"] if v["owner"] == _ck for e in v["items"] if e["item"] == _vi}
 check(len(_acts) == 2 and len(set(_acts.values())) == 1, f"inventario: el mismo objeto en bolsas y banco recibe la misma decisión {_acts}")
 reach = [l.get("reach") for l in p3["learn"] if not l.get("new_profession")]

@@ -112,7 +112,6 @@ Ojo: el beneficio por día de las profesiones nuevas aún usa ventas por día su
 
 - Alertas de precio («avísame si baja de X»), la otra mitad de Camel.
 - Saber si la subasta se comparte entre facciones (con un personaje de cada una). Si es así, quitar la facción de la clave de mercado.
-- Duraciones de publicación en Forever (Auctionator usa 2/8/24 h; `postDuration` asume 12/24/48 h).
 
 ## Reglas que no cambian
 

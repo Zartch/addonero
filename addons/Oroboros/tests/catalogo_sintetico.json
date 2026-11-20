@@ -1,0 +1,123 @@
+{
+  "_nota": "Datos que el juego no da al addon: nivel requerido, coste de aprender, enfriamientos y recetas de profesiones que NO tienes. Los valores de este fichero son de ejemplo; revísalos con Wowhead para Forever.",
+  "recipes": {
+    "17187": {
+      "cooldown_h": 24
+    },
+    "17573": {
+      "skill": 285,
+      "learn_cost": 30000
+    },
+    "17580": {
+      "skill": 295
+    },
+    "17635": {
+      "skill": 300,
+      "learn_cost": 2500000,
+      "learn_note": "receta rara: precio estimado si aparece en subasta"
+    },
+    "18405": {
+      "skill": 275,
+      "learn_cost": 45000
+    },
+    "18560": {
+      "skill": 250,
+      "learn_cost": 40000,
+      "cooldown_h": 96
+    }
+  },
+  "professions": {
+    "Peletería": {
+      "level_note": "Profesión nueva: tendrías que dejar una de las actuales y subirla hasta 250.",
+      "recipes": {
+        "19058": {
+          "n": "Rugged Armor Kit",
+          "out": 15564,
+          "r": [
+            [
+              8170,
+              5
+            ]
+          ],
+          "skill": 250,
+          "learn_cost": 5000,
+          "src": "Instructor de peletería"
+        }
+      }
+    },
+    "Herrería": {
+      "level_note": "Profesión nueva: tendrías que dejar una de las actuales y subirla hasta 250.",
+      "recipes": {
+        "16641": {
+          "n": "Dense Sharpening Stone",
+          "out": 12404,
+          "r": [
+            [
+              12365,
+              1
+            ]
+          ],
+          "skill": 250,
+          "learn_cost": 5000,
+          "src": "Instructor de herrería"
+        }
+      }
+    }
+  },
+  "server": {
+    "launch": "2026-11-04",
+    "low_level_max_ilvl": 40,
+    "_nota": "Fecha de lanzamiento de WoW Forever y nivel de objeto por debajo del cual un material cuenta como de nivel bajo."
+  },
+  "events": [
+    {
+      "name": "Apertura de las tres bandas de nivel 60",
+      "date": "2026-12-09",
+      "items": [
+        13446,
+        13444,
+        13452,
+        13454,
+        13510,
+        13423,
+        9206,
+        13464,
+        13465,
+        13466,
+        13463,
+        13467,
+        8846,
+        13468
+      ],
+      "uplift": 1.3,
+      "note": "Fecha del calendario oficial. Qué consumibles pedirán las bandas y cuánto suben es una suposición: ajusta la lista y el multiplicador."
+    }
+  ],
+  "progression": {
+    "_nota": "Tesis de ejemplo para mats de nivel bajo: para qué se siguen usando a nivel 60 y un escenario de subida. Revísalas: son suposiciones, no datos.",
+    "3820": {
+      "note": "reactivo de Free Action Potion, que se usa en JcJ y mazmorras de nivel 60",
+      "scenario": 1.8
+    },
+    "2592": {
+      "note": "la piden los que suben sastrería o primeros auxilios con el personaje ya a 60, y pocos enemigos la sueltan",
+      "scenario": 2.0
+    },
+    "2589": {
+      "note": "primeros auxilios y sastrería de personajes secundarios",
+      "scenario": 1.6
+    },
+    "4234": {
+      "note": "peletería de personajes secundarios y kits de armadura",
+      "scenario": 1.6
+    },
+    "4338": {
+      "note": "bolsas de 12 huecos: todo personaje nuevo necesita cuatro",
+      "scenario": 1.5
+    },
+    "6370": {
+      "note": "reactivo de Free Action Potion; sale de pesca en zonas de nivel medio",
+      "scenario": 1.6
+    }
+  }
+}

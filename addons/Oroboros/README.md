@@ -230,7 +230,7 @@ Configuración (`/oro set`):
 |---|---|---|
 | `historyDays` | 30 | Días de histórico diario que se conservan por objeto. |
 | `mvPercent` | 0.15 | Fracción más barata de lo publicado que se usa para el valor de mercado. |
-| `postDuration` | 2 | Duración de las subastas: 1 = 12 h, 2 = 24 h, 3 = 48 h. |
+| `postDuration` | 3 | Duración de las subastas. En Forever, 1 = 2 h, 2 = 8 h, 3 = 24 h (el máximo); no son las 12/24/48 h del juego normal. Al publicar, la línea de estado dice cuánto dura. |
 | `undercut` | 1 | Cobre que se rebaja respecto al más barato de otro jugador. |
 | `ahCut` | 0.05 | Comisión de la subasta, para el neto que muestra la línea de estado. |
 
@@ -429,15 +429,16 @@ Cada línea `HOLD` que ejecutas en el juego abre una apuesta. En la siguiente pa
 
 ## catalog.json
 
-Completa lo que el juego no da al addon. **Los valores son de ejemplo: revísalos.**
+Completa lo que el juego no da al addon, con **datos reales de Forever** (revisado el 20/11/2026). Las pruebas usan su propio catálogo inventado, `tests/catalogo_sintetico.json`.
 
 | Sección | Contenido |
 |---|---|
-| `recipes` | Por recipeID: `skill` (nivel de profesión requerido), `learn_cost` (cobre), `cooldown_h`, `learn_note`. |
-| `professions` | Recetas de profesiones que no tienes, para la pestaña Qué aprender: nombre, objeto, materiales, nivel y coste. |
-| `server` | `launch` (fecha de apertura), `low_level_max_ilvl` (nivel de objeto hasta el que un material cuenta como de nivel bajo, 40), `progression_horizon_days` (plazo de las apuestas de progresión, 21). |
-| `events` | Fechas que mueven la demanda: `name`, `date`, `items`, `uplift` (multiplicador supuesto) y `note`. Incluye la apertura de bandas del 9 de diciembre de 2026. |
+| `server` | `launch`: apertura del servidor, el 4/11/2026. `low_level_max_ilvl`: nivel de objeto hasta el que un material cuenta como de nivel bajo (40). `progression_horizon_days`: plazo de las apuestas de progresión (21). |
+| `events` | Fechas que mueven la demanda: `name`, `date`, `items`, `uplift` (multiplicador supuesto) y `note`. Trae la apertura del 9/12/2026: Barrow Deeps (10), Hyjal Summit (20) y Onyxia's Lair (40), con sus consumibles de nivel 60, y aparte la protección contra el fuego para Onyxia. Las dos tandas de 2027 se añadirán cuando tengan fecha. |
 | `progression` | Por itemID de nivel bajo: `note` (para qué se sigue usando a nivel 60) y `scenario` (multiplicador supuesto). |
+| `recipes`, `professions` | Opcionales. Ya no hacen falta con ProfessionDB, que da nivel, origen y coste de cada receta. Si se ponen, `recipes` manda sobre ProfessionDB (`skill`, `learn_cost`, `cooldown_h`, `learn_note`), y `professions` se usa solo si ProfessionDB no está instalada. |
+
+Los multiplicadores (`uplift`, `scenario`) son suposiciones: el planificador los usa como escenario con stop, nunca como predicción. Las fechas y los objetos son reales.
 
 ## Base de datos SQLite
 
@@ -581,7 +582,8 @@ No expone funciones. Escucha:
 - **Correo y vendedor no automatizados:** son pasos `NOTE`.
 - **El correo solo da el nombre del objeto:** la venta se anota si el addon ya conoce ese objeto.
 - **Lo fabricado no pasa por el libro de compras:** en la cartera su coste es el previsto.
-- **catalog.json son valores de ejemplo**, y los multiplicadores de eventos y progresión son suposiciones.
+- **En catalog.json, los multiplicadores de eventos y progresión son suposiciones**; las fechas y los objetos son reales.
+- **Las subastas duran como mucho 24 h en Forever**: lo que no se venda en ese tiempo vuelve por correo y hay que publicarlo otra vez (el plan cuenta con 48 h para vender).
 - **Encantamientos sobre equipo:** no se evalúan, porque no producen un objeto vendible.
 
 ## Problemas frecuentes
