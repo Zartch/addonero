@@ -319,16 +319,20 @@ lua.execute("GetNormalizedRealmName, GetRealmName = _GNRN, _GRN")
 # Equipo verde de Forever: puja ≈ vendedor y compra directa mucho más alta. Se guardan las dos y una muestra en bruto
 lua.execute("""_REP = REPLICATE
 REPLICATE = { { "Daga cruzada", 1, 2819, 14000, 3825, 2 }, { "Daga cruzada", 1, 2819, 0, 3800, 2 },
-              { "Daga cruzada", 1, 2819, 15000, 3900, 2 }, { "Linen Cloth", 20, 2589, 600 } }""")
+              { "Daga cruzada", 1, 2819, 15000, 3900, 2 }, { "Linen Cloth", 20, 2589, 600 }, { "Daga cruzada", 1, 2819, 3830, 0, 2 } }
+OroborosDB.items[2819] = OroborosDB.items[2819] or {}; OroborosDB.items[2819].s = 3830
+C_AuctionHouse.GetReplicateItemLink = function(i) return "|Hitem:2819::::::1234|h[Daga cruzada del mono]|h" end""")
+lua.execute("OroborosDB.searchSample = { itemID = 2819, rows = {} }")
 _acc = ns.Scanner.NewReplicateAcc()
-for _i in range(4):
+for _i in range(5):
     ns.Scanner.ReadReplicateRow(_i, _acc)
 ns.DB.RecordPrices(_acc.byItem, True, "Prueba-Puja", _acc)
 _pd = ns.DB.GetPrice(2819, "Prueba-Puja")
 _smp = [r for r in _acc.sample.values()]
-check(_pd.min == 14000 and _pd.bid == 3800 and _pd.nb == 1 and len(_smp) == 3
-      and all(r.itemID == 2819 for r in _smp) and _smp[1].minBid == 3800 and _smp[1].buyout == 0,
-      "escaneo: guarda compra directa, puja mínima y subastas solo de puja; muestra en bruto de las filas raras")
+check(_pd.min == 3830 and _pd.bid == 3800 and _pd.nb == 1 and len(_smp) == 4
+      and all(r.itemID == 2819 for r in _smp) and _smp[1].minBid == 3800 and _smp[1].buyout == 0
+      and _smp[3].atVendor is True and "del mono" in _smp[3].link and len(list(_acc.focusRows.values())) == 4,
+      "escaneo: guarda compra directa, puja mínima y subastas solo de puja; muestra en bruto (con enlace) de las filas raras y de las que están al precio del vendedor")
 lua.execute("OroborosDB.markets['Prueba-Puja'] = nil; REPLICATE = _REP")
 lua.execute("""ITEMRES[2819] = { { buyoutAmount = 14000, minBid = 3825, bidAmount = 0, quantity = 1, auctionID = 31, containsOwnerItem = false },
                                  { buyoutAmount = 0, minBid = 3800, bidAmount = 3900, quantity = 1, auctionID = 32, containsOwnerItem = false } }""")

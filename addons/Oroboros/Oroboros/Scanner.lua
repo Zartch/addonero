@@ -113,8 +113,12 @@ end
 -- más baja y las subastas que solo admiten puja. En Forever, el equipo verde sale con puja ≈ precio de
 -- vendedor y compra directa mucho más alta, y el «mínimo» no cuadraba con el juego (20/11): las primeras
 -- filas raras se guardan tal cual en OroborosDB.replicateSample (sin nombres de jugadores) para revisarlas.
-local SAMPLE_MAX = 40
-function Scanner.NewReplicateAcc() return { byItem = {}, bids = {}, bidOnly = {}, sample = {}, seenInfo = {} } end
+local SAMPLE_MAX = 60
+-- focus: el último objeto buscado en la subasta; de ese se guardan todas sus subastas (hasta 120)
+function Scanner.NewReplicateAcc()
+    local s = OroborosDB and OroborosDB.searchSample
+    return { byItem = {}, bids = {}, bidOnly = {}, sample = {}, seenInfo = {}, focus = s and s.itemID, focusRows = {} }
+end
 
 function Scanner.ReadReplicateRow(i, acc)
     local name, _, count, quality, usable, level, levelType, minBid, minIncrement, buyout, bidAmount,
@@ -125,10 +129,18 @@ function Scanner.ReadReplicateRow(i, acc)
         if not acc.bids[itemID] or unit < acc.bids[itemID] then acc.bids[itemID] = unit end
     end
     if not buyout or buyout <= 0 then acc.bidOnly[itemID] = (acc.bidOnly[itemID] or 0) + 1 end
-    if #acc.sample < SAMPLE_MAX and (not buyout or buyout <= 0 or (minBid and minBid > 0 and minBid ~= buyout)) then
+    -- raras: solo puja, puja distinta de la compra, o compra directa al precio del vendedor (±2 %)
+    local it = OroborosDB.items[itemID]
+    local atVendor = buyout and buyout > 0 and it and it.s and it.s > 0 and math.abs(buyout / count - it.s) <= it.s * 0.02
+    if #acc.sample < SAMPLE_MAX and (not buyout or buyout <= 0 or atVendor or (minBid and minBid > 0 and minBid ~= buyout)) then
+        local link = C_AuctionHouse.GetReplicateItemLink and C_AuctionHouse.GetReplicateItemLink(i)
         acc.sample[#acc.sample + 1] = { itemID = itemID, count = count, quality = quality, usable = usable, level = level,
             levelType = levelType, minBid = minBid, minIncrement = minIncrement, buyout = buyout, bidAmount = bidAmount,
-            saleStatus = saleStatus, hasAllInfo = hasAllInfo }
+            saleStatus = saleStatus, hasAllInfo = hasAllInfo, link = link, atVendor = atVendor or nil }
+    end
+    if acc.focus == itemID and #acc.focusRows < 120 then
+        acc.focusRows[#acc.focusRows + 1] = { minBid = minBid, buyout = buyout, bidAmount = bidAmount, count = count,
+            link = C_AuctionHouse.GetReplicateItemLink and C_AuctionHouse.GetReplicateItemLink(i) }
     end
     if buyout and buyout > 0 then
         local list = acc.byItem[itemID]
@@ -166,7 +178,7 @@ local function readReplicate(passive)
             C_Timer.After(0, step)
         else
             local n = ns.DB.RecordPrices(acc.byItem, true, nil, acc)
-            OroborosDB.replicateSample = { t = time(), rows = acc.sample }
+            OroborosDB.replicateSample = { t = time(), rows = acc.sample, focus = acc.focus, focusRows = acc.focusRows }
             ns.DB.QueueMissingNames()
             Scanner.state, Scanner.auto = "idle", false
             if ns.UI then ns.UI.SetScanning(false) end
