@@ -341,12 +341,18 @@ local function remember(rows)
     for i = 1, math.min(5, #rows) do PH.lastRows[i] = rows[i] end
 end
 
--- /oro precio debug: lo que devolvió el juego en la última búsqueda
+PH.lastRaw = nil
+
+-- /oro precio debug: lo que devolvió el juego en la última búsqueda (con puja y compra directa de cada subasta)
 function PH.Debug()
     if not PH.lastRows or #PH.lastRows == 0 then ns.Print("sin búsquedas todavía: selecciona un objeto en la subasta.") return end
     ns.Print(string.format("última búsqueda: %s (en vivo %s)", ns.DB.ItemName(PH.current or 0), ns.Money(PH.live)))
     for i, r in ipairs(PH.lastRows) do
         ns.Print(string.format("  %d. %s × %s%s", i, tostring(r[1]), tostring(r[2]), r[3] and " (propia)" or ""))
+    end
+    for i, r in ipairs(PH.lastRaw or {}) do
+        ns.Print(string.format("  subasta %d: ×%s · puja mínima %s · puja actual %s · compra directa %s", i, tostring(r.quantity),
+            tostring(r.minBid), tostring(r.bidAmount), tostring(r.buyoutAmount)))
     end
 end
 
@@ -365,13 +371,18 @@ end)
 
 ns.On("ITEM_SEARCH_RESULTS_UPDATED", function(itemKey)
     if not (ns.Scanner and ns.Scanner.ahOpen) or not itemKey or not itemKey.itemID then return end
-    local rows = {}
+    local rows, raw = {}, {}
     for i = 1, C_AuctionHouse.GetNumItemSearchResults(itemKey) do
         local r = C_AuctionHouse.GetItemSearchResultInfo(itemKey, i)
+        if r and #raw < 8 then
+            raw[#raw + 1] = { quantity = r.quantity, minBid = r.minBid, bidAmount = r.bidAmount, buyoutAmount = r.buyoutAmount }
+        end
         if r and r.buyoutAmount and r.buyoutAmount > 0 then
             rows[#rows + 1] = { r.buyoutAmount / (r.quantity or 1), r.quantity or 1, r.containsOwnerItem and true or false }
         end
     end
+    PH.lastRaw = raw
+    if OroborosDB then OroborosDB.searchSample = { t = time(), itemID = itemKey.itemID, rows = raw } end
     table.sort(rows, function(a, b) return a[1] < b[1] end)
     remember(rows)
     PH.Show(itemKey.itemID, PH.LivePrice(rows))

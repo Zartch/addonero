@@ -109,6 +109,38 @@ function Scanner.FullScan(force, auto)
     C_AuctionHouse.ReplicateItems()
 end
 
+-- Una fila del escaneo completo. Además de la compra directa (lo que valora el addon), guarda la puja mínima
+-- más baja y las subastas que solo admiten puja. En Forever, el equipo verde sale con puja ≈ precio de
+-- vendedor y compra directa mucho más alta, y el «mínimo» no cuadraba con el juego (20/11): las primeras
+-- filas raras se guardan tal cual en OroborosDB.replicateSample (sin nombres de jugadores) para revisarlas.
+local SAMPLE_MAX = 40
+function Scanner.NewReplicateAcc() return { byItem = {}, bids = {}, bidOnly = {}, sample = {}, seenInfo = {} } end
+
+function Scanner.ReadReplicateRow(i, acc)
+    local name, _, count, quality, usable, level, levelType, minBid, minIncrement, buyout, bidAmount,
+          _, _, _, _, saleStatus, itemID, hasAllInfo = C_AuctionHouse.GetReplicateItemInfo(i)
+    if not itemID or not count or count <= 0 then return end
+    if minBid and minBid > 0 then
+        local unit = minBid / count
+        if not acc.bids[itemID] or unit < acc.bids[itemID] then acc.bids[itemID] = unit end
+    end
+    if not buyout or buyout <= 0 then acc.bidOnly[itemID] = (acc.bidOnly[itemID] or 0) + 1 end
+    if #acc.sample < SAMPLE_MAX and (not buyout or buyout <= 0 or (minBid and minBid > 0 and minBid ~= buyout)) then
+        acc.sample[#acc.sample + 1] = { itemID = itemID, count = count, quality = quality, usable = usable, level = level,
+            levelType = levelType, minBid = minBid, minIncrement = minIncrement, buyout = buyout, bidAmount = bidAmount,
+            saleStatus = saleStatus, hasAllInfo = hasAllInfo }
+    end
+    if buyout and buyout > 0 then
+        local list = acc.byItem[itemID]
+        if not list then list = {}; acc.byItem[itemID] = list end
+        list[#list + 1] = { buyout / count, count }
+        if name and not acc.seenInfo[itemID] then
+            acc.seenInfo[itemID] = true
+            ns.DB.SetItemInfo(itemID, name, quality)
+        end
+    end
+end
+
 -- passive = true cuando el escaneo lo pidió otro addon (Auctionator)
 local function readReplicate(passive)
     Scanner.state = "reading"
@@ -116,8 +148,7 @@ local function readReplicate(passive)
     local label = passive and "Escaneo de Auctionator" or (Scanner.auto and "Escaneo automático" or "Escaneo completo")
     if ns.UI then ns.UI.SetScanning(true) end
     local total = C_AuctionHouse.GetNumReplicateItems()
-    local byItem, idx = {}, 0
-    local seenInfo = {}
+    local acc, idx = Scanner.NewReplicateAcc(), 0
 
     local function step()
         if not Scanner.ahOpen then
@@ -127,24 +158,15 @@ local function readReplicate(passive)
         end
         local last = math.min(idx + CHUNK, total)
         for i = idx, last - 1 do                      -- índices base 0
-            local name, _, count, quality, _, _, _, _, _, buyout, _, _, _, _, _, _, itemID =
-                C_AuctionHouse.GetReplicateItemInfo(i)
-            if itemID and buyout and buyout > 0 and count and count > 0 then
-                local list = byItem[itemID]
-                if not list then list = {}; byItem[itemID] = list end
-                list[#list + 1] = { buyout / count, count }
-                if name and not seenInfo[itemID] then
-                    seenInfo[itemID] = true
-                    ns.DB.SetItemInfo(itemID, name, quality)
-                end
-            end
+            Scanner.ReadReplicateRow(i, acc)
         end
         idx = last
         setStatus(string.format("%s: %d / %d", label, idx, total))
         if idx < total then
             C_Timer.After(0, step)
         else
-            local n = ns.DB.RecordPrices(byItem, true)
+            local n = ns.DB.RecordPrices(acc.byItem, true, nil, acc)
+            OroborosDB.replicateSample = { t = time(), rows = acc.sample }
             ns.DB.QueueMissingNames()
             Scanner.state, Scanner.auto = "idle", false
             if ns.UI then ns.UI.SetScanning(false) end

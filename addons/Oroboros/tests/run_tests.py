@@ -316,6 +316,33 @@ check(G.OroborosDB.chars["Zartch-"] is None and _ch.level == 2 and _ch.market ==
       "reino vacío: el personaje «Nombre-» se une al bueno")
 lua.execute("GetNormalizedRealmName, GetRealmName = _GNRN, _GRN")
 
+# Equipo verde de Forever: puja ≈ vendedor y compra directa mucho más alta. Se guardan las dos y una muestra en bruto
+lua.execute("""_REP = REPLICATE
+REPLICATE = { { "Daga cruzada", 1, 2819, 14000, 3825, 2 }, { "Daga cruzada", 1, 2819, 0, 3800, 2 },
+              { "Daga cruzada", 1, 2819, 15000, 3900, 2 }, { "Linen Cloth", 20, 2589, 600 } }""")
+_acc = ns.Scanner.NewReplicateAcc()
+for _i in range(4):
+    ns.Scanner.ReadReplicateRow(_i, _acc)
+ns.DB.RecordPrices(_acc.byItem, True, "Prueba-Puja", _acc)
+_pd = ns.DB.GetPrice(2819, "Prueba-Puja")
+_smp = [r for r in _acc.sample.values()]
+check(_pd.min == 14000 and _pd.bid == 3800 and _pd.nb == 1 and len(_smp) == 3
+      and all(r.itemID == 2819 for r in _smp) and _smp[1].minBid == 3800 and _smp[1].buyout == 0,
+      "escaneo: guarda compra directa, puja mínima y subastas solo de puja; muestra en bruto de las filas raras")
+lua.execute("OroborosDB.markets['Prueba-Puja'] = nil; REPLICATE = _REP")
+lua.execute("""ITEMRES[2819] = { { buyoutAmount = 14000, minBid = 3825, bidAmount = 0, quantity = 1, auctionID = 31, containsOwnerItem = false },
+                                 { buyoutAmount = 0, minBid = 3800, bidAmount = 3900, quantity = 1, auctionID = 32, containsOwnerItem = false } }""")
+_was_open = ns.Scanner.ahOpen
+ns.Scanner.ahOpen = True
+lua.execute("LOG = {}")
+fire("ITEM_SEARCH_RESULTS_UPDATED", lua.eval("{ itemID = 2819 }"))
+ns.PriceHistory.Debug()
+_dbg = " ".join(G.LOG.values())
+check(G.OroborosDB.searchSample.itemID == 2819 and "compra directa 14000" in _dbg and "puja mínima 3800" in _dbg and "puja actual 3900" in _dbg,
+      "/oro precio debug: puja mínima, puja actual y compra directa de cada subasta")
+ns.Scanner.ahOpen = _was_open
+ns.PriceHistory.Hide()
+
 # Banco
 c = G.OroborosDB.chars["Zartch-ForeverNormal"]
 check(c.bank is None, "banco no se lee con el banco cerrado")

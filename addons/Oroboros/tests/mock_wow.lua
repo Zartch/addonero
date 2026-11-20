@@ -101,7 +101,7 @@ C_AuctionHouse = {
     GetNumReplicateItems = function() return #REPLICATE end,
     GetReplicateItemInfo = function(i)
         local r = REPLICATE[i + 1]
-        return r[1], nil, r[2], 1, true, 1, 0, 0, 0, r[4], 0, false, nil, "x", "x", 0, r[3], true
+        return r[1], nil, r[2], r[6] or 1, true, 1, 0, r[5] or 0, 0, r[4], 0, false, nil, "x", "x", 0, r[3], true
     end,
     MakeItemKey = function(id) return { itemID = id } end,
     GetItemKeyInfo = function(k) return { itemName = ITEMS[k.itemID][1], isCommodity = ITEMS[k.itemID][3] > 1, quality = 1 } end,

@@ -270,7 +270,8 @@ local function fmt(x) return x and string.format("%.0f", x) or "" end
 
 -- byItem: { [itemID] = { {unitPrice, qty}, ... } }
 -- full = true si es un escaneo completo: lo que no aparezca queda con qty 0
-function DB.RecordPrices(byItem, full, mk)
+-- bids (opcional, del escaneo completo): { bids = {[itemID] = puja mínima por unidad}, bidOnly = {[itemID] = n} }
+function DB.RecordPrices(byItem, full, mk, bids)
     local m = DB.Market(mk)
     local now, day = time(), ns.Today()
     local count = 0
@@ -289,6 +290,7 @@ function DB.RecordPrices(byItem, full, mk)
                 lines[#lines + 1] = string.format("%d,%s,%s,%d,%d,%d", itemID, fmt(min), fmt(mv), qty, depth[2], bp)
             end
             local rec = { min = min, mv = mv, qty = qty, n = n, t = now, d = depth }
+            if bids then rec.bid, rec.nb = bids.bids[itemID], bids.bidOnly[itemID] end
             m.prices[itemID] = rec
             updateHistory(m, itemID, rec, day)
             count = count + 1
