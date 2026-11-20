@@ -857,6 +857,28 @@ check(_watch_case([100, 200, 200, 200]) == (1, 1), "vigilante: un guardado estab
 check(_watch_case([100, 200, 300, 400, 500, 600, 700]) == (0, 0), "vigilante: mientras el archivo sigue cambiando, espera")
 check(_watch_case([100]) == (0, 0), "vigilante: sin cambios no hace nada")
 check(_watch_case([100, 200, 200, 300, 300, 300], fail_first=True) == (1, 2), "vigilante: un fallo se registra y sigue vigilando")
+# Lanzador: espera a que se cierre el juego y procesa una vez (sin vigilar todo el rato)
+from oroboros_launch import run_session
+def _launch_case(appear_after, ok=True):
+    clock = [0.0]; calls_ = {"find": 0, "wait": [], "run": 0, "start": 0}
+    def find():
+        calls_["find"] += 1
+        return 4242 if appear_after is not None and calls_["find"] > appear_after else None
+    def run():
+        calls_["run"] += 1
+        if not ok: raise RuntimeError("fallo de prueba")
+    res = run_session(find, lambda pid: calls_["wait"].append(pid), run, start_launcher=lambda: calls_.__setitem__("start", calls_["start"] + 1),
+                      wait_start=60, poll=5, clock=lambda: clock[0], sleep=lambda sec: clock.__setitem__(0, clock[0] + sec), log=lambda *_: None)
+    return res, calls_
+_r, _c = _launch_case(0)
+check(_r is True and _c["wait"] == [4242] and _c["run"] == 1 and _c["start"] == 1, f"lanzador: con el juego abierto, espera a que se cierre y procesa una vez {_c}")
+_r, _c = _launch_case(3)
+check(_r is True and _c["find"] == 4 and _c["run"] == 1, "lanzador: detecta el juego cuando arranca")
+_r, _c = _launch_case(None)
+check(_r is False and _c["run"] == 0 and _c["wait"] == [], "lanzador: si el juego no llega a arrancar, no procesa")
+_r, _c = _launch_case(0, ok=False)
+check(_r is False and _c["run"] == 1, "lanzador: un fallo al procesar se registra y termina")
+
 wtmp = os.path.join(tmp, "watch")
 rw = subprocess.run([sys.executable, os.path.join(ROOT, "tools", "oroboros_watch.py"), os.path.join(tmp, "A.lua"), "--work", wtmp,
                      "--resumen", os.path.join(wtmp, "Resumen.lua"), "--once", "--log", os.path.join(tmp, "vigilante.log")],
