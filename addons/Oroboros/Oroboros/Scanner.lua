@@ -117,7 +117,8 @@ local SAMPLE_MAX = 60
 -- focus: el último objeto buscado en la subasta; de ese se guardan todas sus subastas (hasta 120)
 function Scanner.NewReplicateAcc()
     local s = OroborosDB and OroborosDB.searchSample
-    return { byItem = {}, bids = {}, bidOnly = {}, sample = {}, seenInfo = {}, focus = s and s.itemID, focusRows = {} }
+    return { byItem = {}, bids = {}, bidOnly = {}, sample = {}, seenInfo = {}, focus = s and s.itemID, focusRows = {},
+             names = {} }
 end
 
 function Scanner.ReadReplicateRow(i, acc)
@@ -129,6 +130,16 @@ function Scanner.ReadReplicateRow(i, acc)
         if not acc.bids[itemID] or unit < acc.bids[itemID] then acc.bids[itemID] = unit end
     end
     if not buyout or buyout <= 0 then acc.bidOnly[itemID] = (acc.bidOnly[itemID] or 0) + 1 end
+    -- por nombre: el equipo con sufijo («del bandido», «del mono»…) comparte itemID y tiene precios muy distintos
+    if name and name ~= "" then
+        local byName = acc.names[itemID]
+        if not byName then byName = {}; acc.names[itemID] = byName end
+        local v = byName[name]
+        if not v then v = { n = 0 }; byName[name] = v end
+        if buyout and buyout > 0 and (not v.min or buyout / count < v.min) then v.min = buyout / count end
+        if minBid and minBid > 0 and (not v.bid or minBid / count < v.bid) then v.bid = minBid / count end
+        v.n = v.n + count
+    end
     -- raras: solo puja, puja distinta de la compra, o compra directa al precio del vendedor (±2 %)
     local it = OroborosDB.items[itemID]
     local atVendor = buyout and buyout > 0 and it and it.s and it.s > 0 and math.abs(buyout / count - it.s) <= it.s * 0.02
@@ -178,6 +189,7 @@ local function readReplicate(passive)
             C_Timer.After(0, step)
         else
             local n = ns.DB.RecordPrices(acc.byItem, true, nil, acc)
+            ns.DB.RecordVariants(acc.names)
             OroborosDB.replicateSample = { t = time(), rows = acc.sample, focus = acc.focus, focusRows = acc.focusRows }
             ns.DB.QueueMissingNames()
             Scanner.state, Scanner.auto = "idle", false

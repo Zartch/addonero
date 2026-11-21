@@ -334,6 +334,38 @@ check(_pd.min == 3830 and _pd.bid == 3800 and _pd.nb == 1 and len(_smp) == 4
       and _smp[3].atVendor is True and "del mono" in _smp[3].link and len(list(_acc.focusRows.values())) == 4,
       "escaneo: guarda compra directa, puja mínima y subastas solo de puja; muestra en bruto (con enlace) de las filas raras y de las que están al precio del vendedor")
 lua.execute("OroborosDB.markets['Prueba-Puja'] = nil; REPLICATE = _REP")
+# Sufijos: mismo itemID, nombre y precio distintos → compra directa por nombre, y el tooltip usa la del objeto que ves
+lua.execute("""_REP = REPLICATE
+REPLICATE = { { "Daga cruzada del bandido", 1, 2819, 10000, 4000, 2 }, { "Daga cruzada del bandido", 1, 2819, 14197, 0, 2 },
+              { "Daga cruzada del mono", 1, 2819, 3825, 3800, 2 }, { "Daga cruzada del mono", 1, 2819, 3830, 0, 2 },
+              { "Linen Cloth", 20, 2589, 600 } }""")
+_acc2 = ns.Scanner.NewReplicateAcc()
+for _i in range(5):
+    ns.Scanner.ReadReplicateRow(_i, _acc2)
+ns.DB.RecordVariants(_acc2.names)
+_vb = ns.DB.GetVariant("Daga cruzada del bandido", 2819)
+check(_vb.min == 10000 and _vb.bid == 4000 and ns.DB.GetVariant("Daga cruzada del mono", 2819).min == 3825
+      and ns.DB.GetVariant("Linen Cloth") is None, "escaneo: compra directa y puja más baratas por sufijo (solo objetos con varios nombres)")
+_tl = [(l[1], l[2]) for l in PH.TooltipLines(2819, "Daga cruzada del bandido").values()]
+check(len(_tl) == 2 and _tl[1][0] == "Compra directa" and _tl[1][1].startswith(ns.Coin(10000)) and "puja desde" in _tl[1][1]
+      and ns.Coin(4000) in _tl[1][1] and _tl[0][1] == ns.Coin(10000),
+      f"tooltip: compra directa del sufijo que ves (1g), con la puja; no el mínimo de todas las variantes")
+_tl2 = [(l[1], l[2]) for l in PH.TooltipLines(2589, "Linen Cloth").values()]
+check(any(a == "Compra directa" and ns.Coin(ns.DB.GetPrice(2589).min) in b and "todas las variantes" in b for a, b in _tl2),
+      "tooltip: sin variantes, la compra directa más barata del último escaneo")
+lua.execute("""ITEMRES[2819] = { { buyoutAmount = 9000, minBid = 3500, quantity = 1, auctionID = 41, containsOwnerItem = false,
+                                   itemLink = "|Hitem:2819::|h[Daga cruzada del bandido]|h" },
+                                 { buyoutAmount = 5000, minBid = 4000, quantity = 1, auctionID = 42, containsOwnerItem = true,
+                                   itemLink = "|Hitem:2819::|h[Daga cruzada del bandido]|h" } }""")
+_wo2 = ns.Scanner.ahOpen
+ns.Scanner.ahOpen = True
+fire("ITEM_SEARCH_RESULTS_UPDATED", lua.eval("{ itemID = 2819 }"))
+ns.Scanner.ahOpen = _wo2
+ns.PriceHistory.Hide()
+check(ns.DB.GetVariant("Daga cruzada del bandido", 2819).min == 9000,
+      "subasta en vivo: actualiza la compra directa de ese sufijo (sin contar la tuya)")
+lua.execute("REPLICATE = _REP")
+G.OroborosDB.markets[ns.MarketKey()].variants = None
 lua.execute("""ITEMRES[2819] = { { buyoutAmount = 14000, minBid = 3825, bidAmount = 0, quantity = 1, auctionID = 31, containsOwnerItem = false },
                                  { buyoutAmount = 0, minBid = 3800, bidAmount = 3900, quantity = 1, auctionID = 32, containsOwnerItem = false } }""")
 _was_open = ns.Scanner.ahOpen

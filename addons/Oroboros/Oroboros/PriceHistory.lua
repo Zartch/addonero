@@ -293,18 +293,54 @@ function PH.Show(itemID, live)
     f:Show()
 end
 
+local function ago(t)
+    local d = time() - (t or 0)
+    if d < 3600 then return string.format("hace %d min", math.max(1, math.floor(d / 60))) end
+    if d < 86400 then return string.format("hace %d h", math.floor(d / 3600)) end
+    return string.format("hace %d días", math.floor(d / 86400))
+end
+
+-- Líneas que Oroboros añade al tooltip: { {izquierda, derecha}, … }
+function PH.TooltipLines(itemID, name)
+    local info = PH.TooltipInfo(itemID, name)
+    if not info then return {} end
+    local S = ns.Style
+    local L = {}
+    local right = info.price
+    if info.diffPct then
+        right = right .. "  " .. S.Hex(info.tone == "good" and "good" or (info.tone == "bad" and "bad" or "label"),
+            string.format("%s%d %% frente a su media de 30 días", info.diffPct > 0 and "+" or "", info.diffPct))
+    end
+    L[#L + 1] = { "Oroboros", right }
+    if info.buy then
+        local r = ns.Coin(info.buy)
+        if info.bid and info.bid < info.buy then r = r .. S.Hex("label", "  · puja desde ") .. ns.Coin(info.bid) end
+        r = r .. S.Hex("muted", "  " .. ago(info.t) .. (info.variant and "" or " · mínimo de todas las variantes"))
+        L[#L + 1] = { "Compra directa", r }
+    end
+    return L
+end
+
 function PH.Hide()
     if PH.frame then PH.frame:Hide() end
 end
 
--- Para el tooltip del objeto: precio guardado y diferencia con su media de 30 días
-function PH.TooltipInfo(itemID)
+-- Para el tooltip del objeto: precio guardado, diferencia con su media de 30 días y compra directa.
+-- name: el nombre del objeto que se está viendo (con su sufijo); si hay precio de esa variante, manda.
+function PH.TooltipInfo(itemID, name)
     local p = ns.DB.GetPrice(itemID)
     local s = PH.Get(itemID)
-    local now = (p and (p.qty or 0) > 0 and (p.mv or p.min)) or (s and s.today)
+    local v = ns.DB.GetVariant(name, itemID)
+    local live = p and (p.qty or 0) > 0
+    local now = (v and v.min) or (live and (p.mv or p.min)) or (s and s.today)
     if not now then return nil end
     local info = { price = ns.Coin(now) }
-    if s and s.avg30 and s.avg30 > 0 then
+    if v then
+        info.buy, info.bid, info.t, info.variant = v.min, v.bid, v.t, true
+    elseif live then
+        info.buy, info.bid, info.t = p.min, p.bid, p.t
+    end
+    if not v and s and s.avg30 and s.avg30 > 0 then
         local d = (now / s.avg30 - 1) * 100
         info.diffPct = d >= 0 and math.floor(d + 0.5) or -math.floor(-d + 0.5)
         info.tone = (info.diffPct <= -2 and "good") or (info.diffPct >= 2 and "bad") or "neutral"
@@ -383,6 +419,21 @@ ns.On("ITEM_SEARCH_RESULTS_UPDATED", function(itemKey)
     end
     PH.lastRaw = raw
     if OroborosDB then OroborosDB.searchSample = { t = time(), itemID = itemKey.itemID, rows = raw } end
+    -- compra directa y puja más baratas de cada nombre (sufijo) que ha salido, sin contar las tuyas
+    local byName = {}
+    for i = 1, C_AuctionHouse.GetNumItemSearchResults(itemKey) do
+        local r = C_AuctionHouse.GetItemSearchResultInfo(itemKey, i)
+        local name = r and type(r.itemLink) == "string" and r.itemLink:match("%[(.-)%]")
+        if name and not r.containsOwnerItem then
+            local q = r.quantity or 1
+            local v = byName[name] or { id = itemKey.itemID, n = 0 }
+            byName[name] = v
+            if r.buyoutAmount and r.buyoutAmount > 0 and (not v.min or r.buyoutAmount / q < v.min) then v.min = r.buyoutAmount / q end
+            if r.minBid and r.minBid > 0 and (not v.bid or r.minBid / q < v.bid) then v.bid = r.minBid / q end
+            v.n = v.n + q
+        end
+    end
+    if OroborosDB then for name, v in pairs(byName) do ns.DB.SetVariant(name, v) end end
     table.sort(rows, function(a, b) return a[1] < b[1] end)
     remember(rows)
     PH.Show(itemKey.itemID, PH.LivePrice(rows))

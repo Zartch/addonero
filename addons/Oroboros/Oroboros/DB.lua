@@ -313,6 +313,36 @@ function DB.RecordPrices(byItem, full, mk, bids)
     return count
 end
 
+-- Variantes (mismo itemID, distinto nombre por el sufijo): { [nombre] = { id, min, bid, n, t } }.
+-- El escaneo completo las rehace; una búsqueda en la subasta actualiza la de ese nombre.
+function DB.RecordVariants(names, mk)
+    local m = DB.Market(mk)
+    local now, out = time(), {}
+    for id, byName in pairs(names or {}) do
+        local k = 0
+        for _ in pairs(byName) do k = k + 1 end
+        if k >= 2 then
+            for name, v in pairs(byName) do out[name] = { id = id, min = v.min, bid = v.bid, n = v.n, t = now } end
+        end
+    end
+    m.variants = out
+end
+
+function DB.SetVariant(name, v, mk)
+    if not name or name == "" then return end
+    local m = DB.Market(mk)
+    m.variants = m.variants or {}
+    v.t = v.t or time()
+    m.variants[name] = v
+end
+
+function DB.GetVariant(name, itemID, mk)
+    local m = DB.Market(mk)
+    local v = name and m.variants and m.variants[name]
+    if v and (not itemID or v.id == itemID) then return v end
+    return nil
+end
+
 function DB.GetPrice(itemID, mk)
     return DB.Market(mk).prices[itemID]
 end
