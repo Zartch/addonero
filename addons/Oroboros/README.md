@@ -119,7 +119,7 @@ Si Auctionator tiene su escaneo completo activado, no se lanza el propio: se lee
 
 Accesos directos para el escritorio:
 - **Jugar a Forever con Oroboros**: destino `pythonw.exe "<repo>\addons\Oroboros\tools\oroboros_launch.py" --find "<WoW>\_forever_" --log "<repo>\addons\Oroboros\work\lanzador.log"`. Abre Battle.net y arranca WoW Forever directamente (código `wowf`), sin clics. Con `--modo elegir` solo lo deja seleccionado y le das a Jugar; con `--modo nada`, solo abre Battle.net.
-- **Oroboros: procesar ahora**: destino `"<repo>ddons\Oroboros	ools\oroboros_procesar.bat" --find "<WoW>\_forever_"`. Procesa al momento y enseña el resultado.
+- **Oroboros: procesar ahora**: destino `"<repo>\addons\Oroboros\tools\oroboros_procesar.bat" --find "<WoW>\_forever_"`. Procesa al momento y enseña el resultado.
 
 Si entras al juego desde Battle.net directamente, no pasa nada: usa «procesar ahora», o se procesará la próxima vez.
 
