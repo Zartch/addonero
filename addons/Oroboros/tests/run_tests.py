@@ -1196,6 +1196,11 @@ check(_watch_case([100]) == (0, 0), "vigilante: sin cambios no hace nada")
 check(_watch_case([100, 200, 200, 300, 300, 300], fail_first=True) == (1, 2), "vigilante: un fallo se registra y sigue vigilando")
 # Lanzador: espera a que se cierre el juego y procesa una vez (sin vigilar todo el rato)
 from oroboros_launch import run_session, bnet_command
+if os.name == "nt":
+    from oroboros_launch import single_instance
+    _mx = r"Local\OroborosLanzadorPrueba%d" % os.getpid()
+    check(single_instance(_mx) is True and single_instance(_mx) is False,
+          "lanzador: si ya hay uno en marcha, el segundo no arranca (no procesar dos veces al cerrar)")
 check(bnet_command("B.exe") == ["B.exe", "--exec=launch wowf"] and bnet_command("B.exe", mode="elegir") == ["B.exe", "--game=wowf"]
       and bnet_command("B.exe", mode="nada") == ["B.exe"], "lanzador: Battle.net arranca WoW Forever (wowf) sin clics; o lo deja elegido")
 def _launch_case(appear_after, ok=True):

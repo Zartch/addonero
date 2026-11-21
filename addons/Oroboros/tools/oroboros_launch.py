@@ -115,6 +115,26 @@ def wait_pid(pid):
         k32.CloseHandle(h)
 
 
+_MUTEX = None
+
+
+def single_instance(name=r"Local\OroborosLanzador"):
+    """True si este es el único lanzador en marcha (mutex con nombre de Windows; se suelta al terminar).
+    Dos lanzadores esperarían al mismo juego y procesarían los datos a la vez al cerrarlo."""
+    global _MUTEX
+    import ctypes
+    k32 = ctypes.windll.kernel32
+    k32.CreateMutexW.restype = ctypes.c_void_p
+    h = k32.CreateMutexW(None, False, name)
+    if not h:
+        return True                       # sin mutex no bloqueamos el juego
+    if k32.GetLastError() == 183:         # ERROR_ALREADY_EXISTS
+        k32.CloseHandle(ctypes.c_void_p(h))
+        return False
+    _MUTEX = h
+    return True
+
+
 def main():
     global LOG_FILE
     for s in (sys.stdout, sys.stderr):
@@ -135,6 +155,9 @@ def main():
     LOG_FILE = a.log
     if os.name != "nt":
         sys.exit("El lanzador solo funciona en Windows.")
+    if not single_instance():
+        _log("Ya hay un lanzador en marcha: este se cierra (el otro procesará al salir del juego).")
+        return
     import oroboros_watch
     oroboros_watch.LOG_FILE = a.log
     from oroboros_export import find_file
