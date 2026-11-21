@@ -1201,8 +1201,8 @@ if os.name == "nt":
     _mx = r"Local\OroborosLanzadorPrueba%d" % os.getpid()
     check(single_instance(_mx) is True and single_instance(_mx) is False,
           "lanzador: si ya hay uno en marcha, el segundo no arranca (no procesar dos veces al cerrar)")
-check(bnet_command("B.exe") == ["B.exe", "--exec=launch wowf"] and bnet_command("B.exe", mode="elegir") == ["B.exe", "--game=wowf"]
-      and bnet_command("B.exe", mode="nada") == ["B.exe"], "lanzador: Battle.net arranca WoW Forever (wowf) sin clics; o lo deja elegido")
+check(bnet_command("B.exe") == ["B.exe", "--game=wowf"] and bnet_command("B.exe", mode="lanzar") == ["B.exe", "--exec=launch wowf"]
+      and bnet_command("B.exe", mode="nada") == ["B.exe"], "lanzador: Battle.net con WoW Forever (--game=wowf, comprobado en el juego)")
 def _launch_case(appear_after, ok=True):
     clock = [0.0]; calls_ = {"find": 0, "wait": [], "run": 0, "start": 0}
     def find():

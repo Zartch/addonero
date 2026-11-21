@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Oroboros: lanzador. Abre Battle.net arrancando WoW Forever (--modo elegir: solo lo selecciona), espera a que arranque, se queda dormido mientras
+Oroboros: lanzador. Abre Battle.net con WoW Forever (--game=wowf), espera a que arranque, se queda dormido mientras
 juegas (Windows avisa cuando el proceso termina; no comprueba nada periódicamente) y, al cerrar el
 juego, procesa una sola vez: exportar → archivo → plan → Resumen.lua. Luego termina.
 
@@ -19,9 +19,9 @@ DEFAULT_BNET = r"C:\Program Files (x86)\Battle.net\Battle.net.exe"
 PRODUCT = "wowf"            # código de producto de WoW Forever en Battle.net (.build.info y Battle.net.config)
 
 
-def bnet_command(bnet, product=PRODUCT, mode="lanzar"):
-    """Orden para abrir Battle.net con el juego elegido. mode: «lanzar» (arranca el juego, sin clics),
-    «elegir» (lo deja seleccionado; hay que darle a Jugar) o «nada» (solo abre Battle.net)."""
+def bnet_command(bnet, product=PRODUCT, mode="elegir"):
+    """Orden para abrir Battle.net con el juego elegido. mode: «elegir» (--game=wowf: abre WoW Forever;
+    comprobado el 21/11), «lanzar» (--exec=launch wowf: no funcionó, Battle.net usa otros alias) o «nada»."""
     if mode == "lanzar":
         return [bnet, f"--exec=launch {product}"]
     if mode == "elegir":
@@ -145,8 +145,8 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--find", required=True, metavar="CARPETA", help="carpeta de WoW Forever (la que tiene Wow.exe)")
     ap.add_argument("--battlenet", default="auto", help="ruta de Battle.net.exe, o «no» para no abrirlo")
-    ap.add_argument("--modo", choices=("lanzar", "elegir", "nada"), default="lanzar",
-                    help="lanzar: Battle.net arranca WoW Forever solo; elegir: lo deja seleccionado; nada: solo abre Battle.net")
+    ap.add_argument("--modo", choices=("elegir", "lanzar", "nada"), default="elegir",
+                    help="elegir: Battle.net con WoW Forever (--game=wowf, por defecto); lanzar: --exec=launch wowf; nada: solo Battle.net")
     ap.add_argument("--wait-start", type=float, default=15, help="minutos esperando a que arranque el juego")
     ap.add_argument("--work", default=None, help="carpeta de trabajo (por defecto work/)")
     ap.add_argument("--resumen", help="dónde escribir Resumen.lua (por defecto, en la carpeta del addon)")
@@ -168,7 +168,7 @@ def main():
     bnet = DEFAULT_BNET if a.battlenet == "auto" else (None if a.battlenet.lower() == "no" else a.battlenet)
     start = None
     if bnet and os.path.exists(bnet):
-        msg = {"lanzar": "Battle.net abierto: arrancando WoW Forever.", "elegir": "Battle.net abierto con WoW Forever: dale a Jugar.",
+        msg = {"lanzar": "Battle.net abierto: arrancando WoW Forever.", "elegir": "Battle.net abierto con WoW Forever.",
                "nada": "Battle.net abierto: elige WoW Forever y dale a Jugar."}[a.modo]
         start = lambda: (subprocess.Popen(bnet_command(bnet, PRODUCT, a.modo), close_fds=True), _log(msg))
     work = a.work or oroboros_watch.DEFAULT_WORK

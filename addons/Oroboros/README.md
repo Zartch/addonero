@@ -115,10 +115,10 @@ Se cuentan dos cosas entre escaneos seguidos (como mucho 6 h): lo que desaparece
 
 Si Auctionator tiene su escaneo completo activado, no se lanza el propio: se lee el suyo. Se apaga con `/oro set autoscan 0`.
 
-**Lanzador (recomendado).** `tools/oroboros_launch.py` abre Battle.net arrancando WoW Forever, espera a que se abra y, mientras juegas, no consume nada (Windows le avisa cuando se cierra el juego). Al cerrar el juego, exporta al archivo, escribe `Resumen.lua` y genera el plan **una sola vez**, y termina. No hay ningún proceso vigilando cuando no juegas.
+**Lanzador (recomendado).** `tools/oroboros_launch.py` abre Battle.net con WoW Forever, espera a que arranque y, mientras juegas, no consume nada (Windows le avisa cuando se cierra el juego). Al cerrar el juego, exporta al archivo, escribe `Resumen.lua` y genera el plan **una sola vez**, y termina. No hay ningún proceso vigilando cuando no juegas.
 
 Accesos directos para el escritorio:
-- **Jugar a Forever con Oroboros**: destino `pythonw.exe "<repo>\addons\Oroboros\tools\oroboros_launch.py" --find "<WoW>\_forever_" --log "<repo>\addons\Oroboros\work\lanzador.log"`. Abre Battle.net y arranca WoW Forever directamente (código `wowf`), sin clics. Con `--modo elegir` solo lo deja seleccionado y le das a Jugar; con `--modo nada`, solo abre Battle.net.
+- **Jugar a Forever con Oroboros**: destino `pythonw.exe "<repo>\addons\Oroboros\tools\oroboros_launch.py" --find "<WoW>\_forever_" --log "<repo>\addons\Oroboros\work\lanzador.log"`. Abre Battle.net con WoW Forever (`--game=wowf`; `wowf` es su código en Battle.net). Con `--modo nada`, solo abre Battle.net.
 - **Oroboros: procesar ahora**: destino `"<repo>\addons\Oroboros\tools\oroboros_procesar.bat" --find "<WoW>\_forever_"`. Procesa al momento y enseña el resultado.
 
 Si entras al juego desde Battle.net directamente, no pasa nada: usa «procesar ahora», o se procesará la próxima vez.
