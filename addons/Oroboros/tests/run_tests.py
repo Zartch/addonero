@@ -346,13 +346,17 @@ ns.DB.RecordVariants(_acc2.names)
 _vb = ns.DB.GetVariant("Daga cruzada del bandido", 2819)
 check(_vb.min == 10000 and _vb.bid == 4000 and ns.DB.GetVariant("Daga cruzada del mono", 2819).min == 3825
       and ns.DB.GetVariant("Linen Cloth") is None, "escaneo: compra directa y puja más baratas por sufijo (solo objetos con varios nombres)")
+G.OroborosDB.markets[ns.MarketKey()].prices[2819] = lua.eval("{ min = 3825, mv = 3830, qty = 40, n = 40, t = 1795211786 }")
 _tl = [(l[1], l[2]) for l in PH.TooltipLines(2819, "Daga cruzada del bandido").values()]
-check(len(_tl) == 2 and _tl[1][0] == "Compra directa" and _tl[1][1].startswith(ns.Coin(10000)) and "puja desde" in _tl[1][1]
-      and ns.Coin(4000) in _tl[1][1] and _tl[0][1] == ns.Coin(10000),
-      f"tooltip: compra directa del sufijo que ves (1g), con la puja; no el mínimo de todas las variantes")
+check(len(_tl) == 1 and _tl[0][0] == "Oroboros" and _tl[0][1].startswith(ns.Coin(3830) + " (" + ns.Coin(10000) + ")")
+      and "puja" not in _tl[0][1] and "/" in _tl[0][1],
+      f"tooltip en una línea: valor (compra directa de ese sufijo) y fecha {_tl}")
+G.OroborosDB.markets[ns.MarketKey()].prices[2819] = None
 _tl2 = [(l[1], l[2]) for l in PH.TooltipLines(2589, "Linen Cloth").values()]
-check(any(a == "Compra directa" and ns.Coin(ns.DB.GetPrice(2589).min) in b and "todas las variantes" in b for a, b in _tl2),
-      "tooltip: sin variantes, la compra directa más barata del último escaneo")
+_p2589 = ns.DB.GetPrice(2589)
+_exp2 = ns.Coin(_p2589.mv) + ("" if ns.Coin(_p2589.min) == ns.Coin(_p2589.mv) else " (" + ns.Coin(_p2589.min) + ")")
+check(len(_tl2) == 1 and _tl2[0][1].startswith(_exp2) and "/" in _tl2[0][1],
+      f"tooltip sin variantes: valor (compra directa más barata) y fecha {_tl2}")
 lua.execute("""ITEMRES[2819] = { { buyoutAmount = 9000, minBid = 3500, quantity = 1, auctionID = 41, containsOwnerItem = false,
                                    itemLink = "|Hitem:2819::|h[Daga cruzada del bandido]|h" },
                                  { buyoutAmount = 5000, minBid = 4000, quantity = 1, auctionID = 42, containsOwnerItem = true,

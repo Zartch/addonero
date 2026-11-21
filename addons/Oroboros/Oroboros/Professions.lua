@@ -140,7 +140,6 @@ if TooltipDataProcessor and Enum.TooltipDataType and Enum.TooltipDataType.Item t
         end
         local lines = ns.PriceHistory and ns.PriceHistory.TooltipLines(data.id, name) or {}
         for _, l in ipairs(lines) do tooltip:AddDoubleLine(l[1], l[2], 0.9, 0.72, 0, 1, 1, 1) end
-        if #lines > 0 then tooltip:AddLine("Alt+clic: historial de precios", 0.5, 0.5, 0.55) end
         for _, c in ipairs(Professions.Crafters(data.id)) do
             tooltip:AddDoubleLine("Lo fabrica", c.char:match("^([^%-]+)") .. " (" .. c.prof .. ")", 0.9, 0.72, 0, 1, 1, 1)
         end

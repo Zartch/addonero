@@ -293,32 +293,20 @@ function PH.Show(itemID, live)
     f:Show()
 end
 
-local function ago(t)
-    local d = time() - (t or 0)
-    if d < 3600 then return string.format("hace %d min", math.max(1, math.floor(d / 60))) end
-    if d < 86400 then return string.format("hace %d h", math.floor(d / 3600)) end
-    return string.format("hace %d días", math.floor(d / 86400))
-end
-
--- Líneas que Oroboros añade al tooltip: { {izquierda, derecha}, … }
+-- Línea que Oroboros añade al tooltip, en corto: valor (compra directa de este objeto) ±% frente a la media de
+-- 30 días y fecha del dato. Ej.: «38s 24c (1g) +161 %  21/11». Devuelve { {izquierda, derecha} }.
 function PH.TooltipLines(itemID, name)
     local info = PH.TooltipInfo(itemID, name)
     if not info then return {} end
     local S = ns.Style
-    local L = {}
     local right = info.price
+    if info.buy and ns.Coin(info.buy) ~= info.price then right = right .. " (" .. ns.Coin(info.buy) .. ")" end
     if info.diffPct then
-        right = right .. "  " .. S.Hex(info.tone == "good" and "good" or (info.tone == "bad" and "bad" or "label"),
-            string.format("%s%d %% frente a su media de 30 días", info.diffPct > 0 and "+" or "", info.diffPct))
+        right = right .. " " .. S.Hex(info.tone == "good" and "good" or (info.tone == "bad" and "bad" or "label"),
+            string.format("%s%d %%", info.diffPct > 0 and "+" or "", info.diffPct))
     end
-    L[#L + 1] = { "Oroboros", right }
-    if info.buy then
-        local r = ns.Coin(info.buy)
-        if info.bid and info.bid < info.buy then r = r .. S.Hex("label", "  · puja desde ") .. ns.Coin(info.bid) end
-        r = r .. S.Hex("muted", "  " .. ago(info.t) .. (info.variant and "" or " · mínimo de todas las variantes"))
-        L[#L + 1] = { "Compra directa", r }
-    end
-    return L
+    if info.t then right = right .. " " .. S.Hex("muted", date("%d/%m", info.t)) end
+    return { { "Oroboros", right } }
 end
 
 function PH.Hide()
@@ -332,7 +320,7 @@ function PH.TooltipInfo(itemID, name)
     local s = PH.Get(itemID)
     local v = ns.DB.GetVariant(name, itemID)
     local live = p and (p.qty or 0) > 0
-    local now = (v and v.min) or (live and (p.mv or p.min)) or (s and s.today)
+    local now = (live and (p.mv or p.min)) or (s and s.today) or (v and v.min)
     if not now then return nil end
     local info = { price = ns.Coin(now) }
     if v then
@@ -340,7 +328,7 @@ function PH.TooltipInfo(itemID, name)
     elseif live then
         info.buy, info.bid, info.t = p.min, p.bid, p.t
     end
-    if not v and s and s.avg30 and s.avg30 > 0 then
+    if s and s.avg30 and s.avg30 > 0 then
         local d = (now / s.avg30 - 1) * 100
         info.diffPct = d >= 0 and math.floor(d + 0.5) or -math.floor(-d + 0.5)
         info.tone = (info.diffPct <= -2 and "good") or (info.diffPct >= 2 and "bad") or "neutral"
