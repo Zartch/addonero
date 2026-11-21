@@ -287,7 +287,24 @@ check(_n.name == "Lobo" and _n.lvl == 12 and _n.cls == "normal", "farmeo: nivel 
 lua.execute('SUBZONE = ""')
 _kill(4321, 1, 200000)
 check(lua.eval('OroborosDB.farm.mobs["4321@Elwynn"]') is not None, "farmeo: sin subzona se usa la zona")
-lua.execute('SUBZONE = "Bosque X"; TARGET = nil; LOOT = {}; CLEU = {}; time = os.time')
+# Mazmorras (Midnight): valores secretos. No se toca nada dentro de una instancia ni ningún valor secreto
+lua.execute("LOG = {}")
+lua.execute('SECRETS = { ["Creature-0-1-0-1-7778-1"] = true }')
+check(FARM.NpcFromGUID("Creature-0-1-0-1-7778-1") is None and FARM.NpcFromGUID("Creature-0-1-0-1-7779-1") == 7779,
+      "farmeo: un GUID secreto no se trocea")
+lua.execute('IN_INSTANCE = true; TARGET = { guid = "Creature-0-1-0-1-7777-1", name = "Jefe", lvl = 20, cls = "elite", attack = true }')
+fire("PLAYER_TARGET_CHANGED")
+lua.execute('LOOT = { { type = 2, qty = 0, sources = { "Creature-0-1-0-1-7777-1", 500 } } }')
+fire("LOOT_OPENED")
+check(lua.eval("OroborosDB.farm.npcs[7777]") is None and lua.eval('OroborosDB.farm.mobs["7777@Bosque X"]') is None,
+      "farmeo: dentro de una mazmorra no mide nada")
+lua.execute('IN_INSTANCE = false; TARGET = { guid = "Creature-0-1-0-1-7778-1", name = "X", lvl = 20, cls = "normal", attack = true }')
+fire("PLAYER_TARGET_CHANGED")
+lua.execute('LOOT = { { type = 2, qty = 0, sources = { "Creature-0-1-0-1-7778-1", 500 } } }')
+fire("LOOT_OPENED")
+check(lua.eval("OroborosDB.farm.npcs[7778]") is None and not any("error" in l for l in G.LOG.values()),
+      "farmeo: con valores secretos no da error en el chat")
+lua.execute('SECRETS = {}; SUBZONE = "Bosque X"; TARGET = nil; LOOT = {}; CLEU = {}; time = os.time')
 
 # Reino vacío (pasó en Forever el 20/11): se usa el último bueno y se arreglan los datos guardados sin reino
 _rk = ns.MarketKey()

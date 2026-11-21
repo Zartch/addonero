@@ -190,6 +190,11 @@ function GetLootSlotLink(i) return LOOT[i].link end
 function GetLootSlotInfo(i) return nil, "x", LOOT[i].qty end
 function GetLootSourceInfo(i) return unpack(LOOT[i].sources) end
 function UnitCanAttack() return TARGET and TARGET.attack or false end
+-- Midnight: dentro de instancias, valores secretos. En la simulación, los que estén en SECRETS.
+IN_INSTANCE = false
+function IsInInstance() return IN_INSTANCE, IN_INSTANCE and "party" or "none" end
+SECRETS = {}
+function issecretvalue(v) return SECRETS[v] == true end
 function UnitClassification() return TARGET and TARGET.cls end
 local _UnitLevel, _UnitName = UnitLevel, UnitName
 function UnitLevel(u) if u == "target" and TARGET then return TARGET.lvl end return _UnitLevel(u) end

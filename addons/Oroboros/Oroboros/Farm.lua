@@ -20,9 +20,20 @@ local function split(s)
     return out
 end
 
+-- En mazmorras y bandas la API de Midnight devuelve «valores secretos» (GUID, nombres…) y operar con ellos da
+-- error («attempt to perform string conversion on a secret string value»). El farmeo es de mundo abierto:
+-- dentro de una instancia no se mide nada, y fuera se comprueba cada valor antes de tocarlo.
+local function secret(v) return issecretvalue and issecretvalue(v) or false end
+
+function Farm.InInstance()
+    if not IsInInstance then return false end
+    local inside = IsInInstance()
+    return inside and true or false
+end
+
 -- Creature-0-3110-0-12345-1234-0000ABCDEF → 1234
 function Farm.NpcFromGUID(guid)
-    if type(guid) ~= "string" then return nil end
+    if secret(guid) or type(guid) ~= "string" then return nil end
     local f = split(guid)
     if (f[1] == "Creature" or f[1] == "Vehicle") and f[6] then return tonumber(f[6]) end
     return nil
@@ -83,14 +94,14 @@ end
 
 -- Botín: cada objeto y cada moneda va a la criatura (o al nodo) de donde sale, según GetLootSourceInfo
 ns.On("LOOT_OPENED", function()
-    if not OroborosDB or not GetLootSourceInfo then return end
+    if not OroborosDB or not GetLootSourceInfo or Farm.InInstance() then return end
     for slot = 1, GetNumLootItems() do
         local money = GetLootSlotType and GetLootSlotType(slot) == LOOT_MONEY
         local id = not money and tonumber(((GetLootSlotLink(slot) or ""):match("item:(%d+)"))) or nil
         local src = { GetLootSourceInfo(slot) }
         for i = 1, #src, 2 do
             local guid, qty = src[i], src[i + 1] or 0
-            if type(guid) == "string" and firstTime(guid .. ":" .. (id or "money")) then
+            if not secret(guid) and not secret(qty) and type(guid) == "string" and firstTime(guid .. ":" .. (id or "money")) then
                 local npc = Farm.NpcFromGUID(guid)
                 if npc then
                     if firstTime(guid .. ":kill") then Farm.OnKill(guid) end
@@ -109,9 +120,11 @@ end)
 
 -- Nivel y clasificación (normal, elite, rare…) de las criaturas atacables que tienes como objetivo
 ns.On("PLAYER_TARGET_CHANGED", function()
-    if not OroborosDB then return end
+    if not OroborosDB or Farm.InInstance() then return end
     local npc = Farm.NpcFromGUID(UnitGUID("target"))
     if npc and UnitCanAttack("player", "target") then
-        data().npcs[npc] = { name = UnitName("target"), lvl = UnitLevel("target"), cls = UnitClassification("target") }
+        local name, lvl, cls = UnitName("target"), UnitLevel("target"), UnitClassification("target")
+        if secret(name) or secret(lvl) or secret(cls) then return end
+        data().npcs[npc] = { name = name, lvl = lvl, cls = cls }
     end
 end)
