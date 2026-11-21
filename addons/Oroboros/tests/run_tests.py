@@ -348,7 +348,7 @@ check(_vb.min == 10000 and _vb.bid == 4000 and ns.DB.GetVariant("Daga cruzada de
       and ns.DB.GetVariant("Linen Cloth") is None, "escaneo: compra directa y puja más baratas por sufijo (solo objetos con varios nombres)")
 G.OroborosDB.markets[ns.MarketKey()].prices[2819] = lua.eval("{ min = 3825, mv = 3830, qty = 40, n = 40, t = 1795211786 }")
 _tl = [(l[1], l[2]) for l in PH.TooltipLines(2819, "Daga cruzada del bandido").values()]
-check(len(_tl) == 1 and _tl[0][0] == "Oroboros" and _tl[0][1].startswith(ns.Coin(3830) + " (" + ns.Coin(10000) + ")")
+check(len(_tl) == 1 and _tl[0][0] == "Oroboros c/u" and _tl[0][1].startswith(ns.Coin(3830) + " (" + ns.Coin(10000) + ")")
       and "puja" not in _tl[0][1] and "/" in _tl[0][1],
       f"tooltip en una línea: valor (compra directa de ese sufijo) y fecha {_tl}")
 G.OroborosDB.markets[ns.MarketKey()].prices[2819] = None
@@ -357,6 +357,13 @@ _p2589 = ns.DB.GetPrice(2589)
 _exp2 = ns.Coin(_p2589.mv) + ("" if ns.Coin(_p2589.min) == ns.Coin(_p2589.mv) else " (" + ns.Coin(_p2589.min) + ")")
 check(len(_tl2) == 1 and _tl2[0][1].startswith(_exp2) and "/" in _tl2[0][1],
       f"tooltip sin variantes: valor (compra directa más barata) y fecha {_tl2}")
+_tl3 = [(l[1], l[2]) for l in PH.TooltipLines(2589, "Linen Cloth", 20).values()]
+check(_tl3[0][0] == "Oroboros c/u" and "×20" in _tl3[0][1] and _tl3[0][1].endswith(ns.Coin(_p2589.mv * 20)),
+      f"tooltip: precio por unidad (c/u) y, en una pila de 20, lo que vale entera {_tl3}")
+lua.execute('OroborosResumen = OroborosResumen or {}; _USES_OLD = OroborosResumen.uses; OroborosResumen.uses = { [2589] = "Sastrería (12), Primeros auxilios (2)" }')
+_tl4 = [(l[1], l[2]) for l in PH.TooltipLines(2589, "Linen Cloth").values()]
+check(_tl4[-1] == ("Lo usan", "Sastrería (12), Primeros auxilios (2)"), f"tooltip: qué profesiones usan el componente {_tl4}")
+lua.execute("OroborosResumen.uses = _USES_OLD")
 lua.execute("""ITEMRES[2819] = { { buyoutAmount = 9000, minBid = 3500, quantity = 1, auctionID = 41, containsOwnerItem = false,
                                    itemLink = "|Hitem:2819::|h[Daga cruzada del bandido]|h" },
                                  { buyoutAmount = 5000, minBid = 4000, quantity = 1, auctionID = 42, containsOwnerItem = true,
@@ -1330,6 +1337,14 @@ _cx2 = sqlite3.connect(os.path.join(tmp, "pdbx.sqlite"))
 check(r_pdb.returncode == 0 and _cx2.execute("SELECT COUNT(*) FROM pdb_recipes").fetchone()[0] == 5 and "ProfessionDB" in r_pdb.stdout,
       "exportador: --professiondb guarda las recetas en el SQLite del plan " + (r_pdb.stdout + r_pdb.stderr)[-160:])
 _cx2.close()
+_res_u = os.path.join(tmp, "ResumenUsos.lua")
+r_pdb2 = subprocess.run([sys.executable, os.path.join(ROOT, "tools", "oroboros_export.py"), os.path.join(tmp, "A.lua"),
+                         "--archive", os.path.join(tmp, "pdbx_arch.sqlite"), "--resumen", _res_u, "--professiondb", _pdb_base],
+                        capture_output=True, text=True, encoding="utf-8", errors="replace")
+_lu = LuaRuntime(unpack_returned_tuples=True); _lu.execute(open(_res_u, encoding="utf-8").read())
+check(r_pdb2.returncode == 0 and _lu.globals().OroborosResumen.uses[2589] == "Alquimia (2)"
+      and _lu.globals().OroborosResumen.uses[2318] == "Alquimia (1)",
+      "exportador: Resumen.lua dice qué profesiones usan cada componente (sin recetas ocultas) " + r_pdb2.stderr[-200:])
 check(p2["banker"] is None and any("BUY " in rt["text"] for rt in p2["routes"].values() if rt["short"] == "Zarthrin"),
       "sin banquero, cada personaje compra lo suyo")
 check(not any(c["item"] in (14256, 9206, 4234) for c in I["ideas"]), "no se repite una apuesta que ya está abierta")

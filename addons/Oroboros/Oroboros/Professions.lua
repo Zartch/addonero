@@ -138,7 +138,10 @@ if TooltipDataProcessor and Enum.TooltipDataType and Enum.TooltipDataType.Item t
             local n, link = tooltip:GetItem()
             name = (type(link) == "string" and link:match("%[(.-)%]")) or n
         end
-        local lines = ns.PriceHistory and ns.PriceHistory.TooltipLines(data.id, name) or {}
+        -- pila: el botón de la bolsa o del banco guarda cuántas hay (SetItemButtonCount → .count)
+        local owner = tooltip.GetOwner and tooltip:GetOwner()
+        local count = owner and type(owner.count) == "number" and owner.count or nil
+        local lines = ns.PriceHistory and ns.PriceHistory.TooltipLines(data.id, name, count) or {}
         for _, l in ipairs(lines) do tooltip:AddDoubleLine(l[1], l[2], 0.9, 0.72, 0, 1, 1, 1) end
         for _, c in ipairs(Professions.Crafters(data.id)) do
             tooltip:AddDoubleLine("Lo fabrica", c.char:match("^([^%-]+)") .. " (" .. c.prof .. ")", 0.9, 0.72, 0, 1, 1, 1)

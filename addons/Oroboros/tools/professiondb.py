@@ -142,6 +142,19 @@ def load(base):
     return out
 
 
+def reagent_uses(recipes):
+    """{itemID: [(profesión, recetas)]}: qué profesiones usan cada objeto como componente y en cuántas recetas
+    (sin las recetas ocultas, que nunca existieron), de más a menos recetas."""
+    out = {}
+    for r in recipes.values():
+        if r.get("hidden"):
+            continue
+        for item in (r.get("reagents") or {}):
+            d = out.setdefault(int(item), {})
+            d[r["profession"]] = d.get(r["profession"], 0) + 1
+    return {i: sorted(d.items(), key=lambda x: (-x[1], x[0])) for i, d in out.items()}
+
+
 # ----------------------------------------------------------------------
 # SQLite del plan
 # ----------------------------------------------------------------------

@@ -293,20 +293,35 @@ function PH.Show(itemID, live)
     f:Show()
 end
 
--- Línea que Oroboros añade al tooltip, en corto: valor (compra directa de este objeto) ±% frente a la media de
--- 30 días y fecha del dato. Ej.: «38s 24c (1g) +161 %  21/11». Devuelve { {izquierda, derecha} }.
-function PH.TooltipLines(itemID, name)
+-- Qué profesiones usan el objeto como componente (de ProfessionDB, vía Resumen.lua): "Herrería (3), …"
+function PH.Uses(itemID)
+    local r = OroborosResumen
+    return type(r) == "table" and type(r.uses) == "table" and r.uses[itemID] or nil
+end
+
+-- Líneas que Oroboros añade al tooltip. La primera, en corto: valor por unidad (compra directa de este objeto)
+-- ±% frente a la media de 30 días y fecha; si es una pila (count > 1), lo que vale entera.
+-- Ej.: «Oroboros c/u   38s 24c (1g) +161 %  21/11 · ×20 = 7g 64s». Después, «Lo usan: …». { {izq, der}, … }
+function PH.TooltipLines(itemID, name, count)
+    local L = {}
     local info = PH.TooltipInfo(itemID, name)
-    if not info then return {} end
     local S = ns.Style
-    local right = info.price
-    if info.buy and ns.Coin(info.buy) ~= info.price then right = right .. " (" .. ns.Coin(info.buy) .. ")" end
-    if info.diffPct then
-        right = right .. " " .. S.Hex(info.tone == "good" and "good" or (info.tone == "bad" and "bad" or "label"),
-            string.format("%s%d %%", info.diffPct > 0 and "+" or "", info.diffPct))
+    if info then
+        local right = info.price
+        if info.buy and ns.Coin(info.buy) ~= info.price then right = right .. " (" .. ns.Coin(info.buy) .. ")" end
+        if info.diffPct then
+            right = right .. " " .. S.Hex(info.tone == "good" and "good" or (info.tone == "bad" and "bad" or "label"),
+                string.format("%s%d %%", info.diffPct > 0 and "+" or "", info.diffPct))
+        end
+        if info.t then right = right .. " " .. S.Hex("muted", date("%d/%m", info.t)) end
+        if count and count > 1 and info.value then
+            right = right .. S.Hex("label", " · ×" .. count .. " = ") .. ns.Coin(info.value * count)
+        end
+        L[#L + 1] = { "Oroboros c/u", right }
     end
-    if info.t then right = right .. " " .. S.Hex("muted", date("%d/%m", info.t)) end
-    return { { "Oroboros", right } }
+    local uses = PH.Uses(itemID)
+    if uses then L[#L + 1] = { "Lo usan", uses } end
+    return L
 end
 
 function PH.Hide()
@@ -322,7 +337,7 @@ function PH.TooltipInfo(itemID, name)
     local live = p and (p.qty or 0) > 0
     local now = (live and (p.mv or p.min)) or (s and s.today) or (v and v.min)
     if not now then return nil end
-    local info = { price = ns.Coin(now) }
+    local info = { price = ns.Coin(now), value = now }
     if v then
         info.buy, info.bid, info.t, info.variant = v.min, v.bid, v.t, true
     elseif live then

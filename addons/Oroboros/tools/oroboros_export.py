@@ -324,15 +324,32 @@ def update_archive(archive_path, db, atr_arg, oroboros_path):
               "(más de 12 sin exportar).")
 
 
-def add_professiondb(sqlite_path, pdb_arg, oroboros_path):
-    """Recetas de ProfessionDB (nivel, origen…) en el SQLite del plan. Sin ProfessionDB, sigue sin ella."""
+_PDB = {}
+
+
+def load_professiondb(pdb_arg, oroboros_path):
+    """Recetas de ProfessionDB (se leen una vez por ejecución). None si no está o --professiondb no."""
+    if (pdb_arg or "").lower() == "no":
+        return None
+    if pdb_arg in _PDB:
+        return _PDB[pdb_arg]
     import professiondb
     base = professiondb.find(oroboros_path) if pdb_arg == "auto" else pdb_arg
     if not base or not os.path.isdir(base):
         if pdb_arg != "auto":
             print(f"ProfessionDB: no encuentro {pdb_arg}; sigo sin ella.")
+        _PDB[pdb_arg] = None
+        return None
+    _PDB[pdb_arg] = professiondb.load(base)
+    return _PDB[pdb_arg]
+
+
+def add_professiondb(sqlite_path, pdb_arg, oroboros_path):
+    """Recetas de ProfessionDB (nivel, origen…) en el SQLite del plan. Sin ProfessionDB, sigue sin ella."""
+    import professiondb
+    recipes = load_professiondb(pdb_arg, oroboros_path)
+    if not recipes:
         return
-    recipes = professiondb.load(base)
     con = sqlite3.connect(sqlite_path)
     professiondb.write_tables(con, recipes)
     con.commit()
@@ -384,7 +401,9 @@ def main():
         if (args.resumen or "").lower() != "no":
             import oroboros_summary
             out = args.resumen or oroboros_summary.DEFAULT_OUT
-            r = oroboros_summary.write_resumen(args.archive, out)
+            import professiondb
+            recipes = load_professiondb(args.professiondb, path)
+            r = oroboros_summary.write_resumen(args.archive, out, uses=professiondb.reagent_uses(recipes) if recipes else None)
             print(f"Resumen → {os.path.abspath(out)}: {r['items']} objetos, {r['bytes'] / 1024:.0f} KB "
                   "(el juego lo carga al entrar o con /reload).")
     if args.sqlite:

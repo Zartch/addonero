@@ -86,8 +86,9 @@ def lua_str(s):
     return '"' + "".join(out) + '"'
 
 
-def write_resumen(archive_path, out_path, today=None):
-    """Escribe Resumen.lua con un apartado por mercado. Devuelve {"items": n, "bytes": tamaño}."""
+def write_resumen(archive_path, out_path, today=None, uses=None):
+    """Escribe Resumen.lua con un apartado por mercado. uses (opcional, de ProfessionDB):
+    {itemID: [(profesión, recetas)]} → qué profesiones usan cada componente. Devuelve {"items": n, "bytes": tamaño}."""
     import oroboros_hours
     today = today or datetime.date.today()
     con = sqlite3.connect(archive_path)
@@ -98,6 +99,11 @@ def write_resumen(archive_path, out_path, today=None):
     archived = con.execute("""SELECT m.key, MAX(s.t) FROM scans s JOIN markets m USING (market_id)
                               GROUP BY m.key""").fetchall()
     lines.append("archived = { " + "".join(f"[{lua_str(k)}] = {int(t)}, " for k, t in archived if t) + "},")
+    if uses:
+        lines.append("uses = {")
+        for item, profs in sorted(uses.items()):
+            lines.append(f"[{int(item)}] = {lua_str(', '.join(f'{p} ({k})' for p, k in profs))},")
+        lines.append("},")
     lines.append("markets = {")
     n = 0
     for mid, key in con.execute("SELECT market_id, key FROM markets ORDER BY key").fetchall():
