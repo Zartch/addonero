@@ -26,6 +26,15 @@ Conclusión: lo que se lee fuera del juego sale siempre de la **API oficial de B
 - `GET /data/wow/connected-realm/{id}/auctions`: todas las subastas del reino, una foto por hora.
 - `GET /data/wow/auctions/commodities`: materiales (los «commodities»), una foto por región.
 
+### Comprobado por el usuario (23/11/2026, con curl y un token de cliente)
+
+- `GET /data/wow/ruleset/index?namespace=dynamic-forever-eu` → 200, reglas 1, 2, 3 y 15. Cabecera `cache-control: max-age=30`.
+- `GET /data/wow/ruleset/2` → «Normal», estado `UP`, `auctions.href` = `/data/wow/ruleset/2/auctions/`.
+- `GET /data/wow/ruleset/2/auctions/index` **y** `/data/wow/ruleset/2/auctions/` (con barra final) → 200, la misma lista: 15 casas, `110`–`121` y `123`–`125`. Por nombre: Alianza 110, 111, 112, 119, 123; Horda 113, 114, 115, 120, 124; Aguasnegras 116, 117, 118, 121, 125. Cabeceras: `last-modified` y `cache-control: max-age=86400` (la lista casi no cambia).
+- Sin la palabra `Bearer` bien puesta, la respuesta es un 401 **sin cuerpo**: `curl` sin `-i` no muestra nada.
+- `blizzard-token-expires` dice cuándo caduca el token (24 h).
+- La regla 2 lista las 15 casas, no solo las suyas: la regla de la ruta no parece separar mercados. Falta saber cuál de los 5 grupos es el nuestro (apartado «Cómo encaja con Oroboros»).
+
 ### Lo que se sabe de Forever (comunidad, sin confirmar)
 
 Forever no tiene reinos conectados: tiene **reglas** (rulesets) y casas de subasta por facción. Según el issue [jkc-be/goldbook#67](https://github.com/jkc-be/goldbook/issues/67) (cerrado el 6/11/2026; resume un post de Reddit que su autor dice que está escrito con IA y que él aún no había comprobado con su cliente) y un hilo del foro de desarrolladores de Blizzard:
