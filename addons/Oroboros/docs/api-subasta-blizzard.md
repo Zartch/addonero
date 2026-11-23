@@ -179,7 +179,20 @@ Leer el correo («Subasta realizada»). Es exacto pero solo cuenta lo tuyo. Sirv
 
 Con la API: el método (a) por `id` y `time_left`, que da vendidas, caducadas y canceladas por separado, por hora y por casa. Se comprueba con tus ventas reales del correo (c), que Oroboros ya guarda en el libro.
 
-## 5. Propuesta de automatización (sin hacer)
+## 5. Qué se construyó (24/11/2026)
+
+Plan: `docs/planes/2026-11-23-api-blizzard.md`. Uso: README, «Subasta sin entrar al juego».
+
+- `tools/oroboros_api.py`: descarga con `If-Modified-Since`, tablas `api_*` en `work/archivo.sqlite`, clasificación del apartado 4a por `id` (con compras parciales y sin clasificar los huecos de más de 90 min), resumen semanal por franja, nombres de objetos y calibración con el libro.
+- `tools/oroboros_panel.py`: descarga cada hora y panel en `127.0.0.1:8737`.
+- El plan, las franjas y `Resumen.lua` usan la API cuando tiene datos (ver README, «Qué gana»).
+
+Primeros datos (12 fotos del 23/11 y la de las 00:23 del 24/11):
+- Las «vendidas» son muy altas. El Paño de lino, por ejemplo, sale con unas 72 000 vendidas al día en la 111 y unas 179 000 publicadas: casi seguro, recolocaciones de bots que retiran una subasta barata y la vuelven a poner. La regla de «cancelada» (solo lo caro) no las separa.
+- Tus 28 ventas del libro son anteriores a las fotos: aún no hay calibración. Se hará sola cada día.
+- Idea para afinar, si la calibración lo confirma: tratar como recolocación lo que desaparece y reaparece (mismo objeto, misma cantidad) en la foto siguiente, al mismo precio o más barato.
+
+## 6. Propuesta inicial de automatización (ya hecha, ver apartado 5)
 
 1. **Comprobar a mano** (10 minutos, en tu PC): crear el cliente en `develop.battle.net`, pedir el token y llamar a `ruleset/index` y `ruleset/2/auctions/index` con `namespace=dynamic-forever-eu`. Si responde, todo lo demás es viable.
 2. `tools/oroboros_api.py` (Python sin dependencias, como el resto): cada hora pide las fotos de las casas que interesan, se salta las que no han cambiado (`Last-Modified`) y las guarda en `work/archivo.sqlite` en una tabla aparte de los escaneos del juego (por subasta: `id`, objeto, cantidad, precio, `time_left`, hora de la foto). Las credenciales en un archivo de `work/` o en variables de entorno, **nunca en git**.

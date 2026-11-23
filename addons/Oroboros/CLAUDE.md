@@ -14,6 +14,8 @@ Lee `README.md` (uso y funciones) y `docs/arquitectura.md` (decisiones y reglas)
 - `tools/oroboros_archive.py` — añade los últimos 12 escaneos del juego a `work/archivo.sqlite` (permanente).
 - `tools/oroboros_hours.py` — franjas horarias: lo que desaparece (total y barato) y el precio por franja.
 - `tools/oroboros_watch.py` — vigilante: cuando el juego guarda Oroboros.lua, exporta, archiva y genera el plan y Resumen.lua (`--once` para una vez).
+- `tools/oroboros_api.py` — subasta con la API oficial de Blizzard, sin entrar al juego (`docs/api-subasta-blizzard.md`, apartado 0): descarga cada hora las casas 111/114/117 (Alianza/Horda/Aguasnegras de nuestro grupo) con `If-Modified-Since`, guarda en el archivo (`api_houses`, `api_snaps`, `api_live`, `api_item_hour` 14-21 días, `api_band_week`, `daily` con `src='api'`), estima vendidas/caducadas/canceladas por id de subasta, pide nombres (`static-forever-eu`) y calibra con el libro (`--calibrar`). Credenciales en `work/bnet.env` o `BNET_CLIENT_ID`/`BNET_CLIENT_SECRET`.
+- `tools/oroboros_panel.py` — panel de escritorio: hilo de descarga cada hora + servidor en 127.0.0.1:8737 (página del plan con pestañas Subasta y Ventas, JSON en `/api/*`) + ventana de Edge en modo aplicación. Una sola copia (mutex).
 - `tools/oroboros_summary.py` — resumen de precios por objeto → `Oroboros/Resumen.lua` (ignorado en git), que lee el panel `Oroboros/PriceHistory.lua`.
 - `tools/oroboros_plan.py` — planificador: rutas, transformaciones, qué aprender, inventario → `plan.html`.
 - `tools/oroboros_farm.py` — dónde farmear (`docs/farmeo.md`): combina lo medido (`Oroboros/Farm.lua`) con la estimación de AzerothCore (`tools/azerothcore.py`, en `work/fuentes/`) y la recolección de GatherMate2 (`tools/gathermate.py`, `tools/gather_skill.json`); escribe la pestaña Farmear y `Oroboros/Farmeo.lua` (ignorado en git), que lee `Oroboros/FarmPanel.lua` (`/oro farmear`).
@@ -50,10 +52,12 @@ Para probar el addon en el juego, enlaza la carpeta en vez de copiarla (así los
 - Los objetivos de las ideas son escenarios, no predicciones: siempre con riesgo y stop.
 - Cada cambio de lógica lleva su comprobación en `tests/run_tests.py`.
 - Eventos o funciones del juego que puedan no existir en Forever: registrar con `ns.On` (ya usa `pcall`) o comprobar antes de llamar.
+- La API de Blizzard solo lee. Las credenciales (`work/bnet.env`) y las fotos (`work/api/`) nunca van a git ni salen en mensajes o registros. Las pruebas no usan la red (cliente falso y fotos sintéticas).
 
 ## Estado
 
 - Probado en el cliente real: carga del addon, interfaz 16001 y escaneo completo propio. El resto solo con la simulación y datos sintéticos.
+- API de Blizzard y panel (24/11): probados con datos reales (descarga, archivo, plan, Resumen.lua y rutas del panel, sin la ventana). Pendiente: que la ventana de Edge se vea bien, que la calibración con el libro diga si las «vendidas» son ventas (las primeras cifras son muy altas: recolocaciones de bots) y confirmar con un personaje de la Horda que su casa es la 114.
 - Lo siguiente que hay que validar en el juego: lectura del banco (¿pestañas o clásico?), libro de compras (compra de equipo, facturas del correo), tooltip.
 - Farmeo, por validar en el juego: que se cuentan muertes y botín, el aviso al entrar en un sitio, que los nombres resueltos (`OroborosDB.farmPlaces`) caen donde están las criaturas, y los niveles de `tools/gather_skill.json`.
 
