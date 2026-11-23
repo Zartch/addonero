@@ -507,10 +507,10 @@ def house_for_market(con, market_key):
     return r[0] if r else None
 
 
-def sold_rates(con, house, now=None, days=7):
-    """Vendidas por día (incluidas las compras parciales) por objeto, con las fotos de los últimos `days`
-    días. Devuelve ({objeto: vendidas/día}, días con mediciones). Solo cuentan intervalos medidos
-    (con foto anterior y sin hueco)."""
+def move_rates(con, house, now=None, days=7, items=None):
+    """Movimientos por día y objeto con las fotos de los últimos `days` días: {objeto: {sold (incluidas
+    las compras parciales), expired, cancelled, new}}, y los días con mediciones. Solo cuentan los
+    intervalos medidos (con foto anterior y sin hueco)."""
     now = now or time.time()
     since = now - days * 86400
     snaps = con.execute("""SELECT t, prev_t FROM api_snaps WHERE house=? AND t >= ? AND prev_t IS NOT NULL
@@ -519,14 +519,23 @@ def sold_rates(con, house, now=None, days=7):
     if not secs:
         return {}, 0
     cov = len({_day(t) for t, _ in snaps})
+    extra = f" AND h.item_id IN ({','.join('?' * len(items))})" if items else ""
     rates = {}
-    for item, s in con.execute(
-            """SELECT h.item_id, SUM(COALESCE(h.sold, 0) + COALESCE(h.partial, 0)) FROM api_item_hour h
-               JOIN api_snaps s ON s.house = h.house AND s.t = h.t
-               WHERE h.house=? AND h.t >= ? AND s.prev_t IS NOT NULL AND h.t - s.prev_t <= ? AND h.sold IS NOT NULL
-               GROUP BY h.item_id""", (house, since, MAX_GAP)):
-        rates[item] = s * 86400 / secs
+    for item, sold, exp, can, new in con.execute(
+            f"""SELECT h.item_id, SUM(COALESCE(h.sold, 0) + COALESCE(h.partial, 0)), SUM(COALESCE(h.expired, 0)),
+                       SUM(COALESCE(h.cancelled, 0)), SUM(COALESCE(h.new, 0))
+                FROM api_item_hour h JOIN api_snaps s ON s.house = h.house AND s.t = h.t
+                WHERE h.house=? AND h.t >= ? AND s.prev_t IS NOT NULL AND h.t - s.prev_t <= ? AND h.sold IS NOT NULL{extra}
+                GROUP BY h.item_id""", (house, since, MAX_GAP, *(items or []))):
+        k = 86400 / secs
+        rates[item] = {"sold": sold * k, "expired": exp * k, "cancelled": can * k, "new": new * k}
     return rates, cov
+
+
+def sold_rates(con, house, now=None, days=7, items=None):
+    """Vendidas por día (incluidas las compras parciales): ({objeto: vendidas/día}, días con mediciones)."""
+    rates, cov = move_rates(con, house, now, days, items)
+    return {i: r["sold"] for i, r in rates.items()}, cov
 
 
 CALIB_MIN_COVER = 0.8            # cobertura mínima de tus ventas reales para fiarse de las vendidas estimadas

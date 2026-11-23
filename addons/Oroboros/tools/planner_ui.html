@@ -192,15 +192,19 @@ input[type="search"], select { font: inherit; padding: 6px 10px; border: 1px sol
   <section class="view" id="v-mercado"></section>
   <section class="view" id="v-horas"></section>
   <section class="view" id="v-farmear"></section>
+  <section class="view" id="v-subasta"></section>
+  <section class="view" id="v-ventas"></section>
 </main>
 <div class="tip" id="tip"></div>
 <script>
 const PLAN = /*__PLAN__*/null;
+// true cuando la sirve el panel de escritorio (tools/oroboros_panel.py): las pestañas Subasta y Ventas piden datos
+const PANEL = /*__PANEL__*/false;
 
-const VIEWS = [
+const VIEWS = (PLAN ? [
   ["resumen", "Resumen"], ["ruta", "Ruta"], ["recetas", "Qué ganas y por qué"],
   ["transformar", "Transformaciones"], ["aprender", "Qué aprender"], ["ideas", "Ideas"], ["cartera", "Cartera"], ["inventario", "Qué tienes"], ["mercado", "Mercado"], ["horas", "Horas"], ["farmear", "Farmear"],
-];
+] : []).concat([["subasta", "Subasta"], ["ventas", "Ventas"]]);
 const $ = (s, el = document) => el.querySelector(s);
 const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
 const short = ck => ck ? ck.split("-")[0] : "—";
@@ -322,6 +326,7 @@ function wireChart(id) {
 
 /* ---------------- Vistas ---------------- */
 function renderMeta() {
+  if (!PLAN) { $("#meta").innerHTML = 'Sin plan todavía: exporta tus datos del juego (vigilante, lanzador o <code>--find</code> en el panel).'; return; }
   const s = PLAN.summary;
   $("#meta").innerHTML = `Mercado <b>${esc(PLAN.market)}</b> · generado ${esc(PLAN.generated_txt)} · ruta para ${PLAN.settings.horizon_h} h · presupuesto ${pct(PLAN.settings.budget_pct)} del oro (${money(PLAN.settings.budget)})` +
     (PLAN.banker ? ` · banquero <b>${esc(PLAN.banker)}</b>` : "") + (PLAN.synthetic ? ' · <span class="pill warn">datos sintéticos</span>' : "");
@@ -670,10 +675,152 @@ function renderFarmear() {
   $("#v-farmear").querySelectorAll("[data-fch]").forEach(b => b.onclick = () => { farmChar = b.dataset.fch; renderFarmear(); });
 }
 
-const RENDER = { resumen: renderResumen, ruta: renderRuta, recetas: renderRecetas, transformar: renderTransformar, aprender: renderAprender, ideas: renderIdeas, cartera: renderCartera, inventario: renderInventario, mercado: renderMercado, horas: renderHoras, farmear: renderFarmear };
+/* ---------------- Panel de escritorio: Subasta y Ventas (API de Blizzard) ---------------- */
+const FAC = { Alliance: ["Alianza", "#2b5c8a"], Horde: ["Horda", "#b3261e"], Neutral: ["Aguasnegras", "#1f7a4d"] };
+const facTxt = f => (FAC[f] || [f])[0], facCol = f => (FAC[f] || [0, "#7b8592"])[1];
+const fmtT = t => t ? new Date(t * 1000).toLocaleString("es-ES", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }) : "—";
+let apiItem = null, apiQuery = "", apiResults = [], apiTimer = null, apiStatusTimer = null;
+async function apiGet(path, method = "GET") {
+  const r = await fetch(path, { method, cache: "no-store" });
+  const j = await r.json();
+  if (!r.ok) throw new Error(j.detail || j.error || r.status);
+  return j;
+}
+function needPanel(id, title) {
+  $(id).innerHTML = `<div class="panel"><header><h2>${title}</h2></header><p class="lead">Esta pestaña lee la subasta de la API de Blizzard y necesita el panel de escritorio abierto: <code>pythonw tools/oroboros_panel.py</code> (ver README).</p></div>`;
+}
+
+// Gráfica de líneas por tiempo (segundos). series: [{name, color, pts: [[t, v]]}]
+function timeChart(series, { H = 220, fmtY = v => (v / 10000).toFixed(v < 100000 ? 2 : 1) + "g", fmtX = t => fmtT(t), bars = false } = {}) {
+  const all = series.flatMap(s => s.pts.filter(p => p[1] !== null && p[1] !== undefined));
+  if (all.length < 2) return '<p class="sub">Aún no hay datos suficientes.</p>';
+  const W = 720, L = 64, R = 16, T = 12, B = 28;
+  const x0 = Math.min(...all.map(p => p[0])), x1 = Math.max(...all.map(p => p[0]));
+  let lo = bars ? 0 : Math.min(...all.map(p => p[1])), hi = Math.max(...all.map(p => p[1]));
+  const pad = (hi - lo) * .1 || hi * .1 || 1; if (!bars) lo = Math.max(0, lo - pad); hi += pad;
+  const x = t => L + (x1 === x0 ? .5 : (t - x0) / (x1 - x0)) * (W - L - R), y = v => T + (1 - (v - lo) / (hi - lo)) * (H - T - B);
+  let g = "";
+  for (let k = 0; k <= 4; k++) { const v = lo + (hi - lo) * k / 4; g += `<line class="grid" x1="${L}" x2="${W - R}" y1="${y(v)}" y2="${y(v)}"/><text x="${L - 6}" y="${y(v) + 4}" text-anchor="end">${fmtY(v)}</text>`; }
+  for (let k = 0; k <= 5; k++) { const t = x0 + (x1 - x0) * k / 5; g += `<text x="${x(t)}" y="${H - 8}" text-anchor="middle">${esc(fmtX(t))}</text>`; }
+  let body = "", legend = "";
+  series.forEach(s => {
+    const pts = s.pts.filter(p => p[1] !== null && p[1] !== undefined);
+    if (!pts.length) return;
+    if (bars) {
+      const bw = Math.max(2, (W - L - R) / Math.max(1, all.length / series.length) - 2);
+      body += pts.map(p => `<rect x="${x(p[0]) - bw / 2}" y="${y(p[1])}" width="${bw}" height="${y(lo) - y(p[1])}" fill="${s.color}" opacity=".75"><title>${esc(fmtX(p[0]))}: ${fmtN(p[1])}</title></rect>`).join("");
+    } else {
+      body += `<path d="${pts.map((p, i) => `${i ? "L" : "M"}${x(p[0]).toFixed(1)},${y(p[1]).toFixed(1)}`).join("")}" fill="none" stroke="${s.color}" stroke-width="2"/>`;
+    }
+    legend += `<span class="sub" style="margin-right:12px"><i style="display:inline-block;width:10px;height:10px;background:${s.color};border-radius:2px"></i> ${esc(s.name)}</span>`;
+  });
+  return `<div>${legend}</div><svg class="chart" viewBox="0 0 ${W} ${H}" role="img">${g}${body}</svg>`;
+}
+
+async function refreshStatus() {
+  const el = $("#api-status"); if (!el) return;
+  try {
+    const e = await apiGet("/api/estado"), st = e.state || {};
+    const houses = e.houses.map(h => `<span>${esc(facTxt(h.faction))} <b>${h.house}</b>: foto ${fmtT(h.t)} · ${fmtN(h.auctions)} subastas</span>`).join("");
+    el.innerHTML = `<header style="display:flex;gap:10px;align-items:center;flex-wrap:wrap"><h2>Subasta (API de Blizzard)</h2>
+      ${st.busy ? '<span class="pill info">descargando…</span>' : ""}${st.error ? `<span class="pill bad">${esc(st.error)}</span>` : ""}
+      ${st.credentials === false ? '<span class="pill bad">faltan las credenciales</span>' : ""}
+      <span style="flex:1"></span><button class="seg" id="api-now">Descargar ahora</button><button class="seg" id="api-stop">Parar el panel</button></header>
+      <div class="stats">${houses || "<span>Aún no hay fotos.</span>"}<span>Próxima: <b>${fmtT(st.next_run)}</b></span></div>`;
+    $("#api-now").onclick = async () => { await apiGet("/api/descargar", "POST"); setTimeout(refreshStatus, 1500); };
+    $("#api-stop").onclick = async () => {
+      if (!window.confirm("¿Parar el panel? Dejará de descargar cada hora hasta que lo abras otra vez.")) return;
+      await apiGet("/api/parar", "POST"); el.innerHTML = '<p class="lead">Panel parado. Puedes cerrar esta ventana.</p>';
+      clearInterval(apiStatusTimer);
+    };
+  } catch (err) { el.innerHTML = `<p class="sub">No responde el panel (${esc(err.message)}).</p>`; }
+}
+
+function renderApiList() {
+  const el = $("#api-list"); if (!el) return;
+  el.innerHTML = apiResults.map(r => `<button aria-pressed="${r.id === apiItem}" data-aid="${r.id}"><span>${esc(r.name)}</span><span class="sub">${Object.values(r.prices).length ? money(Math.min(...Object.values(r.prices))) : ""}</span></button>`).join("")
+    || `<p class="sub">${apiQuery.length < 2 ? "Escribe al menos 2 letras o el número del objeto." : "Nada con ese nombre."}</p>`;
+  el.querySelectorAll("[data-aid]").forEach(b => b.onclick = () => { apiItem = +b.dataset.aid; renderApiList(); loadApiItem(); });
+}
+
+async function loadApiItem() {
+  const el = $("#api-item"); if (!el || !apiItem) return;
+  el.innerHTML = '<p class="sub">Cargando…</p>';
+  try {
+    const o = await apiGet(`/api/objeto/${apiItem}`);
+    const hs = Object.entries(o.houses);
+    const cards = hs.map(([h, d]) => {
+      const last = d.hourly.length ? d.hourly[d.hourly.length - 1] : null, r = d.rates || {};
+      return `<div class="panel" style="border-left:4px solid ${facCol(d.faction)}"><b>${esc(facTxt(d.faction))} (${h})</b>
+        <div class="stats"><span>Mínimo <b>${money(last && last[1])}</b></span><span>Mercado <b>${money(last && last[2])}</b></span><span>Publicadas <b>${fmtN(last && last[3])}</b></span></div>
+        <div class="stats"><span>Vendidas/día <b>${fmtN(r.sold)}</b></span><span>Caducadas/día <b>${fmtN(r.expired)}</b></span><span>Canceladas/día <b>${fmtN(r.cancelled)}</b></span><span class="sub">${d.days} días de fotos</span></div></div>`;
+    }).join("");
+    const hourly = timeChart(hs.map(([h, d]) => ({ name: `${facTxt(d.faction)} ${h}`, color: facCol(d.faction), pts: d.hourly.map(r => [r[0], r[1]]) })));
+    const soldH = timeChart(hs.slice(0, 1).map(([h, d]) => ({ name: `Vendidas por foto (${facTxt(d.faction)} ${h})`, color: facCol(d.faction), pts: d.hourly.filter(r => r[4] !== null).map(r => [r[0], r[4]]) })), { bars: true, fmtY: v => fmtN(v), H: 140 });
+    const dayT = d => new Date(d + "T12:00:00").getTime() / 1000;
+    const daily = timeChart(hs.map(([h, d]) => ({ name: `${facTxt(d.faction)} ${h}`, color: facCol(d.faction), pts: d.daily.map(r => [dayT(r[0]), r[1]]) })), { fmtX: t => fmtT(t).slice(0, 5) });
+    const bandRows = hs.map(([h, d]) => `<tr><td>${esc(facTxt(d.faction))} ${h}</td>${(d.bands.length ? d.bands : Array(6).fill(null)).map(b => b && b.hours ? `<td class="n" title="${fmtN(b.n)} mediciones en ${b.days} días">${fmtN((b.sold + b.partial) / b.hours)}<span class="sub"> / ${fmtN((b.expired + b.cancelled) / b.hours)}</span></td>` : '<td class="n sub">—</td>').join("")}</tr>`).join("");
+    const inv = o.inventory.length ? `<ul>${o.inventory.map(r => `<li>${esc(short(r[0]))} · ${esc(r[1])}: <b>${fmtN(r[2])}</b></li>`).join("")}</ul>` : '<p class="sub">No tienes ninguno (según el último export).</p>';
+    const led = o.ledger.length ? `<div class="tablewrap"><table><thead><tr><th>Cuándo</th><th>Quién</th><th>Tipo</th><th class="n">Cant.</th><th class="n">Precio/u</th></tr></thead><tbody>${o.ledger.map(r => `<tr><td>${fmtT(r[0])}</td><td>${esc(short(r[1]))}</td><td>${r[2] === "BUY" ? "compra" : "venta"}</td><td class="n">${fmtN(r[3])}</td><td class="n">${money(r[4])}</td></tr>`).join("")}</tbody></table></div>` : '<p class="sub">Sin compras ni ventas tuyas.</p>';
+    el.innerHTML = `<header style="display:flex;gap:10px;align-items:center;flex-wrap:wrap"><h2>${esc(o.name)}</h2><span class="sub">objeto ${o.id}${o.vendor_sell ? ` · al vendedor ${money(o.vendor_sell)}` : ""}</span></header>
+      <div style="display:grid;gap:8px;grid-template-columns:repeat(auto-fit,minmax(240px,1fr))">${cards}</div>
+      <h3>Precio mínimo por hora (14 días)</h3>${hourly}
+      <h3>Vendidas estimadas por foto</h3>${soldH}
+      <h3>Precio mínimo por día (todo el historial)</h3>${daily}
+      <h3>Por franja: vendidas / caducadas y canceladas, por hora</h3>
+      <div class="tablewrap"><table><thead><tr><th>Casa</th>${[0, 4, 8, 12, 16, 20].map(a => `<th class="n">${a}–${a + 4} h</th>`).join("")}</tr></thead><tbody>${bandRows}</tbody></table></div>
+      <h3>Qué tienes</h3>${inv}<h3>Tus compras y ventas</h3>${led}`;
+  } catch (err) { el.innerHTML = `<p class="sub">Error: ${esc(err.message)}</p>`; }
+}
+
+function renderSubasta() {
+  if (!PANEL) return needPanel("#v-subasta", "Subasta");
+  $("#v-subasta").innerHTML = `<div class="panel" id="api-status"><p class="sub">Cargando…</p></div>
+    <div class="panel market"><div><label class="sub" for="apq">Buscar objeto (nombre o número)</label>
+      <input type="search" id="apq" value="${esc(apiQuery)}" placeholder="Hierro, 2589…" style="width:100%;margin:4px 0 8px"><div class="itemlist" id="api-list"></div></div>
+      <div id="api-item" style="display:grid;gap:12px;min-width:0"><p class="sub">Busca un objeto para ver su precio en las tres casas, sus ventas estimadas y sus franjas.</p></div></div>`;
+  refreshStatus();
+  clearInterval(apiStatusTimer); apiStatusTimer = setInterval(() => { if (location.hash === "#subasta") refreshStatus(); }, 60000);
+  $("#apq").oninput = e => {
+    apiQuery = e.target.value; clearTimeout(apiTimer);
+    apiTimer = setTimeout(async () => { apiResults = apiQuery.trim().length >= 2 || /^\d+$/.test(apiQuery.trim()) ? await apiGet(`/api/buscar?q=${encodeURIComponent(apiQuery.trim())}`) : []; renderApiList(); }, 250);
+  };
+  renderApiList();
+  if (apiItem) loadApiItem();
+}
+
+async function renderVentas() {
+  if (!PANEL) return needPanel("#v-ventas", "Ventas");
+  const el = $("#v-ventas");
+  el.innerHTML = '<div class="panel"><p class="sub">Cargando…</p></div>';
+  try {
+    const v = await apiGet("/api/ventas?dias=7");
+    el.innerHTML = `<div class="panel"><header><h2>Ventas estimadas (7 días)</h2></header>
+      <p class="lead">Comparando fotos por subasta: lo que desaparece barato cuenta como vendido, con <i>SHORT</i> como caducado y lo caro como cancelado; las bajadas de cantidad de los materiales, como compras. Es una <b>estimación</b>: se comprueba con tus ventas reales del correo.</p>
+      <div id="calib"></div><button class="seg" id="calib-now">Calibrar ahora con mi libro</button></div>` +
+      v.houses.map(h => {
+        const c = h.calibration;
+        const cal = c ? `Calibración: ${c.sales} ventas tuyas comprobadas, cobertura <b>${pct(c.coverage)}</b>, tu parte de lo vendido ${pct(c.share)}.` : "Sin calibrar todavía.";
+        const rows = h.top.map(r => `<tr><td><a href="#subasta" data-goto="${r.id}">${esc(r.name)}</a></td><td class="n">${fmtN(r.sold)}</td><td class="n">${fmtN(r.expired)}</td><td class="n">${fmtN(r.cancelled)}</td><td class="n">${fmtN(r.new)}</td><td class="n">${money(r.min)}</td><td class="n">${money(r.value)}</td></tr>`).join("");
+        return `<div class="panel" style="border-left:4px solid ${facCol(h.faction)}"><header><h2>${esc(facTxt(h.faction))} (${h.house})</h2><span class="sub">${h.days} días de fotos · ${cal}</span></header>
+          ${rows ? `<div class="tablewrap"><table><thead><tr><th>Objeto</th><th class="n">Vendidas/día</th><th class="n">Caducadas/día</th><th class="n">Canceladas/día</th><th class="n">Publicadas/día</th><th class="n">Mínimo</th><th class="n">Valor vendido/día</th></tr></thead><tbody>${rows}</tbody></table></div>` : '<p class="sub">Hacen falta al menos dos fotos seguidas.</p>'}</div>`;
+      }).join("");
+    el.querySelectorAll("[data-goto]").forEach(a => a.onclick = () => { apiItem = +a.dataset.goto; apiResults = []; });
+    $("#calib-now").onclick = async () => {
+      $("#calib").innerHTML = '<p class="sub">Calibrando…</p>';
+      const k = await apiGet("/api/calibrar");
+      $("#calib").innerHTML = k.map(c => c.error ? `<p class="sub">${esc(c.error)}</p>` :
+        `<p>Casa <b>${c.house}</b>: ${c.sales} ventas tuyas con fotos (${fmtN(c.units)} u.); la estimación ve ${fmtN(c.covered)} como vendidas → cobertura <b>${pct(c.coverage)}</b>; ${c.outside} ventas sin fotos.</p>` +
+        (c.detail.filter(d => d.covered < d.qty).length ? `<div class="tablewrap"><table><thead><tr><th>Cuándo</th><th>Objeto</th><th class="n">Vendiste</th><th class="n">Vendidas</th><th class="n">Canceladas</th><th class="n">Caducadas</th></tr></thead><tbody>${c.detail.filter(d => d.covered < d.qty).map(d => `<tr><td>${fmtT(d.t)}</td><td>${d.item}</td><td class="n">${fmtN(d.qty)}</td><td class="n">${fmtN(d.sold)}</td><td class="n">${fmtN(d.cancelled)}</td><td class="n">${fmtN(d.expired)}</td></tr>`).join("")}</tbody></table></div>` : "")).join("");
+    };
+  } catch (err) { el.innerHTML = `<div class="panel"><p class="sub">Error: ${esc(err.message)}</p></div>`; }
+}
+
+const RENDER = PLAN ? { resumen: renderResumen, ruta: renderRuta, recetas: renderRecetas, transformar: renderTransformar, aprender: renderAprender, ideas: renderIdeas, cartera: renderCartera, inventario: renderInventario, mercado: renderMercado, horas: renderHoras, farmear: renderFarmear } : {};
+RENDER.subasta = renderSubasta; RENDER.ventas = renderVentas;
 function show() {
   const h = location.hash.replace("#", "");
-  const v = RENDER[h] ? h : "resumen";
+  const v = RENDER[h] ? h : (PLAN ? "resumen" : "subasta");
   document.querySelectorAll("section.view").forEach(s => s.classList.toggle("on", s.id === "v-" + v));
   document.querySelectorAll("nav a").forEach(a => a.setAttribute("aria-current", a.dataset.v === v ? "page" : "false"));
   RENDER[v]();

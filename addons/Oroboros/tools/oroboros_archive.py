@@ -65,7 +65,7 @@ CREATE TABLE IF NOT EXISTS weekly_band (
 def _is_v1(path):
     if not os.path.exists(path):
         return False
-    con = sqlite3.connect(path)
+    con = sqlite3.connect(path, timeout=30)   # el panel y la descarga pueden coincidir
     try:
         cols = [r[1] for r in con.execute("PRAGMA table_info(scans)")]
         return "market" in cols and "item_id" in cols
@@ -79,7 +79,7 @@ def open_archive(path):
     migrate = _is_v1(path)
     if migrate:
         shutil.copy(path, path + ".bak")
-    con = sqlite3.connect(path)
+    con = sqlite3.connect(path, timeout=30)   # el panel y la descarga pueden coincidir
     if migrate:
         with con:
             con.execute("ALTER TABLE scans RENAME TO scans_v1")

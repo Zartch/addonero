@@ -1599,6 +1599,61 @@ check(abs(_cal["share"] - 2 / 3) < 1e-9 and any(d["item"] == 7002 and d["cancell
       f"calibración: tu parte de lo vendido estimado y el detalle de lo no cubierto ({_cal['share']})")
 check(API.is_calibrated(sqlite3.connect(_ka), 111) is False, "calibración: con pocas ventas o menos del 80 %, las ventas de la API siguen como estimadas")
 
+# --- espera entre descargas ---
+_w = API.wait_after([{"t": _ts(24, 10, 23)}], _ts(24, 10, 30))
+check(_w == API.next_check(_ts(24, 10, 30)) and abs(_w - 55 * 60) < 2, f"espera: con la foto de esta hora, hasta el minuto 25 siguiente ({_w})")
+check(API.wait_after([{"t": _ts(24, 9, 23)}, {"t": _ts(24, 10, 23)}], _ts(24, 10, 30)) == 300, "espera: si falta la foto de una casa, reintenta a los 5 min")
+check(API.wait_after([{"t": _ts(24, 9, 23)}], _ts(24, 10, 56)) == API.next_check(_ts(24, 10, 56)), "espera: pasado el minuto 55 deja de reintentar")
+
+# --- panel de escritorio: servidor local con datos sintéticos (sin red exterior) ---
+import threading as _th, urllib.request as _ur
+import oroboros_panel as PNL
+_pw = _tf.mkdtemp()
+_sh.copy(_va, os.path.join(_pw, "archivo.sqlite")); _sh.copy(_vp, os.path.join(_pw, "oroboros.sqlite"))
+with open(os.path.join(_pw, "plan.json"), "w", encoding="utf-8") as _f:
+    _js.dump({"market": mk_, "marca": "plan-de-prueba"}, _f)
+_st = {"busy": False}
+_srv = PNL.make_server(_pw, port=0, state=_st, wake=lambda: _st.__setitem__("woken", True))
+_port = _srv.server_address[1]
+_thr = _th.Thread(target=_srv.serve_forever, daemon=True); _thr.start()
+def _get(path, method="GET"):
+    req = _ur.Request(f"http://127.0.0.1:{_port}{path}", method=method, data=b"" if method == "POST" else None)
+    with _ur.urlopen(req, timeout=10) as r:
+        body = r.read().decode("utf-8")
+        return _js.loads(body) if r.headers.get("Content-Type", "").startswith("application/json") else body
+check(_srv.server_address[0] == "127.0.0.1", "panel: solo escucha en este PC (127.0.0.1)")
+_e = _get("/api/estado")
+check(any(h["house"] == 111 and h["auctions"] == 2 for h in _e["houses"]), f"panel: estado de las casas ({_e['houses']})")
+_b = _get("/api/buscar?q=2589")
+check(_b and _b[0]["id"] == 2589 and _b[0]["prices"].get("111") == 30, f"panel: buscar por número de objeto, con el precio de cada casa ({_b[:1]})")
+_o = _get("/api/objeto/2589")
+check(len(_o["houses"]["111"]["hourly"]) == 73 and abs(_o["houses"]["111"]["rates"]["sold"] - 24) < 0.01
+      and len(_o["houses"]["111"]["bands"]) == 6 and _o["houses"]["111"]["daily"],
+      f"panel: objeto con precio por hora, por día, franjas y vendidas/día ({len(_o['houses']['111']['hourly'])})")
+_v = _get("/api/ventas?dias=7")
+_v111 = [h for h in _v["houses"] if h["house"] == 111][0]
+check(_v111["top"][0]["id"] == 2589 and abs(_v111["top"][0]["sold"] - 24) < 0.01, f"panel: lo más vendido (estimado) por casa ({_v111['top'][:1]})")
+_k = _get("/api/calibrar")
+check("coverage" in _k[0] and "outside" in _k[0], f"panel: calibración con el libro ({_k})")
+_html = _get("/")
+check("plan-de-prueba" in _html and "/*__PLAN__*/null" not in _html and 'id="v-subasta"' in _html and "const PANEL = true" in _html,
+      "panel: sirve la página del plan con el plan incrustado y las pestañas Subasta y Ventas")
+_lock = sqlite3.connect(os.path.join(_pw, "archivo.sqlite")); _lock.execute("BEGIN IMMEDIATE")
+_lock.execute("INSERT INTO meta VALUES ('bloqueo', '1')")
+try:
+    _e2 = _get("/api/estado"); _ok2 = "houses" in _e2
+except Exception as _ex:
+    _ok2 = False; _e2 = _ex
+_lock.rollback(); _lock.close()
+check(_ok2, f"panel: responde mientras la descarga está escribiendo en el archivo ({str(_e2)[:80]})")
+_get("/api/descargar", "POST")
+check(_st.get("woken"), "panel: «descargar ahora» despierta la descarga")
+_get("/api/parar", "POST")
+_thr.join(5)
+check(not _thr.is_alive(), "panel: «parar» cierra el servidor")
+_plain = open(os.path.join(ROOT, "tools", "planner_ui.html"), encoding="utf-8").read()
+check("/*__PANEL__*/false" in _plain, "plan.html sin panel: las pestañas nuevas dicen que hay que abrir el panel")
+
 print("\nTODO OK" if ok else "\nHAY FALLOS")
 for line in list(G.LOG.values())[-8:]:
     print("   ", line)
