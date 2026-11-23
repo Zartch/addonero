@@ -1371,6 +1371,122 @@ for rt in I["routes"].values():
     check(len(list(nerr.values())) == 0, f"la ruta de ideas de {rt['short']} la entiende el addon")
 check("/*__PLAN__*/null" not in open(os.path.join(tmp, "p.html"), encoding="utf-8").read(), "HTML con el plan incrustado")
 
+# ----------------------------------------------------------------------
+# API de Blizzard (docs/planes/2026-11-23-api-blizzard.md): fotos sintéticas, sin red
+# ----------------------------------------------------------------------
+import gzip as _gz, json as _js
+import oroboros_api as API
+from oroboros_archive import update_daily as _upd_daily
+def _au(i, item, q, price, tl, mat=False):
+    d = {"id": i, "item": {"id": item}, "quantity": q, "time_left": tl}
+    if mat: d["unit_price"] = price
+    else: d["buyout"] = price * q
+    return d
+_T0 = _ts(20, 10, 23)
+_P1 = [_au(1, 100, 1, 50, "SHORT"), _au(2, 100, 1, 100, "LONG"), _au(3, 100, 1, 52, "LONG"), _au(4, 200, 1, 10, "LONG"),
+       _au(10, 300, 20, 5, "LONG", True), _au(11, 300, 10, 6, "LONG", True)]
+_P2 = [_au(4, 200, 1, 10, "LONG"), _au(5, 100, 1, 55, "VERY_LONG"),
+       _au(10, 300, 15, 5, "LONG", True), _au(12, 300, 7, 4, "VERY_LONG", True)]
+# clasificación pura
+_c = API.classify(API.as_live(_P1), API.as_live(_P2))
+check(_c[100] == {"new": 1, "sold": 1, "expired": 1, "cancelled": 1, "partial": 0},
+      f"API: desaparecidas: SHORT → caducada, cara → cancelada, barata → vendida ({_c.get(100)})")
+check(_c[300] == {"new": 7, "sold": 10, "expired": 0, "cancelled": 0, "partial": 5},
+      f"API: materiales: baja de cantidad del mismo id = compra parcial ({_c.get(300)})")
+check(200 not in _c, "API: lo que no cambia no genera movimientos")
+_c2 = API.classify(API.as_live([_au(1, 100, 5, 50, "LONG", True)]), API.as_live([_au(1, 100, 8, 50, "LONG", True)]))
+check(_c2.get(100, {}).get("partial", 0) == 0 and _c2.get(100, {}).get("new", 0) == 0, "API: si una subasta sube de cantidad, no cuenta")
+# ingestión en el archivo
+_ad = _tf.mkdtemp(); _aa = os.path.join(_ad, "api.sqlite")
+_con = API.open_api(_aa)
+_mid = API.set_house(_con, 111, "Casa de subastas de la Alianza", realm="R5")
+check(_con.execute("SELECT key FROM markets WHERE market_id=?", (_mid,)).fetchone()[0] == "R5-Alliance",
+      "API: la casa de la Alianza se asocia al mercado <reino>-Alliance")
+r1 = API.ingest(_con, 111, _T0, _P1)
+check(r1["first"] and _con.execute("SELECT COUNT(*) FROM api_live WHERE house=111").fetchone()[0] == 6,
+      "API: la primera foto se guarda como estado actual")
+_h1 = _con.execute("SELECT min, mv, qty, n, sold FROM api_item_hour WHERE house=111 AND t=? AND item_id=100", (_T0,)).fetchone()
+check(_h1 == (50, 50, 3, 3, None), f"API: primera foto: precios por objeto y sin movimientos (no hay foto anterior) {_h1}")
+r2 = API.ingest(_con, 111, _T0 + 3600, _P2)
+_h2 = _con.execute("SELECT new, sold, expired, cancelled, partial, min, qty FROM api_item_hour WHERE house=111 AND t=? AND item_id=300",
+                   (_T0 + 3600,)).fetchone()
+check(_h2 == (7, 10, 0, 0, 5, 4, 22), f"API: segunda foto: movimientos y precio por objeto {_h2}")
+_h3 = _con.execute("SELECT min, qty, sold, expired, cancelled FROM api_item_hour WHERE house=111 AND t=? AND item_id=100",
+                   (_T0 + 3600,)).fetchone()
+check(_h3 == (55, 1, 1, 1, 1), f"API: objeto con movimientos {_h3}")
+check(sorted(r[0] for r in _con.execute("SELECT auction_id FROM api_live WHERE house=111")) == [4, 5, 10, 12],
+      "API: el estado actual se sustituye por la foto nueva")
+check(API.ingest(_con, 111, _T0 + 3600, _P2)["skipped"], "API: la misma foto dos veces no se cuenta dos veces")
+_d = _con.execute("SELECT min_low, min_high, src FROM daily WHERE market_id=? AND item_id=100", (_mid,)).fetchone()
+check(_d == (50, 55, "api"), f"API: histórico diario con origen api (mínimo y más alto del día) {_d}")
+insert_scan(_con, "R5-Alliance", _T0 + 600, [(100, 40, 40, 9, 9, 9)]); _con.commit()
+_upd_daily(_con)
+check(_con.execute("SELECT min_low, src FROM daily WHERE market_id=? AND item_id=100", (_mid,)).fetchone() == (50, "api"),
+      "API: un escaneo del juego no pisa el día que tiene la API")
+insert_scan(_con, "R5-Alliance", _T0 - 3 * 86400, [(100, 41, 41, 9, 9, 9)]); _con.commit()
+_upd_daily(_con)
+_dd = datetime.datetime.fromtimestamp(_T0 - 3 * 86400).date().isoformat()
+check(_con.execute("SELECT min_low, src FROM daily WHERE market_id=? AND item_id=100 AND day=?", (_mid, _dd)).fetchone() == (41, "obs"),
+      "API: los días sin API siguen saliendo del juego")
+# hueco de más de 90 min: no se clasifica
+API.ingest(_con, 111, _T0 + 3600 * 4, [_au(5, 100, 1, 55, "LONG")])
+_g = _con.execute("SELECT sold, expired, cancelled, partial, gap FROM api_item_hour WHERE house=111 AND t=? AND item_id=300",
+                  (_T0 + 3600 * 4,)).fetchone()
+check(_g == (0, 0, 0, 0, 22), f"API: con un hueco de 3 h, lo desaparecido no se clasifica (va a «hueco») {_g}")
+_con.close()
+
+# cliente y descarga, con un fetch falso
+class _FakeNet:
+    def __init__(self, routes): self.routes, self.log = routes, []
+    def __call__(self, url, headers, data=None):
+        self.log.append((url, dict(headers), data))
+        if "oauth" in url:
+            return self.routes.get("token", (200, {}, b'{"access_token": "TOK", "expires_in": 86400}'))
+        path = url.split("?")[0].split("api.blizzard.com")[1]
+        r = self.routes.get(path)
+        if callable(r): r = r(headers)
+        return r or (404, {}, b"")
+_LM = "Fri, 20 Nov 2026 09:23:00 GMT"
+def _photo(path_lm, body):
+    return lambda h: (304, {"last-modified": path_lm}, b"") if h.get("If-Modified-Since") == path_lm else (200, {"last-modified": path_lm}, _js.dumps(body).encode())
+_net = _FakeNet({"/data/wow/ruleset/2/auctions/111": _photo(_LM, {"id": 111, "name": "Casa de subastas de la Alianza", "auctions": [a for a in _P1 if "buyout" in a]}),
+                 "/data/wow/ruleset/2/auctions/111/commodities": _photo(_LM, {"auctions": [a for a in _P1 if "unit_price" in a]})})
+_wd = _tf.mkdtemp()
+_cl = API.Client(("ID", "SECRETO-NO-MOSTRAR"), fetch=_net, cache_dir=_wd)
+_ab = os.path.join(_wd, "b.sqlite")
+_res = API.run_once(_ab, _cl, [111], realm="R5", log=lambda *_: None)
+_cx = sqlite3.connect(_ab)
+check(_res[0]["status"] == "nueva" and _cx.execute("SELECT COUNT(*) FROM api_live").fetchone()[0] == 6,
+      f"API: run_once baja normales y materiales y los guarda ({_res})")
+check(_cx.execute("SELECT name, faction FROM api_houses WHERE house=111").fetchone() == ("Casa de subastas de la Alianza", "Alliance"),
+      "API: guarda el nombre y la facción de la casa")
+_cx.close()
+_n0 = len(_net.log)
+_res2 = API.run_once(_ab, _cl, [111], realm="R5", log=lambda *_: None)
+check(_res2[0]["status"] == "sin cambios" and any(h.get("If-Modified-Since") == _LM for _, h, _ in _net.log[_n0:]),
+      f"API: con If-Modified-Since, un 304 no toca nada ({_res2})")
+check(sum(1 for u, _, _ in _net.log if "oauth" in u) == 1, "API: el token se reutiliza mientras no caduca")
+_logs = []
+_bad = API.Client(("ID", "SECRETO-NO-MOSTRAR"), fetch=_FakeNet({"token": (401, {}, b'{"error": "SECRETO-NO-MOSTRAR"}')}),
+                  cache_dir=_tf.mkdtemp())
+_res3 = API.run_once(os.path.join(_wd, "c.sqlite"), _bad, [111], realm="R5", log=lambda *a: _logs.append(" ".join(map(str, a))))
+check(_res3[0]["status"] == "error" and not any("SECRETO" in x for x in _logs + [str(_res3), repr(_bad)]),
+      f"API: un error de token se registra sin mostrar el secreto ({_logs})")
+# importar fotos guardadas (las de la fase A)
+_imp = _tf.mkdtemp()
+for _t, _p in ((_T0, _P1), (_T0 + 3600, _P2)):
+    _stamp = datetime.datetime.utcfromtimestamp(_t).strftime("%Y%m%d-%H%M%S")
+    with _gz.open(os.path.join(_imp, f"grp_{_stamp}_111_norm.json.gz"), "wt") as _f:
+        _js.dump({"id": 111, "name": "Casa de subastas de la Alianza", "auctions": [a for a in _p if "buyout" in a]}, _f)
+    with _gz.open(os.path.join(_imp, f"grp_{_stamp}_111_mat.json.gz"), "wt") as _f:
+        _js.dump({"auctions": [a for a in _p if "unit_price" in a]}, _f)
+_ai = os.path.join(_imp, "i.sqlite")
+_ri = API.import_dir(_ai, _imp, realm="R5")
+_cx = sqlite3.connect(_ai)
+check(_ri == 2 and _cx.execute("SELECT sold FROM api_item_hour WHERE t=? AND item_id=300", (_T0 + 3600,)).fetchone() == (10,),
+      f"API: importa fotos guardadas en orden ({_ri})")
+_cx.close()
+
 print("\nTODO OK" if ok else "\nHAY FALLOS")
 for line in list(G.LOG.values())[-8:]:
     print("   ", line)

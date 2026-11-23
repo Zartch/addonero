@@ -40,7 +40,7 @@ CREATE INDEX IF NOT EXISTS observations_item ON observations (item_id);
 CREATE TABLE IF NOT EXISTS daily (
     market_id INTEGER, item_id INTEGER, day TEXT,
     min_low REAL, min_high REAL, mv REAL, qty_max INTEGER,
-    src TEXT,                   -- obs (archivo) > oro (histórico del juego) > atr (Auctionator)
+    src TEXT,                   -- api (API de Blizzard) > obs (archivo) > oro (histórico del juego) > atr (Auctionator)
     t INTEGER,                  -- hora del último dato del día, si se conoce
     PRIMARY KEY (market_id, item_id, day)) WITHOUT ROWID;
 CREATE TABLE IF NOT EXISTS farm_mobs (          -- farmeo medido en el juego: totales por criatura y subzona
@@ -227,7 +227,12 @@ def update_daily(con, db=None):
             a["mv"] = mv
         a["qty"] = max(a["qty"], qty or 0)
         a["t"] = t
-    con.executemany("INSERT OR REPLACE INTO daily VALUES (?,?,?,?,?,?,?,'obs',?)",
+    # la API (src 'api', tools/oroboros_api.py) gana: un día con API no se pisa con el escaneo del juego
+    con.executemany("""INSERT INTO daily VALUES (?,?,?,?,?,?,?,'obs',?)
+                       ON CONFLICT (market_id, item_id, day) DO UPDATE SET
+                         min_low=excluded.min_low, min_high=excluded.min_high, mv=excluded.mv,
+                         qty_max=excluded.qty_max, src='obs', t=excluded.t
+                       WHERE daily.src != 'api'""",
                     [(m, i, d, a["low"], a["high"], a["mv"], a["qty"], a["t"]) for (m, i, d), a in acc.items()])
     for market, m in (_as_dict((db or {}).get("markets")).items()):
         mid = market_id(con, market)
@@ -237,7 +242,7 @@ def update_daily(con, db=None):
                     continue
                 cur = con.execute("SELECT src FROM daily WHERE market_id=? AND item_id=? AND day=?",
                                   (mid, int(item), day)).fetchone()
-                if cur and cur[0] == "obs":
+                if cur and cur[0] in ("obs", "api"):
                     continue
                 con.execute("INSERT OR REPLACE INTO daily VALUES (?,?,?,?,?,?,?,'oro',?)",
                             (mid, int(item), day, h.get("min"), h.get("min"), h.get("mv"), h.get("qty"), h.get("t")))

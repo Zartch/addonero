@@ -5,7 +5,97 @@ Informe del 23/11/2026. Responde a dos preguntas del usuario:
 1. ¿De dónde sacan los datos Auctionator, Auctioneer, TSM y las webs? ¿Se puede automatizar la extracción y el seguimiento de precios sin entrar al juego?
 2. ¿Cómo calculan las unidades vendidas por objeto?
 
-**Nada de esto está probado desde aquí**: el entorno donde se escribió no llega a los servidores de Blizzard (`oauth.battle.net`, `eu.api.blizzard.com`) ni a las webs de TSM. Lo de Forever viene de fuentes de la comunidad, no de documentación oficial. Hay que comprobarlo con una llamada real antes de construir nada.
+El informe se escribió sin acceso a los servidores de Blizzard, con fuentes de la comunidad. **El apartado 0 recoge lo comprobado después con llamadas reales** (23/11/2026); donde no coincida con el resto del informe, manda el apartado 0.
+
+## 0. Comprobado con llamadas reales (23/11/2026, fase A)
+
+Desde el PC del usuario, con su cliente de `develop.battle.net` y el script de prueba `work/api_probe.py` (no va a git). **La API de Forever funciona** y responde casi como decía el informe. Diferencias y detalles:
+
+**Rutas y cabeceras**
+- Token con `client_credentials`: válido 24 h (la cabecera `blizzard-token-expires` de cada respuesta lo confirma).
+- `ruleset/index` da las reglas 1, 2, 3 y 15. `ruleset/{r}/auctions/index` da las 15 casas con su nombre.
+- **La regla no importa**: `ruleset/1/…/111`, `2`, `3` y `15` devuelven exactamente la misma foto (mismos `id`). Se usa la 2.
+- La raíz de una casa normal trae `id`, `name` («Casa de subastas de la Alianza»), `auctions` y enlaces; la de materiales solo `auctions`.
+- `last-modified` llega **en minúsculas** (hay que leer las cabeceras sin distinguir mayúsculas).
+- **`HEAD` da 404.** Para no bajar nada si no ha cambiado: `GET` con `If-Modified-Since` = el último `last-modified` → **304** sin cuerpo (0,2 s). Con una fecha anterior → 200.
+- Con `Accept-Encoding: gzip` llega comprimido (unas 10 veces menos). Una casa grande: 1,7 MB comprimida (16 MB de JSON) y menos de 1 s.
+
+**Casas** (los grupos de tres del informe son correctos; 112, 115 y 118 están vacías):
+
+| Grupo | Alianza | Horda | Aguasnegras |
+|---|---|---|---|
+| 1 | 110 | 113 | 116 |
+| 2 | **111 (la nuestra)** | 114 | 117 |
+| 3 | 112 (vacía) | 115 (vacía) | 118 (vacía) |
+| 4 | 119 | 120 | 121 |
+| 5 | 123 | 124 | 125 |
+
+Tamaño de la foto del 23/11 a las 16:23 UTC (subastas normales / de materiales; unidades de materiales; KB comprimidos de las dos):
+
+| Casa | Normales | Materiales | Unidades de mat. | KB gzip |
+|---|---|---|---|---|
+| 110 | 160 392 | 124 979 | 2 793 240 | 2834 |
+| **111** | **161 410** | **130 011** | **3 087 042** | **2947** |
+| 113 | 158 952 | 147 707 | 2 775 635 | 3061 |
+| 114 | 152 011 | 129 641 | 2 394 537 | 2788 |
+| 116 | 17 707 | 32 541 | 659 751 | 504 |
+| 117 | 18 409 | 32 035 | 567 253 | 512 |
+| 119 | 23 793 | 25 793 | 400 029 | 506 |
+| 120 | 13 623 | 16 421 | 190 197 | 312 |
+| 121 | 439 | 1 093 | 8 779 | 17 |
+| 123 | 16 864 | 21 055 | 288 602 | 394 |
+| 124 | 17 811 | 21 078 | 342 062 | 403 |
+| 125 | 502 | 1 285 | 20 037 | 20 |
+
+**Campos reales**
+- Normal: `{"id": 220983487, "item": {"id": 211786}, "buyout": 100, "quantity": 1, "time_left": "SHORT"}`. `item` puede traer además `bonus_lists`, `context` y `modifiers` (equipo). Unas pocas llevan `bid` (puja) y alguna solo `bid`, sin `buyout`.
+- Materiales: `{"id": 220996873, "item": {"id": 8170}, "quantity": 57, "unit_price": 2450, "time_left": "SHORT"}`.
+- **`buyout` es por unidad en la práctica**: en las 15 casas **todas** las subastas normales tienen `quantity = 1`. Los materiales traen `unit_price`. Comparado con el escaneo propio de la casa 111, la mediana de mínimo API / mínimo del juego es 1,000 tanto en normales como en materiales.
+- Ningún objeto sale a la vez en normales y en materiales.
+- **Los materiales no se agrupan por precio**: cada publicación es una subasta con su `id` (mediana de 37 subastas por objeto y hasta 1233). Por eso se ven las compras parciales (baja `quantity` del mismo `id`).
+- Los `id` de subasta son crecientes y compartidos por todas las casas (normales y materiales mezclados).
+
+**Nuestra casa: la 111.** Mínimo por objeto de cada casa contra el escaneo completo propio (mercado `CAMWOWEU5Realm5PvE-Alliance`, el único del archivo). Foto de las 16:23 UTC; escaneos del 23/11 a las 12:57 (31) y a las 00:28 (30) y del 22/11 a las 10:39 (26), hora local:
+
+| Casa | Igual (esc. 31) | ±5 % (esc. 31) | Igual (esc. 30) | Igual (esc. 26) |
+|---|---|---|---|---|
+| 110 | 4,1 % | 23,0 % | 4,2 % | 4,6 % |
+| **111** | **30,4 %** | **57,3 %** | **15,3 %** | **8,8 %** |
+| 113 | 3,1 % | 21,3 % | 3,3 % | 3,0 % |
+| 114 | 5,0 % | 22,9 % | 4,9 % | 4,8 % |
+| 116 | 1,4 % | 9,1 % | 1,3 % | 1,3 % |
+| 117 | 2,0 % | 8,8 % | 1,9 % | 2,0 % |
+| 119 | 1,9 % | 9,4 % | 1,8 % | 1,9 % |
+| 120 | 1,4 % | 6,9 % | 1,2 % | 1,3 % |
+| 121 | 1,2 % | — | 0,9 % | 0,7 % |
+| 123 | 1,5 % | 7,0 % | 1,1 % | 1,2 % |
+| 124 | 1,2 % | 6,8 % | 1,3 % | 1,4 % |
+| 125 | 0,4 % | — | 0,7 % | 0,3 % |
+
+Solo la 111 destaca, y su coincidencia baja a medida que el escaneo es más viejo (30 % → 15 % → 9 %): es lo que se espera de la casa correcta, cuyos precios se mueven. Las casas grandes (110, 113, 114) tienen la misma mediana de precio (1,00) y de cantidad (unas 1,2 veces la nuestra) porque son reinos parecidos; las pequeñas (116-125) son un 50 % más caras y tienen 5 veces menos.
+
+**Ritmo (medido el 23/11, de 16:23 a 18:23 UTC, casas 111, 114 y 117):** una foto por hora, **siempre hacia el minuto 23** (16:23, 17:23 y 18:23 UTC; Aguasnegras unos 20 s antes). Se puede bajar menos de un minuto después. Basta con preguntar cada hora pasado el minuto 25; si da 304, reintentar a los pocos minutos.
+
+**Diferencias entre fotos seguidas** (por hora; regla del apartado 4a, «barata» = precio ≤ mínimo del objeto × 1,25 en la foto anterior):
+
+| Casa | Tipo | Nuevas | Caducadas | Canceladas | «Vendidas» | Compras parciales |
+|---|---|---|---|---|---|---|
+| 111 | normales | ~38 500 | ~8 100 | ~5 900 | ~15 200 | — |
+| 111 | materiales | ~36 800 (~720 000 u.) | ~5 800 | ~5 500 | ~18 400 (~480 000 u.) | ~430 (~24 000 u.) |
+| 114 | normales | ~36 200 | ~8 000 | ~4 900 | ~14 600 | — |
+| 114 | materiales | ~35 000 | ~5 900 | ~5 700 | ~17 000 | ~400 |
+| 117 | normales | ~4 500 | ~900 | ~240 | ~1 900 | — |
+| 117 | materiales | ~9 200 | ~1 600 | ~900 | ~4 200 | ~200 |
+
+- Casi todos los objetos cambian cada hora: en la 111, 5411 de 5743 normales y 1311 de 1386 materiales.
+- Las cifras de «vendidas» son muy altas para un reino: seguramente buena parte son cancelaciones para volver a publicar más barato, aunque fueran de las baratas (bots). **Hay que calibrarlas con las ventas reales del libro** antes de fiarse de ellas.
+- `time_left` cambia en unas 20 000 subastas por hora: baja por tramos, así que sirve para saber la antigüedad aproximada.
+
+**Nombres de objetos:** `GET /data/wow/item/{id}?namespace=static-forever-eu&locale=es_ES` responde, por ejemplo «Paño de lino», `quality`, `level` y `sell_price`, también con objetos propios de Forever (211786). Con `static-classic-eu` y `static-eu` los de Forever dan 404. Sirve para rellenar los nombres que faltan en el archivo (una petición por objeto, una sola vez).
+
+**Histórico:** la API no lo da: solo la foto actual. El histórico se construye guardando las fotos desde que empecemos.
+
+**Sin comprobar:** que la Horda y Aguasnegras de nuestro reino sean la 114 y la 117. Se supone por el orden de los grupos, que encaja con los tamaños: en cada grupo, Aguasnegras es una décima parte de las facciones. Se confirma con un escaneo de un personaje de la Horda.
 
 ## 1. De dónde saca cada uno los datos
 
