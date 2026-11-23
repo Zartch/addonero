@@ -1400,6 +1400,9 @@ check(_c2.get(100, {}).get("partial", 0) == 0 and _c2.get(100, {}).get("new", 0)
 _ad = _tf.mkdtemp(); _aa = os.path.join(_ad, "api.sqlite")
 _con = API.open_api(_aa)
 _mid = API.set_house(_con, 111, "Casa de subastas de la Alianza", realm="R5")
+check(API.faction_of({"en_GB": "Horde Auction House", "es_ES": "Casa de subastas de la Horda"}) == "Horde"
+      and API.house_name({"en_GB": "x", "es_ES": "Casa de subastas de la Horda"}) == "Casa de subastas de la Horda",
+      "API: sin locale, el nombre llega en todos los idiomas: se usa el español")
 check(_con.execute("SELECT key FROM markets WHERE market_id=?", (_mid,)).fetchone()[0] == "R5-Alliance",
       "API: la casa de la Alianza se asocia al mercado <reino>-Alliance")
 r1 = API.ingest(_con, 111, _T0, _P1)
@@ -1486,6 +1489,45 @@ _cx = sqlite3.connect(_ai)
 check(_ri == 2 and _cx.execute("SELECT sold FROM api_item_hour WHERE t=? AND item_id=300", (_T0 + 3600,)).fetchone() == (10,),
       f"API: importa fotos guardadas en orden ({_ri})")
 _cx.close()
+
+# retención: api_item_hour de las semanas viejas → api_band_week, y las franjas no cambian
+_rd = _tf.mkdtemp(); _ra = os.path.join(_rd, "r.sqlite")
+_cr = API.open_api(_ra); API.set_house(_cr, 111, "Casa de subastas de la Alianza", realm="R5")
+_base = _ts(2, 9, 23)     # lunes 2/11, semana 45
+_lv = [_au(1, 100, 1, 50, "LONG"), _au(2, 100, 1, 52, "LONG")]
+for _k in range(6):        # cada hora se vende una barata y se publica otra
+    API.ingest(_cr, 111, _base + _k * 3600, _lv)
+    _lv = [_lv[1], _au(10 + _k, 100, 1, 50 + _k % 2, "LONG")]
+for _k in range(3):        # y al día siguiente, otra vez
+    API.ingest(_cr, 111, _base + 86400 + _k * 3600, _lv)
+    _lv = [_lv[1], _au(30 + _k, 100, 1, 50, "LONG")]
+_before = API.band_stats(_cr, 111)
+check(abs(sum(b["hours"] for b in _before[100]) - 7) < 1e-6 and sum(b["gap"] for b in _before[100]) == 0,
+      f"API: un hueco no suma horas medidas a las franjas (solo 5 + 2 intervalos de 1 h) {sum(b['hours'] for b in _before[100])}")
+_nrm = API.rollup_api(_cr, _ts(30, 12), keep_days=14)
+_after = API.band_stats(_cr, 111)
+check(_nrm > 0 and _cr.execute("SELECT COUNT(*) FROM api_item_hour").fetchone()[0] == 0
+      and _cr.execute("SELECT COUNT(*) FROM api_band_week").fetchone()[0] > 0,
+      f"API: las semanas de más de 14 días pasan a api_band_week y se borran ({_nrm})")
+check(_before == _after and _before[100][2]["sold"] > 0,
+      f"API: las franjas dan lo mismo antes y después de resumir ({_before.get(100, [None]*3)[2]} / {_after.get(100, [None]*3)[2]})")
+check(API.rollup_api(_cr, _ts(30, 12), keep_days=14) == 0, "API: resumir dos veces no duplica")
+# nombres de objetos que faltan, con un cliente falso y un límite
+_cr.execute("INSERT OR IGNORE INTO items (item_id) VALUES (101), (102), (103)"); _cr.commit()
+_nn = _FakeNet({"/data/wow/item/100": (200, {}, _js.dumps({"name": "Barra de prueba", "quality": {"type": "UNCOMMON"}, "sell_price": 25}).encode()),
+                "/data/wow/item/101": (200, {}, _js.dumps({"name": "Otra", "quality": {"type": "COMMON"}, "sell_price": 1}).encode())})
+_cn = API.Client(("ID", "S"), fetch=_nn, cache_dir=_tf.mkdtemp())
+_f1 = API.fill_names(_cr, _cn, limit=2)
+check(_f1 == {"asked": 2, "named": 2} or _f1["asked"] == 2, f"API: nombres: respeta el límite ({_f1})")
+check(_cr.execute("SELECT name, quality, vendor_sell FROM items WHERE item_id=100").fetchone() == ("Barra de prueba", 2, 25),
+      "API: nombres: rellena nombre, calidad y precio de venta al vendedor")
+_f2 = API.fill_names(_cr, _cn, limit=10); _f3 = API.fill_names(_cr, _cn, limit=10)
+check(_f3["asked"] == 0, f"API: nombres: lo que no existe (404) no se vuelve a pedir ({_f2}, {_f3})")
+_cr.close()
+_m1 = API.maintenance(_ra, _cn, now=_ts(30, 12), log=lambda *_: None)
+_m2 = API.maintenance(_ra, _cn, now=_ts(30, 18), log=lambda *_: None)
+_m3 = API.maintenance(_ra, _cn, now=_ts(30, 12) + 86400, log=lambda *_: None)
+check(_m1 is not None and _m2 is None and _m3 is not None, f"API: el mantenimiento (resumen y nombres) se hace una vez al día ({_m1}, {_m2}, {_m3})")
 
 print("\nTODO OK" if ok else "\nHAY FALLOS")
 for line in list(G.LOG.values())[-8:]:

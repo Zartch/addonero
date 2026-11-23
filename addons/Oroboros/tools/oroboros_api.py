@@ -53,6 +53,7 @@ DEFAULT_REALM = "CAMWOWEU5Realm5PvE"
 DEFAULT_WORK = os.path.join(HERE, "..", "work")
 CHEAP = 1.25                     # «barata»: ≤ mínimo del objeto × 1,25 (el mismo umbral que oroboros_hours)
 MV_PERCENT = 0.15                # valor de mercado: media del 15 % más barato (como DB.Aggregate del addon)
+KEEP_DAYS = 14                   # api_item_hour en detalle; las semanas más viejas pasan a api_band_week
 MAX_GAP = 90 * 60                # más de 90 min entre fotos: no se clasifica (hueco)
 TIME_LEFT = {"SHORT": 0, "MEDIUM": 1, "LONG": 2, "VERY_LONG": 3}
 
@@ -74,6 +75,13 @@ CREATE TABLE IF NOT EXISTS api_item_hour (
     new INTEGER, sold INTEGER, expired INTEGER, cancelled INTEGER, partial INTEGER, gap INTEGER,
     PRIMARY KEY (house, t, item_id)) WITHOUT ROWID;
 CREATE INDEX IF NOT EXISTS api_item_hour_item ON api_item_hour (item_id, house);
+CREATE TABLE IF NOT EXISTS api_band_week (       -- resumen permanente por semana ISO y franja de 4 h
+    house INTEGER, item_id INTEGER, week TEXT, band INTEGER,
+    new REAL, sold REAL, expired REAL, cancelled REAL, partial REAL, gap REAL,
+    hours REAL, n INTEGER, days INTEGER,
+    price_med REAL, price_sum REAL, price_n INTEGER,
+    PRIMARY KEY (house, item_id, week, band)) WITHOUT ROWID;
+CREATE TABLE IF NOT EXISTS api_missing (item_id INTEGER PRIMARY KEY, t INTEGER);   -- la ruta de objetos dio 404
 """
 
 
@@ -207,8 +215,15 @@ def open_api(path_or_con):
     return con
 
 
+def house_name(name):
+    """Sin locale la API da el nombre en todos los idiomas ({"es_ES": …, "en_GB": …}): se usa el español."""
+    if isinstance(name, dict):
+        return name.get("es_ES") or name.get("es_MX") or name.get("en_GB") or name.get("en_US") or next(iter(name.values()), None)
+    return name
+
+
 def faction_of(name):
-    n = (name or "").lower()
+    n = (house_name(name) or "").lower()
     if "alianza" in n or "alliance" in n:
         return "Alliance"
     if "horda" in n or "horde" in n:
@@ -218,6 +233,7 @@ def faction_of(name):
 
 def set_house(con, house, name, realm=DEFAULT_REALM):
     """Asocia la casa a la clave de mercado <reino>-<facción> (la misma que usa el addon). Devuelve market_id."""
+    name = house_name(name)
     row = con.execute("SELECT market_id FROM api_houses WHERE house=?", (house,)).fetchone()
     if row:
         if name:
@@ -368,6 +384,141 @@ def ingest(con, house, t, auctions):
 
 
 # ----------------------------------------------------------------------
+# Franjas desde la API, resumen semanal y retención
+# ----------------------------------------------------------------------
+MOVES = ("new", "sold", "expired", "cancelled", "partial", "gap")
+
+
+def contributions(rows):
+    """rows: (objeto, t, t_anterior, min, new, sold, expired, cancelled, partial, gap) de api_item_hour.
+    Igual que oroboros_hours.contributions: los movimientos de un intervalo se reparten entre las franjas
+    que cubre, en proporción al tiempo; la semana es la del inicio del intervalo.
+      ("move", objeto, semana, franja, {movimiento: unidades}, segundos, día)
+      ("price", objeto, semana, franja, mínimo)"""
+    from oroboros_hours import _split, band_of, week_of
+    for item, t, prev_t, mn, *mv in rows:
+        if mn is not None:
+            yield ("price", item, week_of(t), band_of(t), mn)
+        # sin foto anterior, o con un hueco (lo desaparecido no se clasificó): no es una medición
+        if prev_t is None or mv[0] is None or t <= prev_t or t - prev_t > MAX_GAP:
+            continue
+        span, wk = t - prev_t, week_of(prev_t)
+        for b, secs, day in _split(prev_t, t):
+            f = secs / span
+            yield ("move", item, wk, b, {k: (v or 0) * f for k, v in zip(MOVES, mv)}, secs, day)
+
+
+HOUR_SQL = """SELECT h.item_id, h.t, s.prev_t, h.min, h.new, h.sold, h.expired, h.cancelled, h.partial, h.gap
+              FROM api_item_hour h JOIN api_snaps s ON s.house = h.house AND s.t = h.t
+              WHERE h.house=? {extra} ORDER BY h.item_id, h.t"""
+
+
+def _new_acc():
+    return {**{k: 0.0 for k in MOVES}, "secs": 0.0, "n": 0, "days": set(), "days_old": 0,
+            "week_prices": defaultdict(list), "week_meds": []}
+
+
+def _in(items):
+    return f" AND {{col}} IN ({','.join('?' * len(items))})" if items else ""
+
+
+def band_stats(con, house, items=None):
+    """{objeto: [6 dicts por franja]} con unidades por movimiento, horas medidas, mediciones, días y
+    mediana de precio. Junta api_item_hour (detalle) y api_band_week (resumen). Valores redondeados."""
+    import statistics
+    items = list(items) if items else None
+    acc = defaultdict(lambda: [_new_acc() for _ in range(6)])
+    for c in contributions(con.execute(HOUR_SQL.format(extra=_in(items).format(col="h.item_id")), [house] + (items or []))):
+        a = acc[c[1]][c[3]]
+        if c[0] == "price":
+            a["week_prices"][c[2]].append(c[4])
+        else:
+            for k, v in c[4].items():
+                a[k] += v
+            a["secs"] += c[5]; a["n"] += 1; a["days"].add(c[6])
+    q = ("SELECT item_id, band, new, sold, expired, cancelled, partial, gap, hours, n, days, price_med "
+         "FROM api_band_week WHERE house=?" + _in(items).format(col="item_id"))
+    for r in con.execute(q, [house] + (items or [])):
+        a = acc[r[0]][r[1]]
+        for k, v in zip(MOVES, r[2:8]):
+            a[k] += v or 0
+        a["secs"] += (r[8] or 0) * 3600; a["n"] += r[9] or 0; a["days_old"] += r[10] or 0
+        if r[11] is not None:
+            a["week_meds"].append(r[11])
+    out = {}
+    for item, bands in acc.items():
+        res = []
+        for x in bands:
+            meds = x["week_meds"] + [statistics.median(v) for v in x["week_prices"].values()]
+            res.append({**{k: round(x[k], 6) for k in MOVES}, "hours": round(x["secs"] / 3600, 6), "n": x["n"],
+                        "days": len(x["days"]) + x["days_old"], "price_med": statistics.median(meds) if meds else None})
+        out[item] = res
+    return out
+
+
+def rollup_api(con, now, keep_days=KEEP_DAYS):
+    """Resume en api_band_week las semanas ISO completas anteriores a now − keep_days y borra su detalle
+    de api_item_hour. Devuelve las filas borradas."""
+    import statistics
+    from oroboros_hours import week_of
+    from oroboros_archive import _week_end_ts
+    cutoff = now - keep_days * 86400
+    old = con.execute("SELECT DISTINCT house, t FROM api_item_hour WHERE t < ?", (cutoff,)).fetchall()
+    weeks = {(house, week_of(t)) for house, t in old if _week_end_ts(week_of(t)) < cutoff}
+    if not weeks:
+        return 0
+    n_del = 0
+    with con:
+        for house in {h for h, _ in weeks}:
+            mine = {w for h, w in weeks if h == house}
+            agg = {}
+            for c in contributions(con.execute(HOUR_SQL.format(extra=""), (house,))):
+                if c[2] not in mine:
+                    continue
+                a = agg.setdefault((c[1], c[2], c[3]), {**{k: 0.0 for k in MOVES}, "secs": 0.0, "n": 0, "days": set(), "prices": []})
+                if c[0] == "price":
+                    a["prices"].append(c[4])
+                else:
+                    for k, v in c[4].items():
+                        a[k] += v
+                    a["secs"] += c[5]; a["n"] += 1; a["days"].add(c[6])
+            con.executemany("INSERT OR REPLACE INTO api_band_week VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)", [
+                (house, item, wk, band, *(a[k] for k in MOVES), a["secs"] / 3600, a["n"], len(a["days"]),
+                 statistics.median(a["prices"]) if a["prices"] else None, sum(a["prices"]), len(a["prices"]))
+                for (item, wk, band), a in agg.items()])
+            ts = sorted({t for h, t in old if h == house and week_of(t) in mine})
+            for i in range(0, len(ts), 500):
+                chunk = ts[i:i + 500]
+                n_del += con.execute(f"DELETE FROM api_item_hour WHERE house=? AND t IN ({','.join('?' * len(chunk))})",
+                                     [house, *chunk]).rowcount
+    return n_del
+
+
+QUALITY = {"POOR": 0, "COMMON": 1, "UNCOMMON": 2, "RARE": 3, "EPIC": 4, "LEGENDARY": 5, "ARTIFACT": 6, "HEIRLOOM": 7}
+
+
+def fill_names(con, client, limit=2000, clock=time.time):
+    """Pide a la ruta de objetos (static-forever-eu) los que no tienen nombre. Lo que da 404 se apunta en
+    api_missing y no se vuelve a pedir. Devuelve {"asked", "named"}."""
+    ids = [r[0] for r in con.execute(
+        """SELECT item_id FROM items WHERE name IS NULL AND item_id NOT IN (SELECT item_id FROM api_missing)
+           ORDER BY item_id LIMIT ?""", (limit,))]
+    named = 0
+    for i in ids:
+        st, _, d = client.get(f"/data/wow/item/{i}", namespace=STATIC_NAMESPACE, locale="es_ES")
+        if st == 200 and d and d.get("name"):
+            con.execute("UPDATE items SET name=?, quality=COALESCE(?, quality), vendor_sell=COALESCE(?, vendor_sell) WHERE item_id=?",
+                        (house_name(d["name"]), QUALITY.get((d.get("quality") or {}).get("type")), d.get("sell_price"), i))
+            named += 1
+        elif st == 404:
+            con.execute("INSERT OR REPLACE INTO api_missing VALUES (?,?)", (i, int(clock())))
+        else:
+            break                       # otro error: se reintenta otro día
+    con.commit()
+    return {"asked": len(ids), "named": named}
+
+
+# ----------------------------------------------------------------------
 # Descarga
 # ----------------------------------------------------------------------
 def fetch_house(client, house, ims=None):
@@ -412,6 +563,30 @@ def run_once(archive, client, houses=DEFAULT_HOUSES, realm=DEFAULT_REALM, log=_l
     finally:
         con.close()
     return out
+
+
+def maintenance(archive, client, now=None, log=_log, names_limit=2000):
+    """Una vez al día: resume en api_band_week lo que tiene más de 14 días y pide nombres que falten.
+    Devuelve lo hecho, o None si hoy ya se hizo."""
+    now = now or time.time()
+    day = _day(now)
+    con = open_api(archive)
+    try:
+        row = con.execute("SELECT value FROM meta WHERE key='api_maintenance'").fetchone()
+        if row and row[0] == day:
+            return None
+        n = rollup_api(con, now)
+        try:
+            names = fill_names(con, client, names_limit) if client else {"asked": 0, "named": 0}
+        except (ApiError, OSError, ValueError) as e:
+            names = {"asked": 0, "named": 0, "error": str(e) if isinstance(e, ApiError) else type(e).__name__}
+        con.execute("INSERT OR REPLACE INTO meta VALUES ('api_maintenance', ?)", (day,))
+        con.commit()
+    finally:
+        con.close()
+    if n or names.get("named"):
+        log(f"mantenimiento: {n} filas por hora resumidas; {names.get('named', 0)} nombres nuevos")
+    return {"rolled": n, **names}
 
 
 def import_dir(archive, folder, realm=DEFAULT_REALM, log=lambda *a: None):
@@ -486,11 +661,13 @@ def main():
     client = Client(creds, cache_dir=os.path.join(a.work, "api"))
     if a.una_vez:
         res = run_once(archive, client, houses, a.reino)
+        maintenance(archive, client)
         sys.exit(1 if any(r["status"] == "error" for r in res) else 0)
     _log(f"Descargando las casas {houses} cada hora (minuto 25). Ctrl+C para parar.")
     try:
         while True:
             res = run_once(archive, client, houses, a.reino)
+            maintenance(archive, client)
             time.sleep(wait_after(res, time.time()))
     except KeyboardInterrupt:
         _log("Parado.")
