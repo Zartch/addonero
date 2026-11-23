@@ -548,6 +548,66 @@ def is_calibrated(con, house):
     return (d.get("sales") or 0) >= CALIB_MIN_SALES and (d.get("coverage") or 0) >= CALIB_MIN_COVER
 
 
+CALIB_MARGIN = 3600              # la hora del correo no es exacta: ±1 h alrededor de la venta
+
+
+def calibrate(archive, plan_db, house=DEFAULT_HOUSES[0], margin=CALIB_MARGIN, save=True):
+    """Compara tus ventas reales (libro del correo, ledger con op SELL en el SQLite del plan) con lo que la
+    estimación dio por vendido en esa casa, en los intervalos entre fotos alrededor de cada venta.
+      sales/units: tus ventas (y unidades) con fotos de la API alrededor
+      covered:     de esas unidades, las que la estimación ve como vendidas (lo más que puede ver)
+      coverage:    covered / units — debería acercarse a 1
+      share:       covered / vendidas estimadas en esos intervalos (qué parte fuiste tú)
+      outside:     ventas tuyas sin fotos de la API (no se pueden comprobar)
+      detail:      por venta, lo que la estimación vio de ese objeto (vendidas, canceladas, caducadas)
+    Guarda el resultado en meta (api_calibration_<casa>), que usa is_calibrated."""
+    con = open_api(archive)
+    mk = con.execute("""SELECT m.key FROM api_houses h JOIN markets m USING (market_id) WHERE h.house=?""",
+                     (house,)).fetchone()
+    plan = sqlite3.connect(plan_db)
+    try:
+        chars = {r[0] for r in plan.execute("SELECT char FROM characters WHERE market=?", (mk[0] if mk else None,))}
+        sales = [r for r in plan.execute("SELECT t, char, item_id, qty FROM ledger WHERE op='SELL' ORDER BY t")
+                 if r[1] in chars and r[0] and r[2]]
+    finally:
+        plan.close()
+    res = {"house": house, "sales": 0, "units": 0, "covered": 0, "est_sold": 0.0, "outside": 0, "detail": []}
+    seen_est = set()
+    for t, _, item, qty in sales:
+        snaps = con.execute("""SELECT t FROM api_snaps WHERE house=? AND prev_t IS NOT NULL AND t - prev_t <= ?
+                               AND t >= ? AND prev_t <= ?""", (house, MAX_GAP, t - margin, t + margin)).fetchall()
+        if not snaps:
+            res["outside"] += 1
+            continue
+        ts = [s[0] for s in snaps]
+        marks = ",".join("?" * len(ts))
+        sold, partial, cancelled, expired = con.execute(
+            f"""SELECT COALESCE(SUM(sold), 0), COALESCE(SUM(partial), 0), COALESCE(SUM(cancelled), 0),
+                       COALESCE(SUM(expired), 0) FROM api_item_hour WHERE house=? AND item_id=? AND t IN ({marks})""",
+            [house, item, *ts]).fetchone()
+        est = sold + partial
+        cov = min(qty, est)
+        res["sales"] += 1
+        res["units"] += qty
+        res["covered"] += cov
+        for snap_t in ts:                 # lo estimado de cada intervalo y objeto, una sola vez
+            if (snap_t, item) not in seen_est:
+                seen_est.add((snap_t, item))
+                r = con.execute("SELECT COALESCE(sold, 0) + COALESCE(partial, 0) FROM api_item_hour WHERE house=? AND t=? AND item_id=?",
+                                (house, snap_t, item)).fetchone()
+                res["est_sold"] += r[0] if r else 0
+        res["detail"].append({"t": t, "item": item, "qty": qty, "sold": est, "cancelled": cancelled,
+                              "expired": expired, "covered": cov})
+    res["coverage"] = res["covered"] / res["units"] if res["units"] else None
+    res["share"] = res["covered"] / res["est_sold"] if res["est_sold"] else None
+    if save:
+        con.execute("INSERT OR REPLACE INTO meta VALUES (?, ?)", (f"api_calibration_{house}", json.dumps(
+            {"sales": res["sales"], "coverage": res["coverage"], "share": res["share"], "t": int(time.time())})))
+        con.commit()
+    con.close()
+    return res
+
+
 def latest_prices(con, house):
     """Precio de la última foto: (t, {objeto: (min, mv, qty, n, d110, d125, d150, d200)})."""
     t = con.execute("SELECT MAX(t) FROM api_snaps WHERE house=?", (house,)).fetchone()[0]
@@ -629,8 +689,9 @@ def run_once(archive, client, houses=DEFAULT_HOUSES, realm=DEFAULT_REALM, log=_l
     return out
 
 
-def maintenance(archive, client, now=None, log=_log, names_limit=2000):
-    """Una vez al día: resume en api_band_week lo que tiene más de 14 días y pide nombres que falten.
+def maintenance(archive, client, now=None, log=_log, names_limit=2000, plan_db=None):
+    """Una vez al día: resume en api_band_week lo que tiene más de 14 días, pide nombres que falten y,
+    con el SQLite del plan (plan_db), calibra las ventas estimadas con tu libro.
     Devuelve lo hecho, o None si hoy ya se hizo."""
     now = now or time.time()
     day = _day(now)
@@ -646,8 +707,15 @@ def maintenance(archive, client, now=None, log=_log, names_limit=2000):
             names = {"asked": 0, "named": 0, "error": str(e) if isinstance(e, ApiError) else type(e).__name__}
         con.execute("INSERT OR REPLACE INTO meta VALUES ('api_maintenance', ?)", (day,))
         con.commit()
+        houses = [r[0] for r in con.execute("SELECT house FROM api_houses")]
     finally:
         con.close()
+    if plan_db and os.path.exists(plan_db):
+        for h in houses:
+            try:
+                calibrate(archive, plan_db, h)
+            except sqlite3.Error as e:
+                log(f"calibración casa {h}: {e}")
     if n or names.get("named"):
         log(f"mantenimiento: {n} filas por hora resumidas; {names.get('named', 0)} nombres nuevos")
     return {"rolled": n, **names}
@@ -712,6 +780,8 @@ def main():
     ap.add_argument("--reino", default=DEFAULT_REALM, help="reino interno para la clave de mercado")
     ap.add_argument("--una-vez", action="store_true", help="descargar una vez y salir")
     ap.add_argument("--importar", metavar="CARPETA", help="importar fotos guardadas y salir")
+    ap.add_argument("--calibrar", action="store_true",
+                    help="comparar las ventas estimadas con tus ventas reales del libro (work/oroboros.sqlite) y salir")
     a = ap.parse_args()
     archive = a.archive or os.path.join(a.work, "archivo.sqlite")
     houses = [int(x) for x in a.casas.split(",") if x.strip()]
@@ -719,19 +789,33 @@ def main():
         n = import_dir(archive, a.importar, a.reino, log=_log)
         _log(f"{n} fotos importadas en {archive}")
         return
+    plan_db = os.path.join(a.work, "oroboros.sqlite")
+    if a.calibrar:
+        for h in houses:
+            r = calibrate(archive, plan_db, h)
+            cov = "—" if r["coverage"] is None else f"{r['coverage'] * 100:.0f} %"
+            share = "—" if r["share"] is None else f"{r['share'] * 100:.0f} %"
+            print(f"Casa {h}: {r['sales']} ventas tuyas con fotos ({r['units']:.0f} u.), la estimación ve {r['covered']:.0f} "
+                  f"como vendidas → cobertura {cov}; tu parte de lo vendido estimado {share}; "
+                  f"{r['outside']} ventas sin fotos.")
+            for d in r["detail"]:
+                if d["covered"] < d["qty"]:
+                    print(f"   {time.strftime('%d/%m %H:%M', time.localtime(d['t']))} objeto {d['item']}: vendiste {d['qty']:.0f}, "
+                          f"vendidas {d['sold']:.0f}, canceladas {d['cancelled']:.0f}, caducadas {d['expired']:.0f}")
+        return
     creds = load_creds(a.work)
     if not creds:
         sys.exit("Faltan las credenciales: BNET_CLIENT_ID / BNET_CLIENT_SECRET o work/bnet.env")
     client = Client(creds, cache_dir=os.path.join(a.work, "api"))
     if a.una_vez:
         res = run_once(archive, client, houses, a.reino)
-        maintenance(archive, client)
+        maintenance(archive, client, plan_db=plan_db)
         sys.exit(1 if any(r["status"] == "error" for r in res) else 0)
     _log(f"Descargando las casas {houses} cada hora (minuto 25). Ctrl+C para parar.")
     try:
         while True:
             res = run_once(archive, client, houses, a.reino)
-            maintenance(archive, client)
+            maintenance(archive, client, plan_db=plan_db)
             time.sleep(wait_after(res, time.time()))
     except KeyboardInterrupt:
         _log("Parado.")

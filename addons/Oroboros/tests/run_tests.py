@@ -1576,6 +1576,29 @@ check(PH.Parse(_S + ";24").soldDay == 24 and _L2[-1] == "Unas 24 vendidas al dí
 check(PH.Parse(_S).soldDay is None, "panel: un Resumen.lua sin ese campo sigue funcionando")
 lua.execute("OroborosResumen = nil")
 
+# --- calibración con el libro (ventas reales del correo) ---
+_kd = _tf.mkdtemp(); _ka = os.path.join(_kd, "k.sqlite"); _kp = os.path.join(_kd, "plan.sqlite"); _sh.copy(out, _kp)
+_ck = API.open_api(_ka); API.set_house(_ck, 111, "Casa de subastas de la Alianza", market=mk_)
+_kt = _ts(21, 10, 23)
+API.ingest(_ck, 111, _kt, [_au(1, 7001, 5, 10, "LONG", True), _au(2, 7002, 1, 100, "LONG"), _au(3, 7002, 1, 500, "LONG")])
+API.ingest(_ck, 111, _kt + 3600, [_au(1, 7001, 2, 10, "LONG", True), _au(2, 7002, 1, 100, "LONG")])   # 7001: 3 compradas; 7002: la cara, cancelada
+_ck.close()
+_cpk = sqlite3.connect(_kp)
+_char = _cpk.execute("SELECT char FROM characters WHERE market=?", (mk_,)).fetchone()[0]
+_cpk.execute("DELETE FROM ledger")
+_cpk.executemany("INSERT INTO ledger VALUES (?,?,?,?,?,?,?,?)", [
+    (_kt + 1800, _char, "SELL", 7001, 2, 10, 20, "mail"),          # dentro: se ve vendida
+    (_kt + 2000, _char, "SELL", 7002, 1, 500, 500, "mail"),        # dentro, pero la estimación la dio por cancelada
+    (_kt - 86400 * 5, _char, "SELL", 7001, 1, 10, 10, "mail"),     # sin fotos de la API: fuera
+    (_kt + 1800, _char, "BUY", 7001, 9, 10, 90, "mail")])          # compras: no cuentan
+_cpk.commit(); _cpk.close()
+_cal = API.calibrate(_ka, _kp, house=111)
+check((_cal["sales"], _cal["units"], _cal["covered"], _cal["outside"]) == (2, 3, 2, 1) and abs(_cal["coverage"] - 2 / 3) < 1e-9,
+      f"calibración: de tus 3 unidades vendidas con fotos, la estimación ve 2 como vendidas {_cal}")
+check(abs(_cal["share"] - 2 / 3) < 1e-9 and any(d["item"] == 7002 and d["cancelled"] == 1 for d in _cal["detail"]),
+      f"calibración: tu parte de lo vendido estimado y el detalle de lo no cubierto ({_cal['share']})")
+check(API.is_calibrated(sqlite3.connect(_ka), 111) is False, "calibración: con pocas ventas o menos del 80 %, las ventas de la API siguen como estimadas")
+
 print("\nTODO OK" if ok else "\nHAY FALLOS")
 for line in list(G.LOG.values())[-8:]:
     print("   ", line)
