@@ -121,6 +121,7 @@ Ojo: el beneficio por día de las profesiones nuevas aún usa ventas por día su
 ## Ideas para después (fuera de estas fases)
 
 - Alertas de precio («avísame si baja de X»), la otra mitad de Camel.
+- Leer la subasta sin entrar al juego con la API oficial de Blizzard (cada hora, las tres casas, ventas estimadas por subasta). Informe y propuesta en `docs/api-subasta-blizzard.md`; primero hay que comprobar a mano que las rutas de Forever responden.
 - Saber si la subasta se comparte entre facciones (con un personaje de cada una). Si es así, quitar la facción de la clave de mercado.
 
 ## Reglas que no cambian
