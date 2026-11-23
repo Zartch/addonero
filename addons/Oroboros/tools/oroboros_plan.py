@@ -64,6 +64,7 @@ def short_char(ck):
 # ----------------------------------------------------------------------
 # Carga de datos
 DROP_MIN_DAYS, DROP_MAX_DAYS = 0.5, 3   # separación válida entre dos datos para medir ventas/día
+API_MIN_DAYS = 3          # días de fotos de la API para que sus ventas por día manden
 
 
 def daily_drops(hist):
@@ -103,6 +104,16 @@ class Data:
         # franjas horarias desde el archivo de escaneos (docs/franjas-horarias.md); vacío sin --archive
         self.hours = (oroboros_hours.analyze(archive, self.market)
                       if archive and os.path.exists(archive) else {})
+        # ventas por día estimadas con la API de Blizzard (docs/planes/2026-11-23-api-blizzard.md)
+        self.api_rates, self.api_days, self.api_calibrated = {}, 0, False
+        if archive and os.path.exists(archive) and self.market:
+            import oroboros_api
+            acon = sqlite3.connect(archive)
+            house = oroboros_api.house_for_market(acon, self.market)
+            if house is not None:
+                self.api_rates, self.api_days = oroboros_api.sold_rates(acon, house, self.now)
+                self.api_calibrated = oroboros_api.is_calibrated(acon, house)
+            acon.close()
         self.prices = {r["item_id"]: dict(r) for r in q("SELECT * FROM prices WHERE market=?", self.market)}
         self.history = defaultdict(list)
         for r in q("SELECT * FROM history WHERE market=? ORDER BY day", self.market):
@@ -192,6 +203,10 @@ class Data:
         drops = daily_drops(h)
         vol = statistics.mean(drops) if len(drops) >= 3 else None
         vol_est = vol is None          # sin días suficientes: ventas/día supuestas, no medidas
+        vol_src = "escaneos" if vol is not None else None
+        if self.api_days >= API_MIN_DAYS and item_id in self.api_rates:
+            # la API gana con 3 días; hasta calibrarla con el libro, cuenta como estimada (lotes de prueba)
+            vol, vol_src, vol_est = self.api_rates[item_id], "api", not self.api_calibrated
         qty = p["qty"] if p else 0
         if vol is None and qty:
             vol = qty * 0.1
@@ -226,7 +241,7 @@ class Data:
         age_h = (self.now - p["t"]) / 3600 if p and p["t"] else None
         st = {"min": p["min"] if p else None, "mv": cur, "qty": qty, "med7": med7, "cv": cv, "vol": vol,
               "sell": sell, "sell_note": note, "trend": trend, "days": days, "conf": conf, "age_h": age_h,
-              "depth": depth, "depth_est": depth_est, "src": (p or {}).get("src"), "vol_est": vol_est}
+              "depth": depth, "depth_est": depth_est, "src": (p or {}).get("src"), "vol_est": vol_est, "vol_src": vol_src}
         self._stats[item_id] = st
         return st
 

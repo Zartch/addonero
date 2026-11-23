@@ -6,7 +6,8 @@ Calcula desde el archivo (`daily` y las franjas) unas pocas cifras por objeto y 
 `Oroboros/Resumen.lua`, que el addon carga al entrar o con /reload (solo lectura: no engorda Oroboros.lua).
 
 Cadena por objeto, campos separados por «;» (vacío = sin dato), cobre entero, días AAAAMMDD:
-  hoy;med7;med30;med90;min;diaMin;max;diaMax;franjaVenta;franjaBarata;semanas;dias;ultimoDia
+  hoy;med7;med30;med90;min;diaMin;max;diaMax;franjaVenta;franjaBarata;semanas;dias;ultimoDia;vendidasDia
+  vendidasDia = vendidas por día estimadas con la API de Blizzard (media de 7 días; vacío sin API).
   semanas = 13 medias semanales (ISO) y dias = 14 valores diarios, del más antiguo al más reciente,
   separados por comas. El precio seguido es el valor de mercado diario (daily.mv).
 
@@ -39,7 +40,13 @@ def _ymd(day):
     return day.replace("-", "")
 
 
-def item_summary(rows, bands, today):
+def _sold_txt(x):
+    if x is None:
+        return ""
+    return f"{x:.1f}".rstrip("0").rstrip(".") if x < 10 else str(int(x + 0.5))
+
+
+def item_summary(rows, bands, today, sold=None):
     """rows: [(día 'AAAA-MM-DD', mv, min_low, min_high)] ordenadas por día. Devuelve la cadena o None
     si no hay datos en los últimos 90 días."""
     rows = [r for r in rows if r[1] is not None]
@@ -70,6 +77,8 @@ def item_summary(rows, bands, today):
               _r(days[lo_d]), lo_d.strftime("%Y%m%d"), _r(days[hi_d]), hi_d.strftime("%Y%m%d"),
               "" if sell is None else str(sell), "" if cheap is None else str(cheap),
               ",".join(weeks), ",".join(daily), last.strftime("%Y%m%d")]
+    if sold is not None:            # sin API, la cadena queda como antes (13 campos)
+        fields.append(_sold_txt(sold))
     return ";".join(fields)
 
 
@@ -90,6 +99,7 @@ def write_resumen(archive_path, out_path, today=None, uses=None):
     """Escribe Resumen.lua con un apartado por mercado. uses (opcional, de ProfessionDB):
     {itemID: [(profesión, recetas)]} → qué profesiones usan cada componente. Devuelve {"items": n, "bytes": tamaño}."""
     import oroboros_hours
+    import oroboros_api
     today = today or datetime.date.today()
     con = sqlite3.connect(archive_path)
     since = (today - datetime.timedelta(days=ACTIVE_DAYS - 1)).isoformat()
@@ -106,15 +116,22 @@ def write_resumen(archive_path, out_path, today=None, uses=None):
         lines.append("},")
     lines.append("markets = {")
     n = 0
+    # solo los mercados con datos del juego (escaneos o histórico del addon/Auctionator): el addon solo lee
+    # el de tus personajes, y la Horda y Aguasnegras de la API agrandarían el archivo sin usarse en el juego
+    game = {r[0] for r in con.execute("SELECT DISTINCT market_id FROM scans")} |            {r[0] for r in con.execute("SELECT DISTINCT market_id FROM daily WHERE src != 'api'")}
     for mid, key in con.execute("SELECT market_id, key FROM markets ORDER BY key").fetchall():
+        if mid not in game:
+            continue
         hours = oroboros_hours.analyze(archive_path, key)
+        house = oroboros_api.house_for_market(con, key)
+        rates = oroboros_api.sold_rates(con, house)[0] if house is not None else {}
         active = [r[0] for r in con.execute(
             "SELECT DISTINCT item_id FROM daily WHERE market_id=? AND day >= ? ORDER BY item_id", (mid, since))]
         lines.append(f"[{lua_str(key)}] = {{")
         for item in active:
             rows = con.execute("SELECT day, mv, min_low, min_high FROM daily WHERE market_id=? AND item_id=? ORDER BY day",
                                (mid, item)).fetchall()
-            s = item_summary(rows, hours.get(item), today)
+            s = item_summary(rows, hours.get(item), today, rates.get(item))
             if s:
                 lines.append(f"[{int(item)}] = {lua_str(s)},")
                 n += 1

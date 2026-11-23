@@ -102,6 +102,7 @@ def analyze(archive_path, market=None):
         a["n"] += n or 0; a["days_old"] += days or 0
         if pmed is not None:
             a["week_meds"].append(pmed)
+    api = _api_bands(con, market)
     con.close()
     out = {}
     for item, bands in acc.items():
@@ -116,10 +117,31 @@ def analyze(archive_path, market=None):
                 "gone_cheap_h": round(x["cheap"] / hours, 2) if hours else None,
                 "price_med": statistics.median(meds) if meds else None,
                 "n": x["n"], "days": days,
-                "ok": x["n"] >= MIN_N and days >= MIN_DAYS,
+                "ok": x["n"] >= MIN_N and days >= MIN_DAYS, "src": "obs",
             })
         out[item] = res
+    # la API (tools/oroboros_api.py) gana en cada franja donde tiene mediciones suficientes:
+    # total = todo lo que desaparece; «baratas» = vendidas (incluidas las compras parciales)
+    for item, bands in api.items():
+        res = out.setdefault(item, [{"band": i, "gone_total_h": None, "gone_cheap_h": None, "price_med": None,
+                                     "n": 0, "days": 0, "ok": False, "src": "obs"} for i in range(len(BANDS))])
+        for i, b in enumerate(bands):
+            if b["n"] >= MIN_N and b["days"] >= MIN_DAYS and b["hours"] > 0:
+                gone = b["sold"] + b["partial"] + b["expired"] + b["cancelled"]
+                res[i] = {"band": i, "gone_total_h": round(gone / b["hours"], 2),
+                          "gone_cheap_h": round((b["sold"] + b["partial"]) / b["hours"], 2),
+                          "price_med": b["price_med"], "n": b["n"], "days": b["days"], "ok": True, "src": "api"}
     return out
+
+
+def _api_bands(con, market):
+    """Franjas de la casa de la API asociada al mercado ({} si no hay)."""
+    try:
+        import oroboros_api
+    except ImportError:
+        return {}
+    house = oroboros_api.house_for_market(con, market)
+    return oroboros_api.band_stats(con, house) if house is not None else {}
 
 
 def summary(bands):

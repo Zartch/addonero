@@ -26,7 +26,8 @@ local function list(s, n)
     return out
 end
 
--- hoy;med7;med30;med90;min;diaMin;max;diaMax;franjaVenta;franjaBarata;semanas;dias;ultimoDia
+-- hoy;med7;med30;med90;min;diaMin;max;diaMax;franjaVenta;franjaBarata;semanas;dias;ultimoDia;vendidasDia
+-- (vendidasDia, estimada con la API de Blizzard fuera del juego, puede faltar en resúmenes antiguos)
 function PH.Parse(s)
     if type(s) ~= "string" then return nil end
     local f = split(s, ";")
@@ -35,6 +36,7 @@ function PH.Parse(s)
         low = tonumber(f[5] or ""), lowDay = tonumber(f[6] or ""), high = tonumber(f[7] or ""), highDay = tonumber(f[8] or ""),
         sellBand = tonumber(f[9] or ""), cheapBand = tonumber(f[10] or ""),
         weeks = list(f[11], WEEKS), days = list(f[12], DAYS), lastDay = tonumber(f[13] or ""),
+        soldDay = tonumber(f[14] or ""),
     }
 end
 
@@ -48,6 +50,11 @@ end
 local function ddmm(d)
     if not d then return "?" end
     return string.format("%02d/%02d", d % 100, math.floor(d / 100) % 100)
+end
+
+local function soldTxt(n)
+    local v = n >= 10 and tostring(math.floor(n + 0.5)) or (string.format("%.1f", n):gsub("%.0$", ""))
+    return "Unas " .. v .. " vendidas al día (estimado con la API)"
 end
 
 local function bandTxt(b)
@@ -81,6 +88,7 @@ function PH.Lines(itemID, live)
     if s.sellBand then bands[#bands + 1] = "Se vende más " .. bandTxt(s.sellBand) end
     if s.cheapBand then bands[#bands + 1] = (#bands > 0 and "más barato " or "Más barato ") .. bandTxt(s.cheapBand) end
     if #bands > 0 then L[#L + 1] = table.concat(bands, " · ") end
+    if s.soldDay then L[#L + 1] = soldTxt(s.soldDay) end
     return L
 end
 
@@ -122,6 +130,7 @@ function PH.Model(itemID, live)
     local bands = {}
     if s.sellBand then bands[#bands + 1] = "Se vende más " .. bandTxt(s.sellBand) end
     if s.cheapBand then bands[#bands + 1] = (#bands > 0 and "más barato " or "Más barato ") .. bandTxt(s.cheapBand) end
+    if s.soldDay then bands[#bands + 1] = soldTxt(s.soldDay) end
     m.bandsText = #bands > 0 and table.concat(bands, " · ") or nil
     m.avg30 = s.avg30
     return m

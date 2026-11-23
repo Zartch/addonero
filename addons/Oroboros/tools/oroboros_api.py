@@ -231,8 +231,9 @@ def faction_of(name):
     return "Neutral"
 
 
-def set_house(con, house, name, realm=DEFAULT_REALM):
-    """Asocia la casa a la clave de mercado <reino>-<facción> (la misma que usa el addon). Devuelve market_id."""
+def set_house(con, house, name, realm=DEFAULT_REALM, market=None):
+    """Asocia la casa a la clave de mercado <reino>-<facción> (la misma que usa el addon), o a `market`
+    si se da. Devuelve market_id."""
     name = house_name(name)
     row = con.execute("SELECT market_id FROM api_houses WHERE house=?", (house,)).fetchone()
     if row:
@@ -240,7 +241,7 @@ def set_house(con, house, name, realm=DEFAULT_REALM):
             con.execute("UPDATE api_houses SET name=? WHERE house=?", (name, house))
         return row[0]
     fac = faction_of(name)
-    mid = market_id(con, f"{realm}-{fac}")
+    mid = market_id(con, market or f"{realm}-{fac}")
     con.execute("INSERT INTO api_houses VALUES (?,?,?,?)", (house, name, fac, mid))
     return mid
 
@@ -492,6 +493,69 @@ def rollup_api(con, now, keep_days=KEEP_DAYS):
                 n_del += con.execute(f"DELETE FROM api_item_hour WHERE house=? AND t IN ({','.join('?' * len(chunk))})",
                                      [house, *chunk]).rowcount
     return n_del
+
+
+def house_for_market(con, market_key):
+    """Casa de la API asociada a una clave de mercado, o None (también si el archivo no tiene tablas de la API)."""
+    try:
+        r = con.execute("""SELECT h.house FROM api_houses h JOIN markets m USING (market_id)
+                           WHERE m.key=? ORDER BY h.house LIMIT 1""", (market_key,)).fetchone()
+    except sqlite3.OperationalError:
+        return None
+    if r:
+        con.executescript(SCHEMA)       # completa las tablas que añadió una versión posterior
+    return r[0] if r else None
+
+
+def sold_rates(con, house, now=None, days=7):
+    """Vendidas por día (incluidas las compras parciales) por objeto, con las fotos de los últimos `days`
+    días. Devuelve ({objeto: vendidas/día}, días con mediciones). Solo cuentan intervalos medidos
+    (con foto anterior y sin hueco)."""
+    now = now or time.time()
+    since = now - days * 86400
+    snaps = con.execute("""SELECT t, prev_t FROM api_snaps WHERE house=? AND t >= ? AND prev_t IS NOT NULL
+                           AND t - prev_t <= ?""", (house, since, MAX_GAP)).fetchall()
+    secs = sum(t - p for t, p in snaps)
+    if not secs:
+        return {}, 0
+    cov = len({_day(t) for t, _ in snaps})
+    rates = {}
+    for item, s in con.execute(
+            """SELECT h.item_id, SUM(COALESCE(h.sold, 0) + COALESCE(h.partial, 0)) FROM api_item_hour h
+               JOIN api_snaps s ON s.house = h.house AND s.t = h.t
+               WHERE h.house=? AND h.t >= ? AND s.prev_t IS NOT NULL AND h.t - s.prev_t <= ? AND h.sold IS NOT NULL
+               GROUP BY h.item_id""", (house, since, MAX_GAP)):
+        rates[item] = s * 86400 / secs
+    return rates, cov
+
+
+CALIB_MIN_COVER = 0.8            # cobertura mínima de tus ventas reales para fiarse de las vendidas estimadas
+CALIB_MIN_SALES = 5              # y con al menos tantas ventas tuyas comprobadas
+
+
+def is_calibrated(con, house):
+    """¿La última calibración con el libro (calibrate) dio cobertura suficiente para esta casa?"""
+    try:
+        r = con.execute("SELECT value FROM meta WHERE key=?", (f"api_calibration_{house}",)).fetchone()
+    except sqlite3.OperationalError:
+        return False
+    if not r:
+        return False
+    try:
+        d = json.loads(r[0])
+    except ValueError:
+        return False
+    return (d.get("sales") or 0) >= CALIB_MIN_SALES and (d.get("coverage") or 0) >= CALIB_MIN_COVER
+
+
+def latest_prices(con, house):
+    """Precio de la última foto: (t, {objeto: (min, mv, qty, n, d110, d125, d150, d200)})."""
+    t = con.execute("SELECT MAX(t) FROM api_snaps WHERE house=?", (house,)).fetchone()[0]
+    if t is None:
+        return None, {}
+    return t, {r[0]: r[1:] for r in con.execute(
+        """SELECT item_id, min, mv, qty, n, d110, d125, d150, d200 FROM api_item_hour
+           WHERE house=? AND t=? AND min IS NOT NULL""", (house, t))}
 
 
 QUALITY = {"POOR": 0, "COMMON": 1, "UNCOMMON": 2, "RARE": 3, "EPIC": 4, "LEGENDARY": 5, "ARTIFACT": 6, "HEIRLOOM": 7}

@@ -1529,6 +1529,53 @@ _m2 = API.maintenance(_ra, _cn, now=_ts(30, 18), log=lambda *_: None)
 _m3 = API.maintenance(_ra, _cn, now=_ts(30, 12) + 86400, log=lambda *_: None)
 check(_m1 is not None and _m2 is None and _m3 is not None, f"API: el mantenimiento (resumen y nombres) se hace una vez al día ({_m1}, {_m2}, {_m3})")
 
+# --- el plan, las franjas y Resumen.lua usan la API ---
+_A = H.analyze(_ra, "R5-Alliance")
+_bs = API.band_stats(sqlite3.connect(_ra), 111)[100][2]
+check(_A[100][2]["src"] == "api" and abs(_A[100][2]["gone_cheap_h"] - round((_bs["sold"] + _bs["partial"]) / _bs["hours"], 2)) < 1e-9,
+      f"franjas: con datos suficientes de la API, salen de la API (vendidas por hora) {_A[100][2]}")
+check(H.analyze(arch3, "M")[1][2]["src"] == "obs", "franjas: sin API, siguen saliendo de los escaneos")
+_old = os.path.join(_tf.mkdtemp(), "viejo.sqlite"); _sh0 = __import__("shutil"); _sh0.copy(_ra, _old)
+_co = sqlite3.connect(_old); _co.execute("DROP TABLE api_band_week"); _co.execute("DROP TABLE api_missing"); _co.commit(); _co.close()
+check(isinstance(H.analyze(_old, "R5-Alliance"), dict), "franjas: un archivo con las tablas de la API de una versión anterior se completa solo")
+import shutil as _sh, time as _time
+_vd = _tf.mkdtemp(); _va = os.path.join(_vd, "v.sqlite"); _vp = os.path.join(_vd, "plan.sqlite"); _sh.copy(out, _vp)
+_cv = API.open_api(_va); API.set_house(_cv, 111, "Casa de subastas de la Alianza", market=mk_)
+_now = int(_time.time()); _t = _now - 72 * 3600 + 60     # la última foto, posterior al precio del juego de las pruebas
+_lv = [_au(1, 2589, 1, 30, "LONG"), _au(2, 2589, 1, 31, "LONG")]
+for _k in range(73):       # 3 días, una foto por hora: cada hora se vende una barata y se publica otra
+    API.ingest(_cv, 111, _t + _k * 3600, _lv)
+    _lv = [_lv[1], _au(100 + _k, 2589, 1, 30 + _k % 2, "LONG")]
+_rates, _cov = API.sold_rates(_cv, 111, _now)
+check(_cov >= 3 and abs(_rates[2589] - 24) < 0.01, f"API: vendidas por día (media de 7 días) {_rates.get(2589)} con {_cov} días")
+_cv.close()
+_cp = sqlite3.connect(_va)
+from oroboros_archive import plan_from_archive as _pfa
+_pfa(_cp, _vp); _cp.close()
+_pr = sqlite3.connect(_vp).execute("SELECT min, src, d110 FROM prices WHERE market=? AND item_id=2589", (mk_,)).fetchone()
+check(_pr == (30, "api", 2),f"plan: el precio de ahora es el más reciente (la API, con profundidad) {_pr}")
+_dv = Data(_vp, CAT_TEST, archive=_va)
+_sv = _dv.stats(2589)
+check(abs(_sv["vol"] - 24) < 0.01 and _sv["vol_src"] == "api" and _sv["vol_est"] is True,
+      f"plan: con 3 días de API, las ventas por día salen de la API (estimadas hasta calibrar) {_sv['vol']}, {_sv.get('vol_src')}, {_sv['vol_est']}")
+_rv = os.path.join(_vd, "Resumen.lua")
+from oroboros_summary import write_resumen as _wr
+_cx = API.open_api(_va); _cx.execute("INSERT INTO markets (key) VALUES ('Solo-API-Horde')")
+API.set_house(_cx, 114, "Casa de subastas de la Horda", market="Solo-API-Horde")
+API.ingest(_cx, 114, _now, [_au(1, 2589, 1, 30, "LONG")])
+insert_scan(_cx, mk_, _now - 3600, [(2589, 30, 30, 2, 2, 2)]); _cx.commit(); _cx.close()
+_wr(_va, _rv)
+_lr = LuaRuntime(unpack_returned_tuples=True); _lr.execute(open(_rv, encoding="utf-8").read())
+_sr = _lr.globals().OroborosResumen.markets[mk_][2589]
+check(_sr.split(";")[13] == "24", f"Resumen.lua: lleva las vendidas por día de la API ({_sr})")
+check(_lr.globals().OroborosResumen.markets["Solo-API-Horde"] is None,
+      "Resumen.lua: solo lleva los mercados con datos del juego (la Horda y Aguasnegras de la API, en el panel de escritorio)")
+lua.execute("OroborosResumen = { v = 1, t = 0, markets = { [\"" + ns.MarketKey() + "\"] = { [2589] = [[" + _S + ";24]] } } }")
+_L2 = list(PH.Lines(2589, 120).values())
+check(PH.Parse(_S + ";24").soldDay == 24 and _L2[-1] == "Unas 24 vendidas al día (estimado con la API)", f"panel: enseña las vendidas por día {_L2}")
+check(PH.Parse(_S).soldDay is None, "panel: un Resumen.lua sin ese campo sigue funcionando")
+lua.execute("OroborosResumen = nil")
+
 print("\nTODO OK" if ok else "\nHAY FALLOS")
 for line in list(G.LOG.values())[-8:]:
     print("   ", line)

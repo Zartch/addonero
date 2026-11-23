@@ -327,6 +327,17 @@ def plan_from_archive(con, plan_path):
                          (key, i, mn, mv or mn, q, None, t, None, None, None, None, "atr" if src == "atr" else "oro"))
             plan.execute("INSERT OR IGNORE INTO items (item_id) VALUES (?)", (i,))
             n_price += 1
+        # API de Blizzard: el precio de ahora es el más reciente (su última foto, con profundidad real)
+        import oroboros_api
+        house = oroboros_api.house_for_market(con, key)
+        if house is not None:
+            t_api, latest = oroboros_api.latest_prices(con, house)
+            game_t = {r[0]: r[1] or 0 for r in plan.execute("SELECT item_id, t FROM prices WHERE market=?", (key,))}
+            rows_api = [(key, i, mn, mv, q, n, t_api, d1, d2, d3, d4, "api")
+                        for i, (mn, mv, q, n, d1, d2, d3, d4) in latest.items() if t_api > game_t.get(i, 0)]
+            plan.executemany("INSERT OR REPLACE INTO prices VALUES (?,?,?,?,?,?,?,?,?,?,?,?)", rows_api)
+            plan.executemany("INSERT OR IGNORE INTO items (item_id) VALUES (?)", [(r[1],) for r in rows_api])
+            n_price += len(rows_api)
     names = {r[0]: r[1:] for r in con.execute("SELECT item_id, name, quality FROM items WHERE name IS NOT NULL")}
     for i, (name, q) in names.items():
         plan.execute("UPDATE items SET name = COALESCE(name, ?), quality = COALESCE(quality, ?) WHERE item_id=?", (name, q, i))
