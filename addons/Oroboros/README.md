@@ -13,21 +13,22 @@ El addon escanea la subasta, guarda precios, recetas, inventario y compras, y ej
 1. [Cómo funciona](#cómo-funciona)
 2. [Instalación](#instalación)
 3. [Primer uso](#primer-uso)
-4. [Varios personajes y banquero](#varios-personajes-y-banquero)
-5. [La ventana del addon](#la-ventana-del-addon)
-6. [Comandos](#comandos)
-7. [Formato de ruta](#formato-de-ruta)
-8. [Qué guarda el addon](#qué-guarda-el-addon)
-9. [Planificador](#planificador)
-10. [La página del plan](#la-página-del-plan)
-11. [Ideas de especulación](#ideas-de-especulación)
-12. [Cartera](#cartera)
-13. [catalog.json](#catalogjson)
-14. [Base de datos SQLite](#base-de-datos-sqlite)
-15. [Referencia de funciones del addon](#referencia-de-funciones-del-addon)
-16. [Límites conocidos](#límites-conocidos)
-17. [Problemas frecuentes](#problemas-frecuentes)
-18. [Pruebas](#pruebas)
+4. [Subasta sin entrar al juego: API de Blizzard y panel](#subasta-sin-entrar-al-juego-api-de-blizzard-y-panel)
+5. [Varios personajes y banquero](#varios-personajes-y-banquero)
+6. [La ventana del addon](#la-ventana-del-addon)
+7. [Comandos](#comandos)
+8. [Formato de ruta](#formato-de-ruta)
+9. [Qué guarda el addon](#qué-guarda-el-addon)
+10. [Planificador](#planificador)
+11. [La página del plan](#la-página-del-plan)
+12. [Ideas de especulación](#ideas-de-especulación)
+13. [Cartera](#cartera)
+14. [catalog.json](#catalogjson)
+15. [Base de datos SQLite](#base-de-datos-sqlite)
+16. [Referencia de funciones del addon](#referencia-de-funciones-del-addon)
+17. [Límites conocidos](#límites-conocidos)
+18. [Problemas frecuentes](#problemas-frecuentes)
+19. [Pruebas](#pruebas)
 
 ## Cómo funciona
 
@@ -137,6 +138,86 @@ schtasks /Create /TN "Oroboros vigilante" /SC ONLOGON /TR "\"C:\Users\<usuario>\
 ```
 
 Lo que hace queda en `work/vigilante.log`. Para quitarla: `schtasks /Delete /TN "Oroboros vigilante"`.
+
+## Subasta sin entrar al juego: API de Blizzard y panel
+
+Blizzard publica cada hora una foto de toda la subasta de Forever en su API oficial (la que usan TSM y las webs de subasta). Oroboros la lee **sin entrar al juego** y la guarda en `work/archivo.sqlite`. Solo lee: no toca el juego ni la cuenta. Lo comprobado y por qué se hace así está en `docs/api-subasta-blizzard.md` (apartado 0); el plan, en `docs/planes/2026-11-23-api-blizzard.md`.
+
+**Qué da:**
+- Precio, valor de mercado, cantidad y profundidad de cada objeto, cada hora, de tu casa (**111**, Alianza) y de la Horda (**114**) y Aguasnegras (**117**) del mismo grupo.
+- **Ventas estimadas**: cada subasta tiene su número, así que entre dos fotos se sabe cuál desapareció. Si le quedaba poco tiempo (`SHORT`), cuenta como caducada; si era cara (más de mínimo × 1,25), como cancelada; si no, como vendida. En materiales, la bajada de cantidad de una misma subasta cuenta como compra.
+- Los nombres de los objetos que faltaban.
+
+**Qué no da:** histórico (solo la foto actual; el histórico lo construye Oroboros desde que lo pones en marcha), tu inventario, tus profesiones ni tus ventas reales (eso sigue saliendo del addon).
+
+### Credenciales (una vez)
+
+1. Crea un cliente gratis en `https://develop.battle.net` (*API Access*). Te da un *Client ID* y un *Client Secret*.
+2. Escríbelos en `addons/Oroboros/work/bnet.env` (la carpeta `work/` no va a git):
+   ```
+   BNET_CLIENT_ID=...
+   BNET_CLIENT_SECRET=...
+   ```
+   También valen las variables de entorno `BNET_CLIENT_ID` y `BNET_CLIENT_SECRET`. Nunca se muestran en pantalla ni en los registros.
+
+### El panel de escritorio
+
+```
+pythonw tools/oroboros_panel.py --find "F:/World of Warcraft/_forever_"
+```
+
+- Abre una ventana propia (Edge en modo aplicación) en `http://127.0.0.1:8737`, que solo se ve desde tu PC.
+- Descarga cada hora (pasado el minuto 25, cuando Blizzard ya ha publicado la foto; si una casa aún no la tiene, reintenta cada 5 min). Si no ha cambiado, no baja nada.
+- Con `--find`, cada foto nueva regenera también el plan y `Resumen.lua`, como el vigilante; sin `--find`, solo `Resumen.lua`.
+- Una vez al día resume lo viejo, pide los nombres que falten y calibra las ventas con tu libro.
+- Pestañas:
+  - todas las del plan;
+  - **Subasta**: estado de la descarga, buscador, precio en las tres casas, gráficas por hora (14 días) y por día (todo), franjas, lo que tienes y tus compras y ventas de ese objeto;
+  - **Ventas**: lo más vendido (estimado) en cada casa y la calibración.
+- Cerrar la ventana **no** para la descarga. Para pararla, botón «Parar el panel». Abrirlo otra vez mientras sigue en marcha solo abre la ventana.
+- Acceso directo «Oroboros»: destino `pythonw.exe "<repo>\addons\Oroboros\tools\oroboros_panel.py" --find "<WoW>\_forever_" --log "<repo>\addons\Oroboros\work\panel.log"`.
+
+Para que descargue desde que inicias sesión, sin ventana, crea una tarea desde un `cmd` (ajusta las rutas). No se crea sola:
+
+```
+schtasks /Create /TN "Oroboros panel" /SC ONLOGON /TR "\"C:\Users\<usuario>\AppData\Local\Programs\Python\Python310\pythonw.exe\" \"<repo>\addons\Oroboros\tools\oroboros_panel.py\" --sin-ventana --find \"F:\World of Warcraft\_forever_\" --log \"<repo>\addons\Oroboros\work\panel.log\""
+```
+
+Luego el acceso directo solo abre la ventana. Para quitarla: `schtasks /Delete /TN "Oroboros panel"`.
+
+### Sin panel: `oroboros_api.py`
+
+```
+python tools/oroboros_api.py --una-vez            # una descarga (para una tarea programada cada hora)
+python tools/oroboros_api.py                      # cada hora, en esta consola
+python tools/oroboros_api.py --calibrar           # ventas estimadas frente a tus ventas reales del libro
+python tools/oroboros_api.py --importar work/api  # meter fotos guardadas (grp_<UTC>_<casa>_<norm|mat>.json.gz)
+```
+
+Opciones: `--casas 111,114,117` y `--reino CAMWOWEU5Realm5PvE` (la clave de mercado es `<reino>-<facción>`).
+
+### Qué gana cuando hay dato del juego y de la API
+
+| Dónde | Gana |
+|---|---|
+| Precio del día (`daily`) | La API. El escaneo del juego cubre los días sin API |
+| Precio de ahora del plan | El más reciente (la última foto de la API trae profundidad real) |
+| Ventas por día del plan | La API, con 3 días de fotos. Hasta calibrarla, cuenta como **estimada**: el plan propone lotes de prueba |
+| Franjas horarias | La API en cada franja con 3 mediciones en 2 días. Si no, los escaneos |
+| `Resumen.lua` | Lleva «vendidas al día» de la API. Solo los mercados con datos del juego (la Horda y Aguasnegras, en el panel) |
+
+### Cuidado con las ventas estimadas
+
+Las primeras fotos dan cifras muy altas: en la 111, unas 15 000 subastas normales «vendidas» por hora, y el Paño de lino, decenas de miles al día. Seguramente buena parte son recolocaciones: alguien retira una subasta barata y la vuelve a poner un poco más barata, y eso parece una venta. Por eso:
+- el plan no se fía de ellas hasta que la **calibración** con tus ventas del correo lo confirma (5 ventas tuyas comprobadas y al menos el 80 % visto como vendido);
+- en la pestaña Ventas y con `--calibrar` ves qué parte de tus ventas reales ve la estimación y cuánto fuiste tú del total.
+
+### Cuánto ocupa
+
+En `work/archivo.sqlite`:
+- `api_live` (la última foto de las tres casas): ~730 000 filas, unos 22 MB fijos;
+- `api_item_hour` (precio y movimientos por objeto y hora): unos 18 MB al día, que se guardan 14 días: unos 250 MB fijos (las franjas ya se acumulan al meter cada foto, así que borrar el detalle no pierde nada);
+- lo permanente (`api_band_week` por franja y semana, `daily` por día): unos 40 MB al mes.
 
 ## Historial de precios (al estilo CamelCamelCamel)
 
@@ -472,7 +553,7 @@ Los multiplicadores (`uplift`, `scenario`) son suposiciones: el planificador los
 | Tabla | Contenido |
 |---|---|
 | `items` | Nombre, calidad, venta al vendedor, pila, si es apilable en subasta, compra al vendedor, nivel de objeto. |
-| `prices` | Por mercado y objeto: mínimo, valor de mercado, cantidad, subastas, hora, profundidad (`d110`, `d125`, `d150`, `d200`) y origen (`src`: `oro` Oroboros, `atr` Auctionator). |
+| `prices` | Por mercado y objeto: mínimo, valor de mercado, cantidad, subastas, hora, profundidad (`d110`, `d125`, `d150`, `d200`) y origen (`src`: `oro` Oroboros, `atr` Auctionator, `api` API de Blizzard). |
 | `history` | Por mercado, objeto y día: mínimo, valor de mercado, cantidad y origen (`src`). Con Auctionator, «valor de mercado» es el mínimo más alto del día. |
 | `characters` | Mercado, oro, nivel, clase. |
 | `inventory` | Por personaje y zona (`bags`, `bank`, `warband`): objeto y cantidad. |

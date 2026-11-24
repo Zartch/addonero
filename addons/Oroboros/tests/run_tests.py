@@ -1371,6 +1371,348 @@ for rt in I["routes"].values():
     check(len(list(nerr.values())) == 0, f"la ruta de ideas de {rt['short']} la entiende el addon")
 check("/*__PLAN__*/null" not in open(os.path.join(tmp, "p.html"), encoding="utf-8").read(), "HTML con el plan incrustado")
 
+# ----------------------------------------------------------------------
+# API de Blizzard (docs/planes/2026-11-23-api-blizzard.md): fotos sintéticas, sin red
+# ----------------------------------------------------------------------
+import gzip as _gz, json as _js
+import oroboros_api as API
+from oroboros_archive import update_daily as _upd_daily
+def _au(i, item, q, price, tl, mat=False):
+    d = {"id": i, "item": {"id": item}, "quantity": q, "time_left": tl}
+    if mat: d["unit_price"] = price
+    else: d["buyout"] = price * q
+    return d
+_T0 = _ts(20, 10, 23)
+_P1 = [_au(1, 100, 1, 50, "SHORT"), _au(2, 100, 1, 100, "LONG"), _au(3, 100, 1, 52, "LONG"), _au(4, 200, 1, 10, "LONG"),
+       _au(10, 300, 20, 5, "LONG", True), _au(11, 300, 10, 6, "LONG", True)]
+_P2 = [_au(4, 200, 1, 10, "LONG"), _au(5, 100, 1, 55, "VERY_LONG"),
+       _au(10, 300, 15, 5, "LONG", True), _au(12, 300, 7, 4, "VERY_LONG", True)]
+# clasificación pura
+_c = API.classify(API.as_live(_P1), API.as_live(_P2))
+check(_c[100] == {"new": 1, "sold": 1, "expired": 1, "cancelled": 1, "partial": 0},
+      f"API: desaparecidas: SHORT → caducada, cara → cancelada, barata → vendida ({_c.get(100)})")
+check(_c[300] == {"new": 7, "sold": 10, "expired": 0, "cancelled": 0, "partial": 5},
+      f"API: materiales: baja de cantidad del mismo id = compra parcial ({_c.get(300)})")
+check(200 not in _c, "API: lo que no cambia no genera movimientos")
+_c2 = API.classify(API.as_live([_au(1, 100, 5, 50, "LONG", True)]), API.as_live([_au(1, 100, 8, 50, "LONG", True)]))
+check(_c2.get(100, {}).get("partial", 0) == 0 and _c2.get(100, {}).get("new", 0) == 0, "API: si una subasta sube de cantidad, no cuenta")
+# ingestión en el archivo
+_ad = _tf.mkdtemp(); _aa = os.path.join(_ad, "api.sqlite")
+_con = API.open_api(_aa)
+_mid = API.set_house(_con, 111, "Casa de subastas de la Alianza", realm="R5")
+check(API.faction_of({"en_GB": "Horde Auction House", "es_ES": "Casa de subastas de la Horda"}) == "Horde"
+      and API.house_name({"en_GB": "x", "es_ES": "Casa de subastas de la Horda"}) == "Casa de subastas de la Horda",
+      "API: sin locale, el nombre llega en todos los idiomas: se usa el español")
+check(_con.execute("SELECT key FROM markets WHERE market_id=?", (_mid,)).fetchone()[0] == "R5-Alliance",
+      "API: la casa de la Alianza se asocia al mercado <reino>-Alliance")
+r1 = API.ingest(_con, 111, _T0, _P1)
+check(r1["first"] and _con.execute("SELECT COUNT(*) FROM api_live WHERE house=111").fetchone()[0] == 6,
+      "API: la primera foto se guarda como estado actual")
+_h1 = _con.execute("SELECT min, mv, qty, n, sold FROM api_item_hour WHERE house=111 AND t=? AND item_id=100", (_T0,)).fetchone()
+check(_h1 == (50, 50, 3, 3, None), f"API: primera foto: precios por objeto y sin movimientos (no hay foto anterior) {_h1}")
+r2 = API.ingest(_con, 111, _T0 + 3600, _P2)
+_h2 = _con.execute("SELECT new, sold, expired, cancelled, partial, min, qty FROM api_item_hour WHERE house=111 AND t=? AND item_id=300",
+                   (_T0 + 3600,)).fetchone()
+check(_h2 == (7, 10, 0, 0, 5, 4, 22), f"API: segunda foto: movimientos y precio por objeto {_h2}")
+_h3 = _con.execute("SELECT min, qty, sold, expired, cancelled FROM api_item_hour WHERE house=111 AND t=? AND item_id=100",
+                   (_T0 + 3600,)).fetchone()
+check(_h3 == (55, 1, 1, 1, 1), f"API: objeto con movimientos {_h3}")
+check(sorted(r[0] for r in _con.execute("SELECT auction_id FROM api_live WHERE house=111")) == [4, 5, 10, 12],
+      "API: el estado actual se sustituye por la foto nueva")
+check(API.ingest(_con, 111, _T0 + 3600, _P2)["skipped"], "API: la misma foto dos veces no se cuenta dos veces")
+_d = _con.execute("SELECT min_low, min_high, src FROM daily WHERE market_id=? AND item_id=100", (_mid,)).fetchone()
+check(_d == (50, 55, "api"), f"API: histórico diario con origen api (mínimo y más alto del día) {_d}")
+insert_scan(_con, "R5-Alliance", _T0 + 600, [(100, 40, 40, 9, 9, 9)]); _con.commit()
+_upd_daily(_con)
+check(_con.execute("SELECT min_low, src FROM daily WHERE market_id=? AND item_id=100", (_mid,)).fetchone() == (50, "api"),
+      "API: un escaneo del juego no pisa el día que tiene la API")
+insert_scan(_con, "R5-Alliance", _T0 - 3 * 86400, [(100, 41, 41, 9, 9, 9)]); _con.commit()
+_upd_daily(_con)
+_dd = datetime.datetime.fromtimestamp(_T0 - 3 * 86400).date().isoformat()
+check(_con.execute("SELECT min_low, src FROM daily WHERE market_id=? AND item_id=100 AND day=?", (_mid, _dd)).fetchone() == (41, "obs"),
+      "API: los días sin API siguen saliendo del juego")
+# hueco de más de 90 min: no se clasifica
+API.ingest(_con, 111, _T0 + 3600 * 4, [_au(5, 100, 1, 55, "LONG")])
+_g = _con.execute("SELECT sold, expired, cancelled, partial, gap FROM api_item_hour WHERE house=111 AND t=? AND item_id=300",
+                  (_T0 + 3600 * 4,)).fetchone()
+check(_g == (0, 0, 0, 0, 22), f"API: con un hueco de 3 h, lo desaparecido no se clasifica (va a «hueco») {_g}")
+_con.close()
+
+# cliente y descarga, con un fetch falso
+class _FakeNet:
+    def __init__(self, routes): self.routes, self.log = routes, []
+    def __call__(self, url, headers, data=None):
+        self.log.append((url, dict(headers), data))
+        if "oauth" in url:
+            return self.routes.get("token", (200, {}, b'{"access_token": "TOK", "expires_in": 86400}'))
+        path = url.split("?")[0].split("api.blizzard.com")[1]
+        r = self.routes.get(path)
+        if callable(r): r = r(headers)
+        return r or (404, {}, b"")
+_LM = "Fri, 20 Nov 2026 09:23:00 GMT"
+def _photo(path_lm, body):
+    return lambda h: (304, {"last-modified": path_lm}, b"") if h.get("If-Modified-Since") == path_lm else (200, {"last-modified": path_lm}, _js.dumps(body).encode())
+_net = _FakeNet({"/data/wow/ruleset/2/auctions/111": _photo(_LM, {"id": 111, "name": "Casa de subastas de la Alianza", "auctions": [a for a in _P1 if "buyout" in a]}),
+                 "/data/wow/ruleset/2/auctions/111/commodities": _photo(_LM, {"auctions": [a for a in _P1 if "unit_price" in a]})})
+_wd = _tf.mkdtemp()
+_cl = API.Client(("ID", "SECRETO-NO-MOSTRAR"), fetch=_net, cache_dir=_wd)
+_ab = os.path.join(_wd, "b.sqlite")
+_res = API.run_once(_ab, _cl, [111], realm="R5", log=lambda *_: None)
+_cx = sqlite3.connect(_ab)
+check(_res[0]["status"] == "nueva" and _cx.execute("SELECT COUNT(*) FROM api_live").fetchone()[0] == 6,
+      f"API: run_once baja normales y materiales y los guarda ({_res})")
+check(_cx.execute("SELECT name, faction FROM api_houses WHERE house=111").fetchone() == ("Casa de subastas de la Alianza", "Alliance"),
+      "API: guarda el nombre y la facción de la casa")
+_cx.close()
+_n0 = len(_net.log)
+_res2 = API.run_once(_ab, _cl, [111], realm="R5", log=lambda *_: None)
+check(_res2[0]["status"] == "sin cambios" and any(h.get("If-Modified-Since") == _LM for _, h, _ in _net.log[_n0:]),
+      f"API: con If-Modified-Since, un 304 no toca nada ({_res2})")
+check(sum(1 for u, _, _ in _net.log if "oauth" in u) == 1, "API: el token se reutiliza mientras no caduca")
+_logs = []
+_bad = API.Client(("ID", "SECRETO-NO-MOSTRAR"), fetch=_FakeNet({"token": (401, {}, b'{"error": "SECRETO-NO-MOSTRAR"}')}),
+                  cache_dir=_tf.mkdtemp())
+_res3 = API.run_once(os.path.join(_wd, "c.sqlite"), _bad, [111], realm="R5", log=lambda *a: _logs.append(" ".join(map(str, a))))
+check(_res3[0]["status"] == "error" and not any("SECRETO" in x for x in _logs + [str(_res3), repr(_bad)]),
+      f"API: un error de token se registra sin mostrar el secreto ({_logs})")
+# importar fotos guardadas (las de la fase A)
+_imp = _tf.mkdtemp()
+for _t, _p in ((_T0, _P1), (_T0 + 3600, _P2)):
+    _stamp = datetime.datetime.utcfromtimestamp(_t).strftime("%Y%m%d-%H%M%S")
+    with _gz.open(os.path.join(_imp, f"grp_{_stamp}_111_norm.json.gz"), "wt") as _f:
+        _js.dump({"id": 111, "name": "Casa de subastas de la Alianza", "auctions": [a for a in _p if "buyout" in a]}, _f)
+    with _gz.open(os.path.join(_imp, f"grp_{_stamp}_111_mat.json.gz"), "wt") as _f:
+        _js.dump({"auctions": [a for a in _p if "unit_price" in a]}, _f)
+_ai = os.path.join(_imp, "i.sqlite")
+_ri = API.import_dir(_ai, _imp, realm="R5")
+_cx = sqlite3.connect(_ai)
+check(_ri == 2 and _cx.execute("SELECT sold FROM api_item_hour WHERE t=? AND item_id=300", (_T0 + 3600,)).fetchone() == (10,),
+      f"API: importa fotos guardadas en orden ({_ri})")
+_cx.close()
+
+# retención: api_item_hour de las semanas viejas → api_band_week, y las franjas no cambian
+_rd = _tf.mkdtemp(); _ra = os.path.join(_rd, "r.sqlite")
+_cr = API.open_api(_ra); API.set_house(_cr, 111, "Casa de subastas de la Alianza", realm="R5")
+_base = _ts(2, 9, 23)     # lunes 2/11, semana 45
+_lv = [_au(1, 100, 1, 50, "LONG"), _au(2, 100, 1, 52, "LONG")]
+for _k in range(6):        # cada hora se vende una barata y se publica otra
+    API.ingest(_cr, 111, _base + _k * 3600, _lv)
+    _lv = [_lv[1], _au(10 + _k, 100, 1, 50 + _k % 2, "LONG")]
+for _k in range(3):        # y al día siguiente, otra vez
+    API.ingest(_cr, 111, _base + 86400 + _k * 3600, _lv)
+    _lv = [_lv[1], _au(30 + _k, 100, 1, 50, "LONG")]
+_before = API.band_stats(_cr, 111)
+check(abs(sum(b["hours"] for b in _before[100]) - 7) < 1e-6 and sum(b["gap"] for b in _before[100]) == 0,
+      f"API: un hueco no suma horas medidas a las franjas (solo 5 + 2 intervalos de 1 h) {sum(b['hours'] for b in _before[100])}")
+_nrm = API.rollup_api(_cr, _ts(30, 12), keep_days=14)
+_after = API.band_stats(_cr, 111)
+check(_nrm > 0 and _cr.execute("SELECT COUNT(*) FROM api_item_hour").fetchone()[0] == 0
+      and _cr.execute("SELECT COUNT(*) FROM api_band_week").fetchone()[0] > 0,
+      f"API: las semanas de más de 14 días pasan a api_band_week y se borran ({_nrm})")
+check(_before == _after and _before[100][2]["sold"] > 0,
+      f"API: las franjas dan lo mismo antes y después de resumir ({_before.get(100, [None]*3)[2]} / {_after.get(100, [None]*3)[2]})")
+check(API.rollup_api(_cr, _ts(30, 12), keep_days=14) == 0, "API: resumir dos veces no duplica")
+# nombres de objetos que faltan, con un cliente falso y un límite
+_cr.execute("INSERT OR IGNORE INTO items (item_id) VALUES (101), (102), (103)"); _cr.commit()
+_nn = _FakeNet({"/data/wow/item/100": (200, {}, _js.dumps({"name": "Barra de prueba", "quality": {"type": "UNCOMMON"}, "sell_price": 25}).encode()),
+                "/data/wow/item/101": (200, {}, _js.dumps({"name": "Otra", "quality": {"type": "COMMON"}, "sell_price": 1}).encode())})
+_cn = API.Client(("ID", "S"), fetch=_nn, cache_dir=_tf.mkdtemp())
+_f1 = API.fill_names(_cr, _cn, limit=2)
+check(_f1 == {"asked": 2, "named": 2} or _f1["asked"] == 2, f"API: nombres: respeta el límite ({_f1})")
+check(_cr.execute("SELECT name, quality, vendor_sell FROM items WHERE item_id=100").fetchone() == ("Barra de prueba", 2, 25),
+      "API: nombres: rellena nombre, calidad y precio de venta al vendedor")
+_f2 = API.fill_names(_cr, _cn, limit=10); _f3 = API.fill_names(_cr, _cn, limit=10)
+check(_f3["asked"] == 0, f"API: nombres: lo que no existe (404) no se vuelve a pedir ({_f2}, {_f3})")
+_cr.close()
+_m1 = API.maintenance(_ra, _cn, now=_ts(30, 12), log=lambda *_: None)
+_m2 = API.maintenance(_ra, _cn, now=_ts(30, 18), log=lambda *_: None)
+_m3 = API.maintenance(_ra, _cn, now=_ts(30, 12) + 86400, log=lambda *_: None)
+check(_m1 is not None and _m2 is None and _m3 is not None, f"API: el mantenimiento (resumen y nombres) se hace una vez al día ({_m1}, {_m2}, {_m3})")
+
+# --- el plan, las franjas y Resumen.lua usan la API ---
+_A = H.analyze(_ra, "R5-Alliance")
+_bs = API.band_stats(sqlite3.connect(_ra), 111)[100][2]
+check(_A[100][2]["src"] == "api" and abs(_A[100][2]["gone_cheap_h"] - round((_bs["sold"] + _bs["partial"]) / _bs["hours"], 2)) < 1e-9,
+      f"franjas: con datos suficientes de la API, salen de la API (vendidas por hora) {_A[100][2]}")
+check(H.analyze(arch3, "M")[1][2]["src"] == "obs", "franjas: sin API, siguen saliendo de los escaneos")
+_old = os.path.join(_tf.mkdtemp(), "viejo.sqlite"); _sh0 = __import__("shutil"); _sh0.copy(_ra, _old)
+_co = sqlite3.connect(_old); _co.execute("DROP TABLE api_band_week"); _co.execute("DROP TABLE api_missing"); _co.commit(); _co.close()
+check(isinstance(H.analyze(_old, "R5-Alliance"), dict), "franjas: un archivo con las tablas de la API de una versión anterior se completa solo")
+import shutil as _sh, time as _time
+_vd = _tf.mkdtemp(); _va = os.path.join(_vd, "v.sqlite"); _vp = os.path.join(_vd, "plan.sqlite"); _sh.copy(out, _vp)
+_cv = API.open_api(_va); API.set_house(_cv, 111, "Casa de subastas de la Alianza", market=mk_)
+_now = int(_time.time()); _t = _now - 72 * 3600 + 60     # la última foto, posterior al precio del juego de las pruebas
+_lv = [_au(1, 2589, 1, 30, "LONG"), _au(2, 2589, 1, 31, "LONG")]
+for _k in range(73):       # 3 días, una foto por hora: cada hora se vende una barata y se publica otra
+    API.ingest(_cv, 111, _t + _k * 3600, _lv)
+    _lv = [_lv[1], _au(100 + _k, 2589, 1, 30 + _k % 2, "LONG")]
+_rates, _cov = API.sold_rates(_cv, 111, _now)
+check(_cov >= 3 and abs(_rates[2589] - 24) < 0.01, f"API: vendidas por día (media de 7 días) {_rates.get(2589)} con {_cov} días")
+_cv.close()
+_cp = sqlite3.connect(_va)
+from oroboros_archive import plan_from_archive as _pfa
+_pfa(_cp, _vp); _cp.close()
+_pr = sqlite3.connect(_vp).execute("SELECT min, src, d110 FROM prices WHERE market=? AND item_id=2589", (mk_,)).fetchone()
+check(_pr == (30, "api", 2),f"plan: el precio de ahora es el más reciente (la API, con profundidad) {_pr}")
+_dv = Data(_vp, CAT_TEST, archive=_va)
+_sv = _dv.stats(2589)
+check(abs(_sv["vol"] - 24) < 0.01 and _sv["vol_src"] == "api" and _sv["vol_est"] is True,
+      f"plan: con 3 días de API, las ventas por día salen de la API (estimadas hasta calibrar) {_sv['vol']}, {_sv.get('vol_src')}, {_sv['vol_est']}")
+_rv = os.path.join(_vd, "Resumen.lua")
+from oroboros_summary import write_resumen as _wr
+_cx = API.open_api(_va); _cx.execute("INSERT INTO markets (key) VALUES ('Solo-API-Horde')")
+API.set_house(_cx, 114, "Casa de subastas de la Horda", market="Solo-API-Horde")
+API.ingest(_cx, 114, _now, [_au(1, 2589, 1, 30, "LONG")])
+insert_scan(_cx, mk_, _now - 3600, [(2589, 30, 30, 2, 2, 2)]); _cx.commit(); _cx.close()
+_wr(_va, _rv)
+_lr = LuaRuntime(unpack_returned_tuples=True); _lr.execute(open(_rv, encoding="utf-8").read())
+_sr = _lr.globals().OroborosResumen.markets[mk_][2589]
+check(_sr.split(";")[13] == "24", f"Resumen.lua: lleva las vendidas por día de la API ({_sr})")
+check(_lr.globals().OroborosResumen.markets["Solo-API-Horde"] is None,
+      "Resumen.lua: solo lleva los mercados con datos del juego (la Horda y Aguasnegras de la API, en el panel de escritorio)")
+lua.execute("OroborosResumen = { v = 1, t = 0, markets = { [\"" + ns.MarketKey() + "\"] = { [2589] = [[" + _S + ";24]] } } }")
+_L2 = list(PH.Lines(2589, 120).values())
+check(PH.Parse(_S + ";24").soldDay == 24 and _L2[-1] == "Unas 24 vendidas al día (estimado con la API)", f"panel: enseña las vendidas por día {_L2}")
+check(PH.Parse(_S).soldDay is None, "panel: un Resumen.lua sin ese campo sigue funcionando")
+lua.execute("OroborosResumen = nil")
+
+# --- calibración con el libro (ventas reales del correo) ---
+_kd = _tf.mkdtemp(); _ka = os.path.join(_kd, "k.sqlite"); _kp = os.path.join(_kd, "plan.sqlite"); _sh.copy(out, _kp)
+_ck = API.open_api(_ka); API.set_house(_ck, 111, "Casa de subastas de la Alianza", market=mk_)
+_kt = _ts(21, 10, 23)
+API.ingest(_ck, 111, _kt, [_au(1, 7001, 5, 10, "LONG", True), _au(2, 7002, 1, 100, "LONG"), _au(3, 7002, 1, 500, "LONG")])
+API.ingest(_ck, 111, _kt + 3600, [_au(1, 7001, 2, 10, "LONG", True), _au(2, 7002, 1, 100, "LONG")])   # 7001: 3 compradas; 7002: la cara, cancelada
+_ck.close()
+_cpk = sqlite3.connect(_kp)
+_char = _cpk.execute("SELECT char FROM characters WHERE market=?", (mk_,)).fetchone()[0]
+_cpk.execute("DELETE FROM ledger")
+_cpk.executemany("INSERT INTO ledger VALUES (?,?,?,?,?,?,?,?)", [
+    (_kt + 1800, _char, "SELL", 7001, 2, 10, 20, "mail"),          # dentro: se ve vendida
+    (_kt + 2000, _char, "SELL", 7002, 1, 500, 500, "mail"),        # dentro, pero la estimación la dio por cancelada
+    (_kt - 86400 * 5, _char, "SELL", 7001, 1, 10, 10, "mail"),     # sin fotos de la API: fuera
+    (_kt + 1800, _char, "BUY", 7001, 9, 10, 90, "mail")])          # compras: no cuentan
+_cpk.commit(); _cpk.close()
+_cal = API.calibrate(_ka, _kp, house=111)
+check((_cal["sales"], _cal["units"], _cal["covered"], _cal["outside"]) == (2, 3, 2, 1) and abs(_cal["coverage"] - 2 / 3) < 1e-9,
+      f"calibración: de tus 3 unidades vendidas con fotos, la estimación ve 2 como vendidas {_cal}")
+check(abs(_cal["share"] - 2 / 3) < 1e-9 and any(d["item"] == 7002 and d["cancelled"] == 1 for d in _cal["detail"]),
+      f"calibración: tu parte de lo vendido estimado y el detalle de lo no cubierto ({_cal['share']})")
+check(API.is_calibrated(sqlite3.connect(_ka), 111) is False, "calibración: con pocas ventas o menos del 80 %, las ventas de la API siguen como estimadas")
+
+# --- revisión final: retención con el corte entre dos semanas (domingo 8/11 → lunes 9/11) ---
+_bd = os.path.join(_tf.mkdtemp(), "borde.sqlite")
+_cb = API.open_api(_bd); API.set_house(_cb, 111, "Casa de subastas de la Alianza", realm="R5")
+_lv = [_au(1, 100, 1, 50, "LONG"), _au(2, 100, 1, 52, "LONG")]
+for _k in range(8):
+    API.ingest(_cb, 111, _ts(8, 20, 23) + _k * 3600, _lv)
+    _lv = [_lv[1], _au(200 + _k, 100, 1, 50, "LONG")]
+_b0 = API.band_stats(_cb, 111)[100]
+API.rollup_api(_cb, _ts(9, 0) + 14 * 86400, keep_days=14)      # corta a medianoche del domingo
+_b1 = API.band_stats(_cb, 111)[100]
+check(_b0 == _b1 and abs(sum(b["sold"] for b in _b1) - 7) < 1e-6,
+      f"retención: con el corte entre dos semanas, nada se cuenta dos veces ({sum(b['sold'] for b in _b0)} → {sum(b['sold'] for b in _b1)})")
+_cb.execute("DELETE FROM api_item_hour"); _cb.commit()
+check(API.band_stats(_cb, 111)[100] == _b0, "franjas: salen del resumen que se acumula al meter cada foto (no recorren el detalle)")
+_cb.close()
+# --- revisión final: errores de red que no son OSError no tumban la descarga ---
+import http.client as _hc
+def _boom(exc):
+    def f(url, headers, data=None):
+        if "oauth" in url:
+            return (200, {}, b'{"access_token": "T", "expires_in": 86400}')
+        raise exc
+    return f
+for _exc in (_hc.IncompleteRead(b"x"), EOFError("gzip cortado")):
+    _cx_ = API.Client(("ID", "S"), fetch=API.safe_fetch(_boom(_exc)), cache_dir=_tf.mkdtemp())
+    try:
+        _rr = API.run_once(os.path.join(_tf.mkdtemp(), "e.sqlite"), _cx_, [111], realm="R5", log=lambda *_: None)
+        _okx = _rr[0]["status"] == "error"
+    except Exception as _e:
+        _okx, _rr = False, _e
+    check(_okx, f"descarga: un {type(_exc).__name__} se registra como error y el bucle sigue ({_rr})")
+# --- revisión final: fill_names no deja la escritura abierta mientras pide a la red ---
+_fd = os.path.join(_tf.mkdtemp(), "f.sqlite"); _cf = API.open_api(_fd)
+_cf.execute("INSERT INTO items (item_id) VALUES (1), (2), (3)"); _cf.commit()
+_blocked = []
+def _probe(url, headers, data=None):
+    if "oauth" in url:
+        return (200, {}, b'{"access_token": "T", "expires_in": 86400}')
+    try:
+        _o = sqlite3.connect(_fd, timeout=0); _o.execute("BEGIN IMMEDIATE"); _o.rollback(); _o.close()
+    except sqlite3.OperationalError:
+        _blocked.append(url)
+    return (200, {}, b'{"name": "X"}')
+API.fill_names(_cf, API.Client(("ID", "S"), fetch=_probe, cache_dir=_tf.mkdtemp()), limit=10)
+_cf.close()
+check(not _blocked, f"nombres: otro programa puede escribir en el archivo mientras se piden ({len(_blocked)} bloqueos)")
+
+# --- espera entre descargas ---
+_w = API.wait_after([{"t": _ts(24, 10, 23)}], _ts(24, 10, 30))
+check(_w == API.next_check(_ts(24, 10, 30)) and abs(_w - 55 * 60) < 2, f"espera: con la foto de esta hora, hasta el minuto 25 siguiente ({_w})")
+check(API.wait_after([{"t": _ts(24, 9, 23)}, {"t": _ts(24, 10, 23)}], _ts(24, 10, 30)) == 300, "espera: si falta la foto de una casa, reintenta a los 5 min")
+check(API.wait_after([{"t": _ts(24, 9, 23)}], _ts(24, 10, 56)) == API.next_check(_ts(24, 10, 56)), "espera: pasado el minuto 55 deja de reintentar")
+
+# --- panel de escritorio: servidor local con datos sintéticos (sin red exterior) ---
+import threading as _th, urllib.request as _ur
+import oroboros_panel as PNL
+_pw = _tf.mkdtemp()
+_sh.copy(_va, os.path.join(_pw, "archivo.sqlite")); _sh.copy(_vp, os.path.join(_pw, "oroboros.sqlite"))
+with open(os.path.join(_pw, "plan.json"), "w", encoding="utf-8") as _f:
+    _js.dump({"market": mk_, "marca": "plan-de-prueba"}, _f)
+_st = {"busy": False}
+_srv = PNL.make_server(_pw, port=0, state=_st, wake=lambda: _st.__setitem__("woken", True))
+_port = _srv.server_address[1]
+_thr = _th.Thread(target=_srv.serve_forever, daemon=True); _thr.start()
+def _get(path, method="GET"):
+    req = _ur.Request(f"http://127.0.0.1:{_port}{path}", method=method, data=b"" if method == "POST" else None)
+    with _ur.urlopen(req, timeout=10) as r:
+        body = r.read().decode("utf-8")
+        return _js.loads(body) if r.headers.get("Content-Type", "").startswith("application/json") else body
+check(_srv.server_address[0] == "127.0.0.1", "panel: solo escucha en este PC (127.0.0.1)")
+_e = _get("/api/estado")
+check(any(h["house"] == 111 and h["auctions"] == 2 for h in _e["houses"]), f"panel: estado de las casas ({_e['houses']})")
+_b = _get("/api/buscar?q=2589")
+check(_b and _b[0]["id"] == 2589 and _b[0]["prices"].get("111") == 30, f"panel: buscar por número de objeto, con el precio de cada casa ({_b[:1]})")
+_o = _get("/api/objeto/2589")
+check(len(_o["houses"]["111"]["hourly"]) == 73 and abs(_o["houses"]["111"]["rates"]["sold"] - 24) < 0.01
+      and len(_o["houses"]["111"]["bands"]) == 6 and _o["houses"]["111"]["daily"],
+      f"panel: objeto con precio por hora, por día, franjas y vendidas/día ({len(_o['houses']['111']['hourly'])})")
+_v = _get("/api/ventas?dias=7")
+_v111 = [h for h in _v["houses"] if h["house"] == 111][0]
+check(_v111["top"][0]["id"] == 2589 and abs(_v111["top"][0]["sold"] - 24) < 0.01, f"panel: lo más vendido (estimado) por casa ({_v111['top'][:1]})")
+_k = _get("/api/calibrar")
+check("coverage" in _k[0] and "outside" in _k[0], f"panel: calibración con el libro ({_k})")
+_html = _get("/")
+check("plan-de-prueba" in _html and "/*__PLAN__*/null" not in _html and 'id="v-subasta"' in _html and "const PANEL = true" in _html,
+      "panel: sirve la página del plan con el plan incrustado y las pestañas Subasta y Ventas")
+_lock = sqlite3.connect(os.path.join(_pw, "archivo.sqlite")); _lock.execute("BEGIN IMMEDIATE")
+_lock.execute("INSERT INTO meta VALUES ('bloqueo', '1')")
+try:
+    _e2 = _get("/api/estado"); _ok2 = "houses" in _e2
+except Exception as _ex:
+    _ok2 = False; _e2 = _ex
+_lock.rollback(); _lock.close()
+check(_ok2, f"panel: responde mientras la descarga está escribiendo en el archivo ({str(_e2)[:80]})")
+def _raw(path, method="GET", headers=None):
+    req = _ur.Request(f"http://127.0.0.1:{_port}{path}", method=method, data=b"" if method == "POST" else None, headers=headers or {})
+    try:
+        with _ur.urlopen(req, timeout=10) as r:
+            return r.status
+    except _ur.HTTPError as e:
+        return e.code
+check(_raw("/api/objeto/2589", headers={"Host": "malo.example:80"}) == 403,
+      "panel: rechaza otro nombre de servidor (DNS rebinding: no se leen tu inventario ni tu libro)")
+check(_raw("/api/parar", "POST", {"Origin": "http://malo.example"}) == 403 and _thr.is_alive(),
+      "panel: una web cualquiera no puede parar el panel (Origin distinto)")
+check(_raw("/api/estado", headers={"Host": f"localhost:{_port}"}) == 200, "panel: localhost también vale")
+_get("/api/descargar", "POST")
+check(_st.get("woken"), "panel: «descargar ahora» despierta la descarga")
+_get("/api/parar", "POST")
+_thr.join(5)
+check(not _thr.is_alive(), "panel: «parar» cierra el servidor")
+_plain = open(os.path.join(ROOT, "tools", "planner_ui.html"), encoding="utf-8").read()
+check("/*__PANEL__*/false" in _plain, "plan.html sin panel: las pestañas nuevas dicen que hay que abrir el panel")
+
 print("\nTODO OK" if ok else "\nHAY FALLOS")
 for line in list(G.LOG.values())[-8:]:
     print("   ", line)

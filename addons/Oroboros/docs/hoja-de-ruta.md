@@ -20,6 +20,7 @@ El usuario quiere ganar oro con la subasta de WoW Forever sabiendo **cuándo** c
 | 1 | Modelo de datos | ✅ Hecho (19/11), plan en `docs/planes/2026-11-19-fase1-modelo-de-datos.md` |
 | 2 | Seguimiento de precios al estilo Camel | ✅ Hecho fuera del juego (19/11); falta comprobarlo en el juego. Plan en `docs/planes/2026-11-19-fase2-seguimiento-precios.md` |
 | 3 | Automatización | ✅ Hecho fuera del juego (19/11); falta comprobarlo en el juego. Plan en `docs/planes/2026-11-19-fase3-automatizacion.md` |
+| — | API de Blizzard y panel de escritorio | ✅ Hecho (24/11), plan en `docs/planes/2026-11-23-api-blizzard.md` |
 | 4 | Cálculos avanzados | ⏳ Siguiente, cuando haya un par de semanas de datos |
 
 ## Fase 1: modelo de datos
@@ -108,6 +109,25 @@ Ojo: el beneficio por día de las profesiones nuevas aún usa ventas por día su
 - que los nombres resueltos de los sitios caen donde están las criaturas (si no, el orden x/y de AzerothCore respecto a `UnitPosition` es otro);
 - que los niveles de `tools/gather_skill.json` son los de Forever.
 
+## API de Blizzard y panel de escritorio (hecho el 24/11)
+
+**Qué esperábamos:** leer la subasta sin entrar al juego, cada hora, con la API oficial de Blizzard; usarla para el seguimiento de precios y para estimar ventas; y verlo todo en un panel que se queda abierto. Lo comprobado a mano, en `docs/api-subasta-blizzard.md` (apartado 0); el plan, en `docs/planes/2026-11-23-api-blizzard.md`.
+
+**Hecho:** `tools/oroboros_api.py` (descarga, tablas `api_*`, ventas estimadas por id de subasta, resumen semanal, nombres y calibración con el libro) y `tools/oroboros_panel.py` (descarga cada hora, servidor local y ventana con las pestañas del plan más Subasta y Ventas). El plan, las franjas y `Resumen.lua` usan la API cuando tiene datos. Las 12 fotos de la fase A están en el archivo.
+
+Lo aprendido:
+- Nuestra casa es la **111** (Alianza); el grupo es 111/114/117. La regla no importa. Una foto por hora hacia el minuto 23; `HEAD` no funciona, `If-Modified-Since` sí (304).
+- Una casa grande son ~300 000-390 000 subastas por foto; `api_live` ocupa ~22 MB y el detalle por hora ~18 MB al día.
+- Las «vendidas» estimadas son muy altas (el Paño de lino, decenas de miles al día): seguramente recolocaciones. Hasta calibrarlas con tus ventas del correo (5 ventas y 80 % de cobertura), el plan las trata como estimadas.
+- El panel no puede abrir el archivo para escribir mientras descarga (daba error): lee sin tocar el esquema.
+- `Resumen.lua` con las tres casas pasaba de 2 MB: solo lleva los mercados con datos del juego.
+
+**Por comprobar:**
+1. Abrir el panel con su ventana y mirar las pestañas Subasta y Ventas.
+2. Tras unos días con ventas tuyas, `--calibrar`: si la cobertura es buena pero tu parte es ínfima, la regla de «cancelada» necesita afinarse (por ejemplo, contar como recolocación lo que reaparece al mismo precio o más barato).
+3. Con un personaje de la Horda, que su casa es la 114.
+4. En el juego, que «Unas N vendidas al día» se ve en el panel de precios.
+
 ## Fase 4: cálculos avanzados
 
 **Qué esperamos:** sacar más de los mismos datos. Cada cálculo tiene su propio diseño corto antes de programarlo, cuando haya datos suficientes para comprobar que funciona:
@@ -121,7 +141,8 @@ Ojo: el beneficio por día de las profesiones nuevas aún usa ventas por día su
 ## Ideas para después (fuera de estas fases)
 
 - Alertas de precio («avísame si baja de X»), la otra mitad de Camel.
-- Leer la subasta sin entrar al juego con la API oficial de Blizzard (cada hora, las tres casas, ventas estimadas por subasta). Informe y propuesta en `docs/api-subasta-blizzard.md`; primero hay que comprobar a mano que las rutas de Forever responden.
+- ~~Leer la subasta sin entrar al juego con la API oficial de Blizzard~~: hecho el 24/11 (ver arriba).
+- Apagar el escaneo automático del juego cuando hay foto reciente de la API; comparar precios entre facciones (Aguasnegras); alertas de precio desde el panel.
 - Saber si la subasta se comparte entre facciones (con un personaje de cada una). Si es así, quitar la facción de la clave de mercado.
 
 ## Reglas que no cambian

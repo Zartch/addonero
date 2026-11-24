@@ -40,7 +40,7 @@ CREATE INDEX IF NOT EXISTS observations_item ON observations (item_id);
 CREATE TABLE IF NOT EXISTS daily (
     market_id INTEGER, item_id INTEGER, day TEXT,
     min_low REAL, min_high REAL, mv REAL, qty_max INTEGER,
-    src TEXT,                   -- obs (archivo) > oro (histórico del juego) > atr (Auctionator)
+    src TEXT,                   -- api (API de Blizzard) > obs (archivo) > oro (histórico del juego) > atr (Auctionator)
     t INTEGER,                  -- hora del último dato del día, si se conoce
     PRIMARY KEY (market_id, item_id, day)) WITHOUT ROWID;
 CREATE TABLE IF NOT EXISTS farm_mobs (          -- farmeo medido en el juego: totales por criatura y subzona
@@ -65,7 +65,7 @@ CREATE TABLE IF NOT EXISTS weekly_band (
 def _is_v1(path):
     if not os.path.exists(path):
         return False
-    con = sqlite3.connect(path)
+    con = sqlite3.connect(path, timeout=30)   # el panel y la descarga pueden coincidir
     try:
         cols = [r[1] for r in con.execute("PRAGMA table_info(scans)")]
         return "market" in cols and "item_id" in cols
@@ -79,7 +79,7 @@ def open_archive(path):
     migrate = _is_v1(path)
     if migrate:
         shutil.copy(path, path + ".bak")
-    con = sqlite3.connect(path)
+    con = sqlite3.connect(path, timeout=30)   # el panel y la descarga pueden coincidir
     if migrate:
         with con:
             con.execute("ALTER TABLE scans RENAME TO scans_v1")
@@ -227,7 +227,12 @@ def update_daily(con, db=None):
             a["mv"] = mv
         a["qty"] = max(a["qty"], qty or 0)
         a["t"] = t
-    con.executemany("INSERT OR REPLACE INTO daily VALUES (?,?,?,?,?,?,?,'obs',?)",
+    # la API (src 'api', tools/oroboros_api.py) gana: un día con API no se pisa con el escaneo del juego
+    con.executemany("""INSERT INTO daily VALUES (?,?,?,?,?,?,?,'obs',?)
+                       ON CONFLICT (market_id, item_id, day) DO UPDATE SET
+                         min_low=excluded.min_low, min_high=excluded.min_high, mv=excluded.mv,
+                         qty_max=excluded.qty_max, src='obs', t=excluded.t
+                       WHERE daily.src != 'api'""",
                     [(m, i, d, a["low"], a["high"], a["mv"], a["qty"], a["t"]) for (m, i, d), a in acc.items()])
     for market, m in (_as_dict((db or {}).get("markets")).items()):
         mid = market_id(con, market)
@@ -237,7 +242,7 @@ def update_daily(con, db=None):
                     continue
                 cur = con.execute("SELECT src FROM daily WHERE market_id=? AND item_id=? AND day=?",
                                   (mid, int(item), day)).fetchone()
-                if cur and cur[0] == "obs":
+                if cur and cur[0] in ("obs", "api"):
                     continue
                 con.execute("INSERT OR REPLACE INTO daily VALUES (?,?,?,?,?,?,?,'oro',?)",
                             (mid, int(item), day, h.get("min"), h.get("min"), h.get("mv"), h.get("qty"), h.get("t")))
@@ -322,6 +327,17 @@ def plan_from_archive(con, plan_path):
                          (key, i, mn, mv or mn, q, None, t, None, None, None, None, "atr" if src == "atr" else "oro"))
             plan.execute("INSERT OR IGNORE INTO items (item_id) VALUES (?)", (i,))
             n_price += 1
+        # API de Blizzard: el precio de ahora es el más reciente (su última foto, con profundidad real)
+        import oroboros_api
+        house = oroboros_api.house_for_market(con, key)
+        if house is not None:
+            t_api, latest = oroboros_api.latest_prices(con, house)
+            game_t = {r[0]: r[1] or 0 for r in plan.execute("SELECT item_id, t FROM prices WHERE market=?", (key,))}
+            rows_api = [(key, i, mn, mv, q, n, t_api, d1, d2, d3, d4, "api")
+                        for i, (mn, mv, q, n, d1, d2, d3, d4) in latest.items() if t_api > game_t.get(i, 0)]
+            plan.executemany("INSERT OR REPLACE INTO prices VALUES (?,?,?,?,?,?,?,?,?,?,?,?)", rows_api)
+            plan.executemany("INSERT OR IGNORE INTO items (item_id) VALUES (?)", [(r[1],) for r in rows_api])
+            n_price += len(rows_api)
     names = {r[0]: r[1:] for r in con.execute("SELECT item_id, name, quality FROM items WHERE name IS NOT NULL")}
     for i, (name, q) in names.items():
         plan.execute("UPDATE items SET name = COALESCE(name, ?), quality = COALESCE(quality, ?) WHERE item_id=?", (name, q, i))
