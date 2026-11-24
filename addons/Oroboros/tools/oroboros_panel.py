@@ -153,7 +153,12 @@ def inicio(con, state, work_dir, sv_path=None, now=None, top=5):
         topd["items"] = rows
         topd["calibrated"] = API.is_calibrated(con, h)
         topd["calibration"] = _calib_saved(con, h)
-    return {"now": now, "api": api, "game": game, "plan": plan, "top": topd}
+    # gangas de la última foto de tu casa: lo que ha aparecido muy por debajo de su precio habitual
+    try:
+        gangas = API.bargains(con, houses[0]["house"], now=now) if houses else {"t": None, "items": []}
+    except sqlite3.OperationalError:
+        gangas = {"t": None, "items": []}
+    return {"now": now, "api": api, "game": game, "plan": plan, "top": topd, "bargains": gangas}
 
 
 def buscar(con, q, limit=40):

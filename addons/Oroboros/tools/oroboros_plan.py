@@ -48,6 +48,11 @@ FLIP_MIN_PROFIT = 10000   # menos de 1 oro no merece los clics
 CRAFT_SECONDS = 3         # lo que tarda una fabricación
 MIN_CRAFT_HOUR = 20000    # fabricar por menos de 2 oro a la hora no merece el tiempo
 MIN_CRAFT_PROFIT = MIN_CRAFT_HOUR * CRAFT_SECONDS / 3600      # ≈ 17 cobres por fabricación
+NEUTRAL_MIN_SOLD = 1.0    # Aguasnegras → tu casa: ventas comprobadas al día en tu casa
+NEUTRAL_MIN_PROFIT = 2000 # por objeto, 20 platas
+NEUTRAL_MIN_TRIP = 20000  # el viaje a la subasta neutral compensa a partir de 2 oro en total
+NEUTRAL_MAX_AGE = 3 * 3600  # una foto de Aguasnegras de más de 3 h ya no sirve para ir a comprar
+COOLDOWN_USES_DAY = 2     # un enfriamiento corto no se usa cada hora: cuento con entrar dos veces al día
 
 
 def lost_posts(units, vol):
@@ -148,7 +153,7 @@ class Data:
                 self.api_calibrated = oroboros_api.is_calibrated(acon, house)
             acon.close()
         # variantes de equipo y lista completa de precios de la última foto de la API (fase 5)
-        self.variants, self.ladders = set(), {}
+        self.variants, self.ladders, self.neutral = set(), {}, None
         if archive and os.path.exists(archive) and self.market:
             import oroboros_api
             acon = sqlite3.connect(archive)
@@ -157,6 +162,11 @@ class Data:
                 if house is not None:
                     self.variants = oroboros_api.variant_items(acon, house)
                     self.ladders = oroboros_api.ladders(acon, house)
+                    nh = oroboros_api.neutral_house(acon, house)
+                    if nh and nh[2]:
+                        self.neutral = {"house": nh[0], "name": nh[1], "t": nh[2],
+                                        "ladders": oroboros_api.ladders(acon, nh[0]),
+                                        "variants": oroboros_api.variant_items(acon, nh[0])}
             except sqlite3.OperationalError:
                 pass                                    # archivo sin tablas de la API o sin la columna de variante
             acon.close()
@@ -691,12 +701,12 @@ def select(data, plan, opps, budget, horizon_h):
 # ----------------------------------------------------------------------
 # Reventa (comprar barato lo que alguien ha tirado de precio)
 # ----------------------------------------------------------------------
-def _flip(data, char, item_id, qty, unit, max_buy, sell, conf, why):
+def _flip(data, char, item_id, qty, unit, max_buy, sell, conf, why, min_profit=FLIP_MIN_PROFIT):
     """Una reventa como oportunidad, ya con comisión y depósitos; None si no llega al mínimo."""
     st = data.stats(item_id)
     dep = data.deposit(item_id) * lost_posts(qty, st["vol"])
     profit = sell * (1 - AH_CUT) - unit - dep
-    if profit <= 0 or profit * qty < FLIP_MIN_PROFIT or profit / unit < FLIP_MIN_MARGIN:
+    if profit <= 0 or profit * qty < min_profit or profit / unit < FLIP_MIN_MARGIN:
         return None
     if dep >= 0.02 * sell:
         why = why + [f"Depósito: cuento {money(dep)} perdidos por unidad en republicar lo que no se venda el primer día."]
@@ -781,6 +791,98 @@ def find_flips(data, horizon_h, char):
         if f:
             flips.append(f)
     return flips
+
+
+def proven_sales(data, item_id):
+    """Ventas al día comprobadas en tu casa, o None: las de tus escaneos (lo que desaparece de un día a
+    otro, con 3 días o más) o las de la API cuando ya está calibrada con tus ventas reales. Las ventas
+    supuestas (un 10 % de lo publicado) y las de la API sin calibrar no cuentan."""
+    st = data.stats(item_id)
+    return st["vol"] if st["vol"] and not st["vol_est"] else None
+
+
+def find_neutral(data, horizon_h, char, budget):
+    """Aguasnegras → tu casa: comprar en la subasta neutral lo que allí está más barato y venderlo en la
+    tuya. Al comprar no hay comisión; al vender en tu casa, el 5 % de siempre. Solo materiales apilables
+    (el equipo con sufijo mezcla productos distintos) y solo lo que tiene ventas comprobadas en tu casa.
+    No entra en la ruta: hay que ir a una subasta neutral, así que va en su propia lista."""
+    out = {"house": None, "name": None, "t": None, "stale": False, "items": [], "invest": 0, "profit": 0,
+           "worth": False, "route": "", "budget": budget}
+    nt = data.neutral
+    if not nt:
+        return out
+    out.update({"house": nt["house"], "name": nt["name"], "t": nt["t"],
+                "stale": data.now - nt["t"] > NEUTRAL_MAX_AGE})
+    cands = []
+    for item_id, lad in nt["ladders"].items():
+        own = data.ladders.get(item_id)
+        if not own or item_id in data.variants or item_id in nt["variants"] or data.stack(item_id) <= 1:
+            continue
+        vol = proven_sales(data, item_id)
+        st = data.stats(item_id)
+        if not vol or vol < NEUTRAL_MIN_SOLD or not st["med7"]:
+            continue
+        sell = min(own[0][0] * 0.99, st["med7"])
+        top = sell * (1 - AH_CUT) / (1 + FLIP_MIN_MARGIN)       # lo más caro que aún deja el margen mínimo
+        cap = max(1, int(vol * SELL_SHARE * horizon_h / 24))
+        units, cost, max_buy = 0, 0.0, None
+        for p, q in lad:
+            if p > top or units >= cap:
+                break
+            take = min(q, cap - units)
+            units, cost, max_buy = units + take, cost + p * take, p
+        if not units:
+            continue
+        conf = "media" if vol >= 5 and (st["cv"] or 0) < 0.15 else "baja"
+        f = _flip(data, char, item_id, units, cost / units, max_buy, sell, conf, [
+            f"En Aguasnegras hay {units} a {money(max_buy)} o menos (media {money(cost / units)}); en tu casa lo más "
+            f"barato está a {money(own[0][0])} y su mediana de 7 días es {money(st['med7'])}.",
+            f"Las pones en tu casa a ~{money(sell)}: se venden unas {vol:.0f} al día (comprobado) y cuento con que "
+            "te llevas la mitad.",
+        ], min_profit=NEUTRAL_MIN_PROFIT)
+        if f:
+            f.update({"kind": "neutral", "name": data.name(item_id), "investment": cost})
+            cands.append(f)
+    # primero lo que más rinde por oro; entra lo que cabe en el oro que queda para apuestas
+    cands.sort(key=lambda f: -f["margin"])
+    left = budget
+    for f in cands:
+        f["included"] = f["investment"] <= left
+        if f["included"]:
+            left -= f["investment"]
+    inc = [f for f in cands if f["included"]]
+    out["items"] = sorted(cands, key=lambda f: (not f["included"], -f["profit_total"]))
+    out["invest"] = sum(f["investment"] for f in inc)
+    out["profit"] = sum(f["profit_total"] for f in inc)
+    out["worth"] = out["profit"] >= NEUTRAL_MIN_TRIP and not out["stale"]
+    if inc:
+        gen = time.strftime("%d/%m %H:%M", time.localtime(nt["t"]))
+        lines = [f"# Compras en Aguasnegras (subasta neutral) con {short_char(char)} — foto del {gen}"]
+        lines += [f"BUY {f['out_item']} {f['units']} {f['max_buy']}   # {f['name']}" for f in inc]
+        lines.append("NOTE Vende esto en la subasta de tu facción: saldrá en la ruta del próximo plan.")
+        out["route"] = "\n".join(lines) + "\n"
+    return out
+
+
+def cooldown_groups(data, opps):
+    """Recetas que comparten enfriamiento (catalog.json, cooldown_groups): por personaje solo se puede usar
+    una en cada enfriamiento, así que se queda la que más da y las demás salen con su motivo."""
+    groups = data.catalog.get("cooldown_groups") or {}
+    of = {int(rid): g for g, ids in groups.items() if not g.startswith("_") for rid in ids}
+    best, keep, drop = {}, [], []
+    for o in opps:
+        k = (o.get("char"), of.get(o.get("recipe")))
+        if k[1] and (k not in best or o["profit_total"] > best[k]["profit_total"]):
+            best[k] = o
+    for o in opps:
+        k = (o.get("char"), of.get(o.get("recipe")))
+        if k[1] and best[k] is not o:
+            o["reason"] = (f"Comparte enfriamiento con {best[k]['name']}, que da más "
+                           f"({money(best[k]['profit_total'])} frente a {money(o['profit_total'])}).")
+            drop.append(o)
+        else:
+            keep.append(o)
+    return keep, drop
 
 
 def apply_flip(plan, f):
@@ -872,8 +974,9 @@ def learn_suggestions(data, horizon_h):
         else:
             per_day = (e["vol"] or 0) / r["yield"]
             if r["cooldown_h"]:
-                per_day = min(per_day, 24 / r["cooldown_h"])
+                per_day = min(per_day, 24 / r["cooldown_h"], COOLDOWN_USES_DAY)
             e["per_day"] = per_day
+            e["income"] = bool(r["cooldown_h"])
             e["daily_profit"] = e["profit"] * per_day if e["profit"] > 0 else e["profit"] * per_day
         cost = r.get("learn_cost")
         if cost is None and r.get("source"):
@@ -908,7 +1011,11 @@ def learn_suggestions(data, horizon_h):
         elif dp <= 0:
             verdict.append(f"Hoy no compensa: {e.get('reason', 'pierde dinero')}")
         else:
-            verdict.append(f"≈{money(dp)} al día (vendiendo ~{e['per_day']:.1f}/día con el mercado de hoy).")
+            if e.get("income"):
+                verdict.append(f"Renta: tiene {r['cooldown_h']:g} h de enfriamiento y cada uso deja {money(e['profit'])}: "
+                               f"unos {money(dp)} al día con {e['per_day']:.1f} usos al día.")
+            else:
+                verdict.append(f"≈{money(dp)} al día (vendiendo ~{e['per_day']:.1f}/día con el mercado de hoy).")
             if cost:
                 pb = e["payback_days"]
                 verdict.append(f"Aprenderla cuesta {money(cost)}: se paga en "
@@ -931,6 +1038,20 @@ def learn_suggestions(data, horizon_h):
             verdict.append("El nivel requerido viene de Vanilla: en Forever puede ser otro.")
         e["verdict"] = verdict
         out.append(e)
+    # enfriamiento compartido: las rentas de un mismo grupo no se suman; vale la mejor
+    groups = data.catalog.get("cooldown_groups") or {}
+    of = {int(rid): g for g, ids in groups.items() if not g.startswith("_") for rid in ids}
+    best = {}
+    for e in out:
+        k = (e.get("char"), of.get(e.get("recipe")))
+        if k[1] and e.get("income") and (e.get("daily_profit") or 0) > 0 \
+                and (k not in best or e["daily_profit"] > best[k]["daily_profit"]):
+            best[k] = e
+    for e in out:
+        k = (e.get("char"), of.get(e.get("recipe")))
+        if k in best and e.get("income") and best[k] is not e:
+            e["income_shared"] = best[k]["name"]
+            e["verdict"].append(f"Comparte enfriamiento con {best[k]['name']}, que da más: no se suman, se usa una u otra.")
     out.sort(key=lambda e: (e.get("reach") == "desconocido", e.get("daily_profit") is None,
                             -(e.get("daily_profit") or -1e12)))
     # «si cambiaras de profesión»: solo las mejores, para que la página no se llene de miles de recetas
@@ -1239,6 +1360,8 @@ def build_plan(data, horizon_h=48, budget_pct=0.8, synthetic=False, spec_pct=0.1
     good, bad = [], []
     for e in evaluated:
         (bad if e.get("reason") else good).append(e)
+    good, shared = cooldown_groups(data, good)
+    bad += shared
     for e in good:
         e["kind"] = "craft"
     flips = find_flips(data, horizon_h, richest)
@@ -1315,6 +1438,7 @@ def build_plan(data, horizon_h=48, budget_pct=0.8, synthetic=False, spec_pct=0.1
     ideas = oroboros_ideas.build_ideas(data, spec_budget, buyer, storages, route_buys,
                                        {f["out_item"] for f in flips}, horizon_h, held=set(open_pos), banker=banker)
     ideas["buyer"] = short_char(buyer)
+    neutral = find_neutral(data, horizon_h, buyer, max(0, spec_budget - ideas["invest"]))
     ideas["spec_pct"] = spec_pct
 
     warnings = []
@@ -1385,6 +1509,7 @@ def build_plan(data, horizon_h=48, budget_pct=0.8, synthetic=False, spec_pct=0.1
         "transformations": transformations(data),
         "learn": learn,
         "ideas": ideas,
+        "neutral": neutral,
         "portfolio": portfolio,
         "inventory": views,
         "routes": routes,

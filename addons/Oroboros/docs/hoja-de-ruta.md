@@ -24,7 +24,7 @@ El usuario quiere ganar oro con la subasta de WoW Forever sabiendo **cuándo** c
 | 4 | Cálculos avanzados | ⏳ Cuando haya un par de semanas de datos |
 | 5 | Cálculo fiable del oro (depósito, variantes, reventa por escalones, ventas) | ✅ Hecho fuera del juego (24/11); falta medir el depósito real en el juego |
 | 6 | Catálogo de Forever al día (antes de las bandas del 9/12) | ✅ Hecho (25/11); falta comprobar en el juego el día de reinicio y el vendedor del mercado negro |
-| 7 | Maneras nuevas: Aguasnegras, enfriamientos como renta, gangas en el panel | ⏳ Siguiente |
+| 7 | Maneras nuevas: Aguasnegras, enfriamientos como renta, gangas en el panel | ✅ Hecho fuera del juego (25/11) |
 
 ## Fase 1: modelo de datos
 
@@ -207,6 +207,21 @@ El 24/11 se repasaron todas las maneras de ganar oro (fabricar, transformar, apr
 - **Aguasnegras → tu casa:** el plan propone comprar en la 117 y vender en la tuya solo lo que tiene ventas comprobadas en la tuya (el 24/11 había 327 objetos más baratos después de la comisión, pero son precios mínimos de un mercado pequeño).
 - **Enfriamientos como renta diaria:** «qué aprender» valora las recetas con enfriamiento por lo que dan al día (Arcanita y esencias a Alquimia 275).
 - **Gangas en el panel:** con cada foto, la pestaña Inicio lista lo que ha aparecido muy por debajo de su precio habitual.
+
+**Hecho (25/11).** Plan en `docs/planes/2026-11-25-maneras-nuevas.md`.
+
+- **Aguasnegras → tu casa:** panel propio en la pestaña Ideas, con lo que entra, lo que no cabe y la lista de compras para pegar en la subasta neutral. Con los datos del 24/11 salieron 12 objetos con margen, pero con 1,9 oro para apuestas solo entraban 4 y ganaban 1,6 oro: por debajo de los 2 oro, el plan dice que no compensa el viaje. De los 327 objetos «más baratos» del primer recuento, casi todos se caen al pedir ventas comprobadas y margen.
+- **Enfriamientos:** «qué aprender» marca las transmutaciones como renta diaria. Con precios del 24/11, legionita y arcanita dan unos 11 oro al día (un uso cada 47 h), las mejores de esencias entre 3 y 4, y las de una hora 12 platas con dos usos al día. Piden Alquimia 275.
+- **Gangas:** en la pestaña Inicio del panel. Con los datos del 24/11 salían 13, casi todas consumibles con 30–50 % de descuento y entre 0,5 y 4 oro de diferencia.
+
+**Lo aprendido:**
+- La primera versión de las gangas daba sobre todo equipo y precios de broma: comparaba con una mediana que el propio mercado ya había dejado atrás. La regla que lo arregló es pedir que no haya subastas más viejas a ese precio.
+- La API lleva solo 19 fotos por casa: las ventas de la API aún no llegan a los 3 días, así que las «ventas comprobadas» de Aguasnegras salen hoy de tus escaneos.
+
+**Por comprobar:**
+1. Que comprando en la subasta neutral no hay comisión para el comprador y que la lista `BUY` funciona allí con el addon.
+2. Los enfriamientos de las transmutaciones y si comparten uno solo (al aprender la primera, a Alquimia 225).
+3. Que la tabla de gangas y el panel de Aguasnegras se ven bien en la ventana del panel.
 
 **Descartado con datos:** comprar bajo precio de vendedor (menos de 1 oro), transmutaciones de una hora (5 platas) y pasar mercancía a la otra facción por la casa neutral (15 % de comisión).
 

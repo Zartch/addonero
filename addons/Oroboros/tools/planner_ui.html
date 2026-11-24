@@ -485,7 +485,7 @@ function renderAprender() {
       ? `<div class="gap"><span>Nivel ${l.skill}/${l.skill_req}${l.skill_gap ? ` · faltan ${l.skill_gap}` : " · ya puedes"}</span><div class="bar"><span style="width:${Math.min(100, 100 * l.skill / l.skill_req)}%;${l.skill_gap ? "" : "background:var(--good)"}"></span></div></div>` : "";
     return `<div class="card ${i === 0 && ok ? "top" : ""}">
       <div class="t"><h3>${esc(l.name)}</h3><div class="sub">${esc(l.prof)}${l.char ? " · " + esc(short(l.char)) : ""}</div></div>
-      <div style="display:flex;gap:6px;flex-wrap:wrap">${l.new_profession ? '<span class="pill info">profesión nueva</span>' : ""}${ok ? '<span class="pill good">compensa</span>' : '<span class="pill bad">hoy no</span>'}${l.conf ? confPill(l.conf) : ""}${l.cooldown_h ? `<span class="pill mute">enfriamiento ${l.cooldown_h} h</span>` : ""}</div>
+      <div style="display:flex;gap:6px;flex-wrap:wrap">${l.new_profession ? '<span class="pill info">profesión nueva</span>' : ""}${ok ? '<span class="pill good">compensa</span>' : '<span class="pill bad">hoy no</span>'}${l.conf ? confPill(l.conf) : ""}${l.cooldown_h ? `<span class="pill mute">enfriamiento ${l.cooldown_h} h</span>` : ""}${l.income && ok ? (l.income_shared ? '<span class="pill mute">renta que no se suma</span>' : '<span class="pill info">renta diaria</span>') : ""}</div>
       <div class="big">${l.daily_profit !== null ? money(l.daily_profit, { color: true }) + '<span class="sub"> /día</span>' : "—"}</div>
       <div class="stats"><span>Aprender: <b>${l.learn_cost ? money(l.learn_cost) : "?"}</b></span><span>Se paga en <b>${l.payback_days === null || l.payback_days === undefined ? "—" : l.payback_days < 1 ? "&lt; 1 día" : fmtN(l.payback_days) + " días"}</b></span></div>
       ${gap}
@@ -509,6 +509,20 @@ function renderAprender() {
 
 const RISK = { bajo: "good", medio: "warn", alto: "bad" };
 let ideaChar = null;
+// Aguasnegras → tu casa: lo que está más barato en la subasta neutral y se vende en la tuya
+function neutralHtml(n) {
+  if (!n || !n.house) return "";
+  const inc = n.items.filter(f => f.included);
+  const rows = n.items.map(f => `<tr${f.included ? "" : ' style="opacity:.6"'}><td>${esc(f.name)}</td><td class="n">${fmtN(f.units)}</td><td class="n">${money(f.max_buy)}</td><td class="n">${money(f.sell)}</td><td class="n">${money(f.cost * f.units)}</td><td class="n">${money(f.profit_total, { color: true })}</td><td class="n">${Math.round(f.margin * 100)} %</td><td>${f.included ? "entra" : "no cabe en el oro que queda"}</td></tr>`).join("");
+  const verdict = n.stale ? '<span class="pill bad">foto de hace más de 3 h: no vayas con esta lista</span>'
+    : n.worth ? '<span class="pill good">compensa el viaje</span>' : '<span class="pill mute">hoy no compensa el viaje</span>';
+  return `<div class="panel"><header><h2>Aguasnegras → tu casa</h2></header>
+    <p class="lead">Lo que está más barato en la subasta neutral (${esc(n.name || "")}) que en la tuya, ya con la comisión del 5 % al vender y el depósito. Solo materiales que se apilan y con ventas comprobadas en tu casa. Hay que ir a una subasta neutral, así que no entra en la ruta normal. Usa el oro que queda para apuestas (${money(n.budget)}).</p>
+    <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">${verdict}<span class="sub">${inc.length} objetos · pones ${money(n.invest)} · ganarías ${money(n.profit)} · mínimo para el viaje: 2 oro</span></div>
+    ${rows ? `<div class="tablewrap"><table><thead><tr><th>Objeto</th><th class="n">Unidades</th><th class="n">Compra hasta</th><th class="n">Vende a</th><th class="n">Pones</th><th class="n">Ganancia</th><th class="n">Margen</th><th></th></tr></thead><tbody>${rows}</tbody></table></div>` : '<p class="sub">Ahora no hay nada que deje margen.</p>'}
+    ${n.route ? `<div class="route"><pre style="margin:0;white-space:pre-wrap">${esc(n.route)}</pre></div><div class="filters"><button class="btn" id="copyn">Copiar compras de Aguasnegras</button><span class="sub" id="copiedn" role="status"></span></div>` : ""}</div>`;
+}
+
 // Datos de Forever que el catálogo da por ciertos: cada uno con su marca y su fuente
 function factsHtml(facts) {
   if (!facts || !facts.length) return "";
@@ -552,9 +566,15 @@ function renderIdeas() {
     ${r ? `<div class="panel"><header><h2>Ruta de las apuestas</h2><div class="route-tabs">${keys.length > 1 ? `<button class="seg" aria-pressed="${ideaChar === "_todo"}" data-ich="_todo">Todos (pegar una vez)</button>` : ""}${keys.map(k => `<button class="seg" aria-pressed="${k === ideaChar}" data-ich="${esc(k)}">${esc(I.routes[k].short)}</button>`).join("")}</div></header>
       <p class="lead">Va aparte de la ruta normal: si quieres hacer estas apuestas, pégala en el addon con <b>Añadir a la ruta</b> para no borrar la que ya tengas. Puedes quitar las líneas de las que no te convenzan.</p>
       <div class="route">${lines}</div><div class="filters"><button class="btn" id="copyi">Copiar ruta de apuestas</button><span class="sub" id="copiedi" role="status"></span></div></div>` : ""}
+    ${neutralHtml(PLAN.neutral)}
     <div class="panel"><header><h2>Otras ideas que no entran hoy</h2></header>
       <div class="tablewrap"><table><thead><tr><th>Objeto</th><th>Tipo</th><th>Riesgo</th><th class="n">Entrada</th><th class="n">Objetivo</th><th class="n">Ganancia</th><th class="n">Plazo</th><th>Por qué no entra</th></tr></thead><tbody>${rows}</tbody></table></div></div>`;
   $("#v-ideas").querySelectorAll("[data-ich]").forEach(b => b.onclick = () => { ideaChar = b.dataset.ich; renderIdeas(); });
+  const cn = $("#copyn");
+  if (cn) cn.onclick = async () => {
+    try { await navigator.clipboard.writeText(PLAN.neutral.route); $("#copiedn").textContent = "Copiada. Pégala en el addon en la subasta neutral."; }
+    catch (e) { $("#copiedn").textContent = "Tu navegador no deja copiar: selecciona el texto y cópialo a mano."; }
+  };
   const cb = $("#copyi");
   if (cb) cb.onclick = async () => {
     try { await navigator.clipboard.writeText(r.text); $("#copiedi").textContent = "Copiada. Pégala en el addon con Ctrl+V."; }
@@ -874,6 +894,11 @@ async function loadInicio() {
   const topList = calOk && top.items.length
     ? `<div class="tablewrap"><table><thead><tr><th>Objeto</th><th class="n">Vendidas/día</th><th class="n">Precio por unidad</th></tr></thead><tbody>${top.items.map(x => `<tr><td style="color:${qualTxt(x.quality)}">${esc(x.name)}</td><td class="n">${fmtN(x.sold)}</td><td class="n">${money(x.min)}</td></tr>`).join("")}</tbody></table></div>`
     : '<p class="sub">Las ventas que estima la API aún no se han comprobado con tus ventas reales, así que aquí no se muestran: las primeras cifras eran recolocaciones, no ventas. Se comprueban solas cada día cuando vendes algo; mientras tanto están en la pestaña Ventas.</p>';
+  const bg = d.bargains || { items: [] };
+  const bgList = bg.items.length
+    ? `<div class="tablewrap"><table><thead><tr><th>Objeto</th><th class="n">Unidades</th><th class="n">Precio</th><th class="n">Habitual</th><th class="n">Descuento</th><th class="n">Diferencia</th></tr></thead><tbody>${bg.items.map(x => `<tr><td style="color:${qualTxt(x.quality)}">${esc(x.name)}</td><td class="n">${fmtN(x.qty)}</td><td class="n">${money(x.price)}</td><td class="n">${money(x.usual)}</td><td class="n">−${Math.round(x.discount * 100)} %</td><td class="n">${money(x.saving)}</td></tr>`).join("")}</tbody></table></div>
+       <p class="sub">Subastas nuevas de la última foto, al menos un 30 % por debajo de la mediana de 7 días del objeto y sin otras más viejas a ese precio. «Diferencia» es lo que quedaría revendiéndolo todo al precio habitual, quitada la comisión: un tope, no una promesa. Las unidades no pasan de la mitad de lo que se vende al día, y esas ventas son estimadas. Cuando llegues al juego puede que ya no estén.</p>`
+    : '<p class="sub">En la última foto no ha aparecido nada un 30 % por debajo de su precio habitual.</p>';
   el.innerHTML = `<div class="panel ini">
     <div class="ini-top">
       <span class="lbl">Próxima descarga</span><span class="ini-box">${nextTxt}</span>
@@ -894,6 +919,7 @@ async function loadInicio() {
           <div class="tile"><span class="k">Inversión</span><span class="v">${money(p.investment)}</span></div>
           <div class="tile"><span class="k">Te sobra, a la venta</span><span class="v">${money(p.stock_sale)}</span><span class="s">bolsas y banco · plan ${fmtAgo(p.generated, now)}</span></div>
         </div>` : '<p class="sub">Aún no hay plan.</p>'}</div>
+        <div class="ini-sep" style="display:grid;gap:6px"><div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap"><h3>Gangas de la última foto</h3><span class="sub">${bg.t ? fmtAgo(bg.t, now) : ""}</span></div>${bgList}</div>
         <div class="ini-sep" style="display:grid;gap:6px"><div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap"><h3>Lo más vendido en tu casa (24 h)</h3>${calTxt}</div>${topList}</div>
       </div>
     </div></div>`;

@@ -453,6 +453,8 @@ Cómo decide:
 - **Riesgo:** de ese 30 %, lo que no es lote de prueba (sobre todo las reventas) usa como mucho la mitad, y el resto queda para lotes de prueba de fabricación.
 - **Ventas por día:** se estiman con las bajadas de cantidad publicada entre un día y el siguiente.
 - **Margen mínimo:** 8 % sobre el coste. Por debajo, la receta sale como no rentable, con el motivo.
+- **Aguasnegras → tu casa:** lista aparte en la pestaña Ideas. Compra en la subasta neutral (sin comisión para el comprador) lo que deja al menos un 15 % vendiéndolo en tu casa por debajo de lo más barato de allí y sin pasar de su mediana de 7 días. Solo materiales que se apilan y con ventas comprobadas en tu casa; como mucho, la mitad de lo que se vende en el horizonte. Usa el oro que queda para apuestas. Dice si compensa el viaje (2 oro o más, con una foto de menos de 3 h) y da las líneas `BUY` para pegar allí.
+- **Enfriamientos:** una receta con enfriamiento se valora en «qué aprender» como renta diaria: beneficio por uso × usos al día, con un máximo de 2 usos al día. Las que comparten enfriamiento (`cooldown_groups` del catálogo) no se suman: en la ruta, por personaje se queda la que más da.
 - **Mínimo por fabricación:** 2 oro a la hora, a 3 s por fabricación (unos 17 cobres cada una). Por debajo, la receta sale como no rentable: no merece el tiempo.
 - **Confianza** (alta, media, baja): según la volatilidad, las ventas por día y los días de histórico.
 - **Qué entra en la ruta:** primero lo que más rinde por cada oro invertido, ponderado por la confianza, hasta agotar el presupuesto.
@@ -549,9 +551,11 @@ Completa lo que el juego no da al addon, con **datos reales de Forever** (revisa
 | `facts` | Lo que el catálogo da por cierto de Forever: `text`, `source` (fuente), `verified` (comprobado en nuestros datos o en una nota oficial) y `how` (cómo se comprobó). La pestaña Ideas los enseña con su marca. |
 | `price_caps` | Techo de precio por itemID: `cap` (en cobre), `note`, `source` y `verified`. Si un vendedor da el objeto a precio fijo, el objetivo de una idea no pasa de ahí. Trae Loto negro y Cristal Arcano a 50 oro (mercado negro, sin comprobar). |
 | `server` | `raid_reset_weekday`: día del reinicio semanal de las bandas (lunes = 0; trae 2, miércoles, sin comprobar). `launch`: apertura del servidor, el 4/11/2026. `low_level_max_ilvl`: nivel de objeto hasta el que un material cuenta como de nivel bajo (40). `progression_horizon_days`: plazo de las apuestas de progresión (21). |
+| `recipes` | Enfriamiento de recetas en horas (`cooldown_h`), con `source` y `verified`. Trae las transmutaciones: arcanita y legionita 47 h, esencias 23 h, hierro a oro y mitril a veraplata 1 h (sin comprobar). También admite `skill`, `learn_cost` y `learn_note`, que mandan sobre ProfessionDB. |
+| `cooldown_groups` | Recetas que comparten enfriamiento, por grupo. Trae `transmutar` (sin confirmar en Forever). |
 | `events` | Fechas que mueven la demanda: `name`, `date`, `items`, `uplift` (multiplicador supuesto) y `note`. Trae la apertura del 9/12/2026 (Barrow Deeps 10, Hyjal Summit 20 y Onyxia's Lair 40) en tres eventos: pociones y hierbas, elixires (con los 13 nuevos de nivel 55) y frascos (con los cuatro naturales); y aparte la protección contra el fuego para Onyxia. Un objeto va en un solo evento. Las dos tandas de 2027 se añadirán cuando tengan fecha. |
 | `progression` | Por itemID de nivel bajo: `note` (para qué se sigue usando a nivel 60) y `scenario` (multiplicador supuesto). |
-| `recipes`, `professions` | Opcionales. Ya no hacen falta con ProfessionDB, que da nivel, origen y coste de cada receta. Si se ponen, `recipes` manda sobre ProfessionDB (`skill`, `learn_cost`, `cooldown_h`, `learn_note`), y `professions` se usa solo si ProfessionDB no está instalada. |
+| `professions` | Opcional. Recetas de profesiones que no tienes; se usa solo si ProfessionDB no está instalada. |
 
 Los multiplicadores (`uplift`, `scenario`) son suposiciones: el planificador los usa como escenario con stop, nunca como predicción. Las fechas y los objetos son reales.
 

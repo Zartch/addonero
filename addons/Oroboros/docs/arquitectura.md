@@ -63,6 +63,8 @@ Objetivo: ganar oro en **WoW Forever** con un addon de subasta + un planificador
 - Tamaño: mínimo entre 35 % del presupuesto de especulación, lo que hay a ≤ mín ×1,10, el 25 % de las ventas de una semana y los huecos libres (máx. 40 % por idea). Se reparte primero a riesgo bajo.
 - Salida: fecha y precio objetivo, precio de equilibrio (entrada ÷ 0,95) y stop a −20 %.
 - Multiplicadores de evento y progresión en `catalog.json` son **suposiciones** editables.
+- Aguasnegras → tu casa (`find_neutral`): lista aparte de la ruta, porque se compra en otra subasta. Solo apilables con ventas comprobadas en tu casa.
+- Gangas (`oroboros_api.bargains`): subastas nuevas de la última foto un 30 % bajo la mediana de 7 días, sin otras más viejas a ese precio. Las enseña la pestaña Inicio del panel.
 
 ## Cartera
 - Entrada = media de las compras del libro desde un día antes del `HOLD`; si no hay (fabricado o comprado sin addon), la prevista.

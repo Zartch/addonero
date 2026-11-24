@@ -61,6 +61,16 @@
       "text": "Lista de consumibles que piden las bandas y cuánto suben en la semana de apertura.",
       "verified": false,
       "source": "https://timesaver.gg/blog/wow-forever-raid-stockpile"
+    },
+    {
+      "text": "Transmutar arcanita y legionita tienen 47 h de enfriamiento; las de esencias, 23 h; hierro a oro y mitril a veraplata, 1 h.",
+      "verified": false,
+      "source": "https://timesaver.gg/blog/wow-forever-profession-cooldowns-gold"
+    },
+    {
+      "text": "Todas las transmutaciones comparten un solo enfriamiento.",
+      "verified": false,
+      "source": "Así era en el juego clásico; la guía dice que en Forever está sin confirmar. https://timesaver.gg/blog/wow-forever-profession-cooldowns-gold"
     }
   ],
   "price_caps": {
@@ -155,6 +165,92 @@
       "note": "Onyxia es un encuentro de fuego: la Poción de protección de Fuego superior suele ser la que más sube. El multiplicador es una suposición."
     }
   ],
+  "recipes": {
+    "_nota": "Enfriamientos de recetas, en horas (cooldown_h). El juego solo dice cuánto falta cuando ya la has usado, y de una receta sin aprender no dice nada. Manda sobre lo que dé el juego. Sin comprobar en el juego.",
+    "17187": {
+      "cooldown_h": 47,
+      "source": "https://timesaver.gg/blog/wow-forever-profession-cooldowns-gold",
+      "verified": false
+    },
+    "1317279": {
+      "cooldown_h": 47,
+      "source": "https://timesaver.gg/blog/wow-forever-profession-cooldowns-gold",
+      "verified": false
+    },
+    "17559": {
+      "cooldown_h": 23,
+      "source": "https://timesaver.gg/blog/wow-forever-profession-cooldowns-gold",
+      "verified": false
+    },
+    "17560": {
+      "cooldown_h": 23,
+      "source": "https://timesaver.gg/blog/wow-forever-profession-cooldowns-gold",
+      "verified": false
+    },
+    "17561": {
+      "cooldown_h": 23,
+      "source": "https://timesaver.gg/blog/wow-forever-profession-cooldowns-gold",
+      "verified": false
+    },
+    "17562": {
+      "cooldown_h": 23,
+      "source": "https://timesaver.gg/blog/wow-forever-profession-cooldowns-gold",
+      "verified": false
+    },
+    "17563": {
+      "cooldown_h": 23,
+      "source": "https://timesaver.gg/blog/wow-forever-profession-cooldowns-gold",
+      "verified": false
+    },
+    "17564": {
+      "cooldown_h": 23,
+      "source": "https://timesaver.gg/blog/wow-forever-profession-cooldowns-gold",
+      "verified": false
+    },
+    "17565": {
+      "cooldown_h": 23,
+      "source": "https://timesaver.gg/blog/wow-forever-profession-cooldowns-gold",
+      "verified": false
+    },
+    "17566": {
+      "cooldown_h": 23,
+      "source": "https://timesaver.gg/blog/wow-forever-profession-cooldowns-gold",
+      "verified": false
+    },
+    "25146": {
+      "cooldown_h": 23,
+      "source": "https://timesaver.gg/blog/wow-forever-profession-cooldowns-gold",
+      "verified": false
+    },
+    "11479": {
+      "cooldown_h": 1,
+      "source": "https://theforeverguides.com/professions/transmutes/",
+      "verified": false
+    },
+    "11480": {
+      "cooldown_h": 1,
+      "source": "https://theforeverguides.com/professions/transmutes/",
+      "verified": false
+    }
+  },
+  "cooldown_groups": {
+    "_nota": "Recetas que comparten enfriamiento: por personaje solo se usa una cada vez, y el plan se queda con la que más da. Que todas las transmutaciones lo compartan es lo que pasaba en el juego clásico; en Forever está sin confirmar, y se supone que sí para no contar dos veces la misma renta.",
+    "transmutar": [
+      17187,
+      1317279,
+      25146,
+      11479,
+      11480,
+      17559,
+      17560,
+      17561,
+      17562,
+      17563,
+      17564,
+      17565,
+      17566
+    ]
+  },
   "progression": {
     "_nota": "Tesis para materiales de nivel bajo: para qué se siguen usando con personajes a nivel 60 y un escenario de subida. Son suposiciones, no datos: el planificador las usa como escenario con stop, nunca como predicción.",
     "3820": {

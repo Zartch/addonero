@@ -702,6 +702,96 @@ def ladders(con, house):
     return dict(out)
 
 
+def neutral_house(con, house):
+    """Casa neutral (Aguasnegras) del mismo reino que `house`: (casa, nombre, hora de su última foto), o None."""
+    r = con.execute("SELECT m.key FROM api_houses h JOIN markets m USING (market_id) WHERE h.house=?", (house,)).fetchone()
+    if not r or "-" not in r[0]:
+        return None
+    n = con.execute("""SELECT h.house, h.name FROM api_houses h JOIN markets m USING (market_id)
+                       WHERE m.key=? AND h.house<>?""", (r[0].rsplit("-", 1)[0] + "-Neutral", house)).fetchone()
+    if not n:
+        return None
+    return n[0], n[1], con.execute("SELECT MAX(t) FROM api_snaps WHERE house=?", (n[0],)).fetchone()[0]
+
+
+BARGAIN_DISCOUNT = 0.30          # ganga: al menos un 30 % por debajo de su precio habitual…
+BARGAIN_MIN_SAVING = 5000        # …y 50 platas de diferencia en total, ya sin la comisión
+BARGAIN_MIN_DAYS = 3             # días de precio para saber cuál es el habitual
+BARGAIN_CUT = 0.05
+BARGAIN_SHARE = 0.5              # de lo que se vende al día, lo que cuento que te llevas tú
+
+
+def bargains(con, house, now=None, top=10):
+    """Gangas de la última foto: subastas que han aparecido en ella (first_t = la foto) muy por debajo del
+    precio habitual del objeto (mediana del valor de mercado de los 7 días anteriores). No cuenta si ya
+    había subastas viejas a ese precio (entonces es el precio nuevo, no una ganga), ni el equipo con
+    variantes (mientras no haya variantes guardadas, ningún objeto que no se apile), ni lo que no tiene
+    ventas estimadas. La cantidad no pasa de la mitad de lo que se vende al día. Devuelve {"t", "items": [{id, name, quality, price, max, qty,
+    usual, discount, saving}]}, de más a menos diferencia. `saving` es lo que quedaría al revender todo
+    al precio habitual, quitando la comisión: un tope, no una promesa."""
+    t = con.execute("SELECT MAX(t) FROM api_snaps WHERE house=?", (house,)).fetchone()[0]
+    out = {"t": t, "items": []}
+    mk = con.execute("SELECT market_id FROM api_houses WHERE house=?", (house,)).fetchone()
+    if t is None or not mk:
+        return out
+    fresh = defaultdict(list)
+    for item, price, qty in con.execute(
+            """SELECT item_id, price, SUM(qty) FROM api_live WHERE house=? AND first_t=? AND price IS NOT NULL
+               GROUP BY item_id, price ORDER BY item_id, price""", (house, t)):
+        fresh[item].append((price, qty))
+    if not fresh:
+        return out
+    hist = defaultdict(list)
+    for item, mv in con.execute("SELECT item_id, mv FROM daily WHERE market_id=? AND day>=? AND day<? AND mv IS NOT NULL",
+                                (mk[0], _day(t - 7 * 86400), _day(t))):
+        hist[item].append(mv)
+    variants = variant_items(con, house)
+    has_var = con.execute("SELECT 1 FROM api_var WHERE house=? LIMIT 1", (house,)).fetchone() is not None
+    single = set() if has_var else {r[0] for r in con.execute(
+        f"SELECT item_id FROM items WHERE COALESCE(stack, 1) <= 1 AND item_id IN ({','.join('?' * len(fresh))})",
+        list(fresh))}
+    old_min = dict(con.execute(
+        "SELECT item_id, MIN(price) FROM api_live WHERE house=? AND first_t<? AND price IS NOT NULL GROUP BY item_id",
+        (house, t)))
+    sold, _ = sold_rates(con, house, now or t)
+    rows = []
+    for item, lad in fresh.items():
+        h = sorted(hist.get(item, ()))
+        if len(h) < BARGAIN_MIN_DAYS or item in variants or item in single or sold.get(item, 0) <= 0:
+            continue
+        usual = h[len(h) // 2] if len(h) % 2 else (h[len(h) // 2 - 1] + h[len(h) // 2]) / 2
+        limit = usual * (1 - BARGAIN_DISCOUNT)
+        if item in old_min and old_min[item] <= limit:
+            continue                                   # ya estaba así de barato antes de esta foto
+        cap = max(1, int(sold[item] * BARGAIN_SHARE))
+        cheap = []
+        for p, q in lad:
+            if p > limit or cap <= 0:
+                break
+            cheap.append((p, min(q, cap)))
+            cap -= q
+        qty = sum(q for _, q in cheap)
+        if not qty:
+            continue
+        cost = sum(p * q for p, q in cheap)
+        saving = usual * (1 - BARGAIN_CUT) * qty - cost
+        if saving < BARGAIN_MIN_SAVING:
+            continue
+        rows.append({"id": item, "price": cost / qty, "max": cheap[-1][0], "qty": qty, "usual": usual,
+                     "discount": 1 - cost / qty / usual, "saving": saving, "sold": sold.get(item)})
+    rows.sort(key=lambda r: -r["saving"])
+    rows = rows[:top]
+    if rows:
+        names = {i: (n, q) for i, n, q in con.execute(
+            f"SELECT item_id, name, quality FROM items WHERE item_id IN ({','.join('?' * len(rows))})",
+            [r["id"] for r in rows])}
+        for r in rows:
+            n, q = names.get(r["id"], (None, None))
+            r["name"], r["quality"] = n or f"objeto {r['id']}", q
+    out["items"] = rows
+    return out
+
+
 def latest_prices(con, house):
     """Precio de la última foto: (t, {objeto: (min, mv, qty, n, d110, d125, d150, d200)})."""
     t = con.execute("SELECT MAX(t) FROM api_snaps WHERE house=?", (house,)).fetchone()[0]

@@ -1907,6 +1907,90 @@ check('id="v-inicio"' in _plain and '[["inicio", "Inicio"]].concat(API_VIEWS)' i
       "panel: la pestaña Inicio existe y es la que se abre primero con el panel")
 check("/*__PANEL__*/false" in _plain,"plan.html sin panel: las pestañas nuevas dicen que hay que abrir el panel")
 
+# ---- Fase 7: Aguasnegras → tu casa, enfriamientos como renta y gangas ----
+_d7 = _tf.mkdtemp(); _c7 = API.open_api(os.path.join(_d7, "n.sqlite"))
+API.set_house(_c7, 111, "Casa de subastas de la Alianza", realm="R5")
+check(API.neutral_house(_c7, 111) is None, "Aguasnegras: sin casa neutral en el archivo, nada")
+API.set_house(_c7, 117, "Casa de subastas de Aguasnegras", realm="R5")
+_m = lambda i, item, q, price: _au(i, item, q, price, "LONG", mat=True)
+API.ingest(_c7, 117, _T0, [_m(1, 900, 5, 40)])
+check(API.neutral_house(_c7, 111) == (117, "Casa de subastas de Aguasnegras", _T0) and API.neutral_house(_c7, 117) is None,
+      f"Aguasnegras: la casa neutral del mismo reino y su última foto ({API.neutral_house(_c7, 111)})")
+# gangas: tres días a 10 000, una hora antes dos subastas, y en la última foto aparece una a mitad de precio
+for _k in (3, 2, 1):
+    API.ingest(_c7, 111, _T0 - _k * 86400, [_m(10 * _k, 900, 10, 10000), _m(10 * _k + 1, 901, 10, 10000), _m(10 * _k + 2, 902, 10, 10000)])
+API.ingest(_c7, 111, _T0 - 3600, [_m(50, 900, 10, 10000), _m(51, 900, 10, 10000), _m(52, 901, 10, 10000), _m(53, 901, 10, 5000),
+                                   _m(54, 902, 10, 10000), _m(55, 902, 10, 10000)])
+API.ingest(_c7, 111, _T0, [_m(51, 900, 10, 10000), _m(60, 900, 4, 5000),          # 900: aparece una ganga
+                           _m(53, 901, 10, 5000), _m(61, 901, 4, 5000),           # 901: ya había una vieja a ese precio
+                           _m(55, 902, 10, 10000), _m(62, 902, 4, 9000)])         # 902: solo un 10 % más barata
+_c7.execute("UPDATE items SET stack=20, name='Mena de prueba' WHERE item_id IN (900, 901, 902)")
+_bg = API.bargains(_c7, 111)
+check([r["id"] for r in _bg["items"]] == [900] and _bg["t"] == _T0, f"gangas: solo lo que aparece un 30 % bajo su precio habitual, sin viejas a ese precio ({[r['id'] for r in _bg['items']]})")
+_b0 = _bg["items"][0] if _bg["items"] else {}
+check(_b0.get("qty") == 4 and _b0.get("usual") == 10000 and abs(_b0.get("discount", 0) - 0.5) < 1e-9
+      and abs(_b0.get("saving", 0) - (10000 * 0.95 * 4 - 20000)) < 1e-6 and _b0.get("name") == "Mena de prueba",
+      f"gangas: unidades, precio habitual, descuento y diferencia sin la comisión ({_b0})")
+_c7.execute("UPDATE items SET stack=1 WHERE item_id=900")
+check(API.bargains(_c7, 111)["items"] == [], "gangas: sin variantes guardadas, lo que no se apila no cuenta (puede ser equipo con sufijo)")
+_c7.execute("INSERT INTO api_var VALUES (111, 55, '7')")
+check(len(API.bargains(_c7, 111)["items"]) == 1, "gangas: con variantes guardadas, el equipo de una sola variante sí cuenta")
+check("bargains" in _ii and "items" in _ii["bargains"], "panel: Inicio trae las gangas de la última foto")
+
+# Aguasnegras → tu casa (planificador)
+def _n7(neutral_lad, own=((1000, 50),), age=0, variants=(), stack=20):
+    dd = _f5(ladder=list(own))
+    dd.items[777777]["stack"] = stack
+    dd.neutral = {"house": 117, "name": "Aguasnegras", "t": dd.now - age, "ladders": {777777: list(neutral_lad)}, "variants": set(variants)}
+    return dd
+_ch7 = "Zartbank-ForeverPvE"
+_nt = _OP.find_neutral(_n7([(400, 5), (500, 5), (900, 10)]), 48, _ch7, 10 ** 6)
+_f7 = _nt["items"][0] if _nt["items"] else {}
+check(len(_nt["items"]) == 1 and _f7.get("units") == 10 and _f7.get("max_buy") == 500 and abs(_f7.get("cost", 0) - 450) < 1e-6
+      and abs(_f7.get("sell", 0) - 990) < 1e-6 and _f7.get("included") and _nt["invest"] == 4500,
+      f"Aguasnegras: compra allí lo que deja margen y lo vende bajo lo más barato de tu casa ({_f7.get('units')}, {_f7.get('max_buy')}, {_f7.get('sell')})")
+check("BUY 777777 10 500" in _nt["route"] and not _nt["worth"] and not _nt["stale"],
+      "Aguasnegras: lista de compras aparte, y con menos de 2 oro dice que no compensa el viaje")
+_np, _ne = ns.Queue.Parse(_nt["route"])
+check(_ne is not None and len(list(_ne.values())) == 0 and len(list(_np.values())) >= 1, f"Aguasnegras: el addon entiende la lista de compras ({_ne and list(_ne.values())}, {_np and len(list(_np.values()))}, {_nt.get('route')!r})")
+_nb = _OP.find_neutral(_n7([(400, 5), (500, 5)]), 48, _ch7, 0)
+check(len(_nb["items"]) == 1 and not _nb["items"][0]["included"] and _nb["route"] == "" and _nb["profit"] == 0,
+      "Aguasnegras: sin oro para apuestas no entra nada")
+check(_OP.find_neutral(_n7([(400, 5)], variants=[777777]), 48, _ch7, 10 ** 6)["items"] == []
+      and _OP.find_neutral(_n7([(400, 5)], stack=1), 48, _ch7, 10 ** 6)["items"] == []
+      and _OP.find_neutral(_n7([(900, 5)]), 48, _ch7, 10 ** 6)["items"] == [],
+      "Aguasnegras: ni equipo con variantes, ni lo que no se apila, ni lo que no deja margen")
+check(_OP.find_neutral(_n7([(400, 5), (500, 5)], age=4 * 3600), 48, _ch7, 10 ** 6)["stale"],
+      "Aguasnegras: con una foto de más de 3 h avisa de que la lista está vieja")
+_dn = _n7([(400, 5), (500, 5)])
+_dn.history[777777] = []; _dn._stats = {}
+check(_OP.proven_sales(_dn, 777777) is None and _OP.find_neutral(_dn, 48, _ch7, 10 ** 6)["items"] == [],
+      "Aguasnegras: sin ventas comprobadas en tu casa no se propone")
+check(_OP.find_neutral(_f5(), 48, _ch7, 10 ** 6)["house"] is None and plan["neutral"]["items"] == [],
+      "Aguasnegras: sin fotos de la casa neutral, la lista sale vacía")
+
+# enfriamiento compartido y renta diaria
+class _DC:
+    catalog = {"cooldown_groups": {"_nota": "x", "transmutar": [1, 2]}}
+_o7 = [{"char": "a", "recipe": 1, "name": "A", "profit_total": 10}, {"char": "a", "recipe": 2, "name": "B", "profit_total": 30},
+       {"char": "a", "recipe": 3, "name": "C", "profit_total": 5}, {"char": "b", "recipe": 1, "name": "A", "profit_total": 10}]
+_k7, _x7 = _OP.cooldown_groups(_DC, _o7)
+check([o["name"] for o in _k7] == ["B", "C", "A"] and len(_x7) == 1 and "Comparte enfriamiento con B" in _x7[0]["reason"],
+      "enfriamiento compartido: por personaje se queda la receta que más da; las demás, con su motivo")
+_cd_real = {k: v for k, v in _cat_real.get("recipes", {}).items() if not k.startswith("_")}
+check(_cd_real and all(k.isdigit() and v.get("cooldown_h", 0) > 0 and v.get("source") and isinstance(v.get("verified"), bool)
+                       for k, v in _cd_real.items())
+      and all(str(r) in _cd_real for g, ids in _cat_real["cooldown_groups"].items() if not g.startswith("_") for r in ids),
+      "catálogo: cada enfriamiento lleva fuente y marca, y las recetas de un grupo tienen enfriamiento")
+_inc = [e for e in plan["learn"] if e.get("cooldown_h")]
+check(_inc and all(e.get("income") for e in _inc if "profit" in e)
+      and all(e["per_day"] <= _OP.COOLDOWN_USES_DAY and any(v.startswith("Renta:") for v in e["verdict"])
+              for e in _inc if (e.get("daily_profit") or 0) > 0),
+      f"qué aprender: las recetas con enfriamiento se valoran como renta diaria ({[(e['name'], e.get('daily_profit')) for e in _inc]})")
+_ui7 = open(os.path.join(ROOT, "tools", "planner_ui.html"), encoding="utf-8").read()
+check("neutralHtml(PLAN.neutral)" in _ui7 and "Gangas de la última foto" in _ui7 and "renta diaria" in _ui7,
+      "página: Aguasnegras en Ideas, gangas en Inicio y la marca de renta diaria en Qué aprender")
+
 print("\nTODO OK" if ok else "\nHAY FALLOS")
 for line in list(G.LOG.values())[-8:]:
     print("   ", line)
