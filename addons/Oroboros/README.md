@@ -171,6 +171,7 @@ pythonw tools/oroboros_panel.py --find "F:/World of Warcraft/_forever_"
 - Con `--find`, cada foto nueva regenera también el plan y `Resumen.lua`, como el vigilante; sin `--find`, solo `Resumen.lua`.
 - Una vez al día resume lo viejo, pide los nombres que falten y calibra las ventas con tu libro.
 - Pestañas:
+  - **Inicio** (la primera): descargas de la API (última foto de cada casa, cuenta atrás hasta la próxima y las últimas 24 h con los huecos sin foto en rojo), el juego (último escaneo completo, último guardado, cada personaje con su oro y cuándo se leyó su banco) y lo importante (oro, beneficio e inversión del plan, lo que te sobra y lo más vendido en tu casa, que solo se muestra cuando las ventas estimadas están comprobadas con tu libro);
   - todas las del plan;
   - **Subasta**: estado de la descarga, buscador, precio en las tres casas, gráficas por hora (14 días) y por día (todo), franjas, lo que tienes y tus compras y ventas de ese objeto;
   - **Ventas**: lo más vendido (estimado) en cada casa y la calibración.

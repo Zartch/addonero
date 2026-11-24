@@ -5,8 +5,9 @@ Oroboros: panel de escritorio (docs/planes/2026-11-23-api-blizzard.md, tarea 5).
 Un solo programa que:
   1. descarga cada hora la subasta con la API de Blizzard (tools/oroboros_api.py) y, si hay foto nueva,
      regenera el plan y Resumen.lua (con --find, como el vigilante; si no, solo Resumen.lua);
-  2. sirve en http://127.0.0.1:8737 (solo este PC) la página del plan con dos pestañas más:
-     Subasta (buscador, precio por casa, gráficas, franjas) y Ventas (lo más vendido y la calibración);
+  2. sirve en http://127.0.0.1:8737 (solo este PC) la página del plan con tres pestañas más:
+     Inicio (ritmo de descarga, el juego y lo importante), Subasta (buscador, precio por casa, gráficas,
+     franjas) y Ventas (lo más vendido y la calibración);
   3. abre una ventana propia con Edge en modo aplicación (o el navegador por defecto).
 Una sola copia: abrirlo otra vez solo abre la ventana. Cerrar la ventana no para la descarga; se para
 con el botón «Parar» del panel. Solo lee: nada actúa en el juego.
@@ -65,6 +66,92 @@ def estado(con, state):
         houses.append({"house": h, "name": name, "faction": fac, "t": t, "auctions": n, "units": units, "items": items})
     st = {k: v for k, v in (state or {}).items() if not callable(v)}
     return {"houses": houses, "state": st, "now": int(time.time())}
+
+
+def _gaps(times, start, now):
+    """Huecos sin foto (más de API.MAX_GAP entre dos fotos, o entre la última y ahora) dentro de [start, now].
+    times: fotos ordenadas; puede llevar delante la última anterior a start. Sin ella, se cuenta desde start."""
+    pts = list(times)
+    if not pts or pts[0] > start:
+        pts.insert(0, start)
+    pts.append(now)
+    return [[max(a, start), b] for a, b in zip(pts, pts[1:]) if b - a > API.MAX_GAP]
+
+
+def inicio(con, state, work_dir, sv_path=None, now=None, top=5):
+    """Pestaña Inicio: ritmo de descarga de la API (última foto, huecos de 24 h, próxima), el juego (último
+    escaneo, último guardado, personajes) y lo importante (plan, lo más vendido en tu casa)."""
+    now = int(now or time.time())
+    start = now - 86400
+    st = state or {}
+    houses = []
+    for h, name, fac in con.execute("SELECT house, name, faction FROM api_houses ORDER BY house").fetchall():
+        prev = con.execute("SELECT MAX(t) FROM api_snaps WHERE house=? AND t < ?", (h, start)).fetchone()[0]
+        ts = [r[0] for r in con.execute("SELECT t FROM api_snaps WHERE house=? AND t >= ? AND t <= ? ORDER BY t",
+                                        (h, start, now))]
+        last = con.execute("SELECT t, auctions FROM api_snaps WHERE house=? ORDER BY t DESC LIMIT 1", (h,)).fetchone()
+        houses.append({"house": h, "name": name, "faction": fac, "t": last[0] if last else None,
+                       "auctions": last[1] if last else None, "snaps24": len(ts),
+                       "gaps": _gaps(([prev] if prev else []) + ts, start, now)})
+    api = {k: st.get(k) for k in ("busy", "error", "credentials", "next_run", "last_run")}
+    api["houses"] = houses
+
+    game = {"scan_t": None, "scan_items": None, "sv_t": None, "chars": []}
+    try:
+        r = con.execute("SELECT t, n_items FROM scans ORDER BY t DESC LIMIT 1").fetchone()
+        if r:
+            game["scan_t"], game["scan_items"] = r
+    except sqlite3.OperationalError:
+        pass
+    if sv_path and os.path.exists(sv_path):
+        game["sv_t"] = int(os.path.getmtime(sv_path))
+    plan_db = os.path.join(work_dir, "oroboros.sqlite")
+    if os.path.exists(plan_db):
+        p = sqlite3.connect(plan_db, timeout=30)
+        try:
+            banks = {c: t for c, t in p.execute("SELECT char, MAX(t) FROM slots WHERE location='bank' GROUP BY char")}
+            for c, money, lvl, cls, t in p.execute(
+                    "SELECT char, money, level, class, t FROM characters ORDER BY money DESC"):
+                game["chars"].append({"name": c.split("-")[0], "money": money, "level": lvl, "class": cls,
+                                      "t": t, "bank_t": banks.get(c)})
+        except sqlite3.OperationalError:
+            pass
+        finally:
+            p.close()
+
+    plan = None
+    pj = os.path.join(work_dir, "plan.json")
+    if os.path.exists(pj):
+        try:
+            with open(pj, encoding="utf-8") as fh:
+                pd = json.load(fh)
+            s = pd.get("summary") or {}
+            if s:
+                plan = {"generated": pd.get("generated"),
+                        **{k: s.get(k) for k in ("profit", "investment", "gold", "stock_sale", "roi")}}
+        except (OSError, ValueError):
+            pass
+
+    # lo más vendido (estimado) en las últimas 24 h de tu casa: la primera (la de tu facción, 111)
+    topd = {"house": houses[0]["house"] if houses else None, "items": [], "calibrated": False}
+    if houses:
+        h = houses[0]["house"]
+        rates, _ = API.move_rates(con, h, now=now, days=1)
+        last = houses[0]["t"]
+        prices = {i: m for i, m in con.execute("SELECT item_id, min FROM api_item_hour WHERE house=? AND t=?", (h, last))}
+        rows = [{"id": i, "sold": r["sold"], "min": prices.get(i), "value": r["sold"] * prices[i] if prices.get(i) else 0}
+                for i, r in rates.items() if r["sold"] > 0]
+        rows.sort(key=lambda x: -x["value"])
+        rows = rows[:top]
+        if rows:
+            names = dict(con.execute(f"SELECT item_id, name FROM items WHERE item_id IN ({','.join('?' * len(rows))})",
+                                     [x["id"] for x in rows]))
+            for x in rows:
+                x["name"] = names.get(x["id"]) or f"objeto {x['id']}"
+        topd["items"] = rows
+        topd["calibrated"] = API.is_calibrated(con, h)
+        topd["calibration"] = _calib_saved(con, h)
+    return {"now": now, "api": api, "game": game, "plan": plan, "top": topd}
 
 
 def buscar(con, q, limit=40):
@@ -182,7 +269,7 @@ def page_html(work_dir):
 # ----------------------------------------------------------------------
 # Servidor
 # ----------------------------------------------------------------------
-def make_server(work_dir, port=DEFAULT_PORT, state=None, wake=None, archive=None):
+def make_server(work_dir, port=DEFAULT_PORT, state=None, wake=None, archive=None, sv_path=None):
     """Servidor HTTP solo en 127.0.0.1. state: dict que comparte el hilo de descarga; wake(): descargar ya."""
     archive = archive or os.path.join(work_dir, "archivo.sqlite")
     plan_db = os.path.join(work_dir, "oroboros.sqlite")
@@ -231,6 +318,8 @@ def make_server(work_dir, port=DEFAULT_PORT, state=None, wake=None, archive=None
                 try:
                     if u.path == "/api/estado":
                         return self._send(200, estado(con, state))
+                    if u.path == "/api/inicio":
+                        return self._send(200, inicio(con, state, work_dir, sv_path=sv_path))
                     if u.path == "/api/buscar":
                         return self._send(200, buscar(con, (qs.get("q") or [""])[0]))
                     m = re.fullmatch(r"/api/objeto/(\d+)", u.path)
@@ -380,7 +469,7 @@ def main():
     client = API.Client(creds, cache_dir=os.path.join(work, "api")) if creds else None
     worker = Worker(work, client, [int(x) for x in a.casas.split(",") if x.strip()], a.reino, sv_path=sv)
     worker.state["on_stop"] = worker.stop
-    srv = make_server(work, a.port, worker.state, worker.wake)
+    srv = make_server(work, a.port, worker.state, worker.wake, sv_path=sv)
     worker.start()
     _log(f"Panel en {url} (solo este PC). Descarga cada hora: {'sí' if client else 'no, faltan credenciales'}.")
     if not a.sin_ventana:

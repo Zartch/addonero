@@ -1705,13 +1705,55 @@ check(_raw("/api/objeto/2589", headers={"Host": "malo.example:80"}) == 403,
 check(_raw("/api/parar", "POST", {"Origin": "http://malo.example"}) == 403 and _thr.is_alive(),
       "panel: una web cualquiera no puede parar el panel (Origin distinto)")
 check(_raw("/api/estado", headers={"Host": f"localhost:{_port}"}) == 200, "panel: localhost también vale")
+# --- panel: pestaña Inicio (ritmo de descarga, juego y lo importante) ---
+_ini = _get("/api/inicio")
+check(set(_ini) >= {"now", "api", "game", "plan", "top"} and _ini["api"]["houses"],
+      f"inicio: el panel responde con descargas, juego, plan y lo más vendido ({sorted(_ini)})")
+_iw = _tf.mkdtemp(); _ia = os.path.join(_iw, "archivo.sqlite")
+_ci = API.open_api(_ia); API.set_house(_ci, 111, "Casa de subastas de la Alianza", realm="R5")
+API.set_house(_ci, 114, "Casa de subastas de la Horda", realm="R5")
+_now = _ts(24, 12, 30)
+for _k in range(23, 9, -1):                           # de hace 23 h a hace 10 h, una por hora; luego hueco
+    API.ingest(_ci, 111, _now - _k * 3600, [_au(_k, 100, 1, 50, "LONG")])   # cada hora se vende la anterior
+API.ingest(_ci, 111, _now - 1800, [_au(1, 100, 1, 50, "LONG")])
+API.ingest(_ci, 114, _now - 3 * 3600, [_au(1, 100, 1, 50, "LONG")])   # Horda: la última hace 3 h
+_ci.execute("CREATE TABLE IF NOT EXISTS scans (scan_id INTEGER PRIMARY KEY, market_id INTEGER, t INTEGER, kind TEXT, n_items INTEGER)")
+_ci.execute("INSERT INTO scans VALUES (1, 1, ?, 'full', 7000)", (_now - 7200,)); _ci.commit()
+_ip = os.path.join(_iw, "oroboros.sqlite"); _cp = sqlite3.connect(_ip)
+_cp.execute("CREATE TABLE characters (char TEXT, market TEXT, money INTEGER, level INTEGER, class TEXT, t INTEGER)")
+_cp.execute("CREATE TABLE slots (char TEXT, location TEXT, total INTEGER, free INTEGER, t INTEGER)")
+_cp.execute("INSERT INTO characters VALUES ('Ana-R5', 'R5-Alliance', 12345, 30, 'MAGE', ?)", (_now - 600,))
+_cp.execute("INSERT INTO slots VALUES ('Ana-R5', 'bank', 98, 40, ?)", (_now - 86400,)); _cp.commit(); _cp.close()
+with open(os.path.join(_iw, "plan.json"), "w", encoding="utf-8") as _f:
+    _js.dump({"generated": _now - 900, "summary": {"profit": 500, "investment": 200, "gold": 9000, "stock_sale": 70, "roi": 2.5}}, _f)
+_sv = os.path.join(_iw, "Oroboros.lua"); open(_sv, "w").close(); os.utime(_sv, (_now - 650, _now - 650))
+_ii = PNL.inicio(_ci, {"next_run": _now + 600, "busy": False}, _iw, sv_path=_sv, now=_now)
+_h111 = [h for h in _ii["api"]["houses"] if h["house"] == 111][0]
+_h114 = [h for h in _ii["api"]["houses"] if h["house"] == 114][0]
+check(_h111["snaps24"] == 15 and _h111["t"] == _now - 1800, f"inicio: fotos de las últimas 24 h y la última ({_h111['snaps24']}, {_h111['t']})")
+check(_h111["gaps"] == [[_now - 10 * 3600, _now - 1800]], f"inicio: el hueco sin fotos se marca ({_h111['gaps']})")
+check(_h114["gaps"] == [[_now - 86400, _now - 3 * 3600], [_now - 3 * 3600, _now]],
+      f"inicio: hueco antes de la primera foto del día y, si la última es vieja, hasta ahora ({_h114['gaps']})")
+check(_ii["api"]["next_run"] == _now + 600, "inicio: la próxima descarga (para la cuenta atrás)")
+check(_ii["game"]["scan_t"] == _now - 7200 and _ii["game"]["scan_items"] == 7000 and _ii["game"]["sv_t"] == _now - 650,
+      f"inicio: último escaneo del juego y último guardado ({_ii['game']})")
+check(_ii["game"]["chars"] == [{"name": "Ana", "money": 12345, "level": 30, "class": "MAGE", "t": _now - 600, "bank_t": _now - 86400}],
+      f"inicio: personajes con oro y cuándo se vio su banco ({_ii['game']['chars']})")
+check(_ii["plan"] == {"generated": _now - 900, "profit": 500, "investment": 200, "gold": 9000, "stock_sale": 70, "roi": 2.5},
+      f"inicio: los números del plan ({_ii['plan']})")
+check(_ii["top"]["house"] == 111 and _ii["top"]["calibrated"] is False and _ii["top"]["items"]
+      and _ii["top"]["items"][0]["id"] == 100 and _ii["top"]["items"][0]["sold"] > 0 and _ii["top"]["items"][0]["min"] == 50,
+      f"inicio: lo más vendido (estimado) en tu casa, sin comprobar con el libro ({_ii['top']})")
+_ci.close()
 _get("/api/descargar", "POST")
 check(_st.get("woken"), "panel: «descargar ahora» despierta la descarga")
 _get("/api/parar", "POST")
 _thr.join(5)
 check(not _thr.is_alive(), "panel: «parar» cierra el servidor")
 _plain = open(os.path.join(ROOT, "tools", "planner_ui.html"), encoding="utf-8").read()
-check("/*__PANEL__*/false" in _plain, "plan.html sin panel: las pestañas nuevas dicen que hay que abrir el panel")
+check('id="v-inicio"' in _plain and '[["inicio", "Inicio"]]' in _plain and 'PANEL ? "inicio"' in _plain,
+      "panel: la pestaña Inicio existe y es la que se abre primero con el panel")
+check("/*__PANEL__*/false" in _plain,"plan.html sin panel: las pestañas nuevas dicen que hay que abrir el panel")
 
 print("\nTODO OK" if ok else "\nHAY FALLOS")
 for line in list(G.LOG.values())[-8:]:

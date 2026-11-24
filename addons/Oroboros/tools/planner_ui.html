@@ -181,6 +181,7 @@ input[type="search"], select { font: inherit; padding: 6px 10px; border: 1px sol
 </header>
 <nav><div class="tabs" id="tabs"></div></nav>
 <main>
+  <section class="view" id="v-inicio"></section>
   <section class="view" id="v-resumen"></section>
   <section class="view" id="v-ruta"></section>
   <section class="view" id="v-recetas"></section>
@@ -201,7 +202,7 @@ const PLAN = /*__PLAN__*/null;
 // true cuando la sirve el panel de escritorio (tools/oroboros_panel.py): las pestañas Subasta y Ventas piden datos
 const PANEL = /*__PANEL__*/false;
 
-const VIEWS = (PLAN ? [
+const VIEWS = (PANEL ? [["inicio", "Inicio"]] : []).concat(PLAN ? [
   ["resumen", "Resumen"], ["ruta", "Ruta"], ["recetas", "Qué ganas y por qué"],
   ["transformar", "Transformaciones"], ["aprender", "Qué aprender"], ["ideas", "Ideas"], ["cartera", "Cartera"], ["inventario", "Qué tienes"], ["mercado", "Mercado"], ["horas", "Horas"], ["farmear", "Farmear"],
 ] : []).concat([["subasta", "Subasta"], ["ventas", "Ventas"]]);
@@ -773,6 +774,90 @@ async function loadApiItem() {
   } catch (err) { el.innerHTML = `<p class="sub">Error: ${esc(err.message)}</p>`; }
 }
 
+// --- Inicio: ritmo de descarga, el juego y lo importante (GET /api/inicio) ---
+let iniTimer = null, iniTick = null;
+const fmtAgo = (t, now) => {
+  if (!t) return "nunca";
+  const m = Math.max(0, Math.round((now - t) / 60));
+  if (m < 1) return "ahora mismo";
+  if (m < 60) return `hace ${m} min`;
+  const h = Math.floor(m / 60);
+  if (h < 48) return `hace ${h} h${m % 60 ? ` ${m % 60} min` : ""}`;
+  return `hace ${Math.floor(h / 24)} días`;
+};
+const fmtLeft = s => {
+  if (s <= 0) return "ahora";
+  const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), x = Math.floor(s % 60);
+  return h ? `${h} h ${String(m).padStart(2, "0")} min` : `${m}:${String(x).padStart(2, "0")}`;
+};
+// Las últimas 24 h de una casa: verde con foto, rojo en los huecos
+function strip24(gaps, now) {
+  const W = 240, x = t => Math.max(0, Math.min(W, (t - (now - 86400)) / 86400 * W));
+  const red = gaps.map(([a, b]) => `<rect x="${x(a)}" y="0" width="${Math.max(1, x(b) - x(a))}" height="10" fill="var(--bad)"><title>Sin fotos: ${fmtT(a)} → ${fmtT(b)}</title></rect>`).join("");
+  return `<svg viewBox="0 0 ${W} 10" preserveAspectRatio="none" style="width:100%;height:10px;border-radius:3px;display:block"><rect width="${W}" height="10" fill="var(--good)" opacity=".55"/>${red}</svg>`;
+}
+
+async function loadInicio() {
+  const el = $("#v-inicio"); if (!el) return;
+  let d;
+  try { d = await apiGet("/api/inicio"); }
+  catch (err) { el.innerHTML = `<div class="panel"><p class="sub">No responde el panel (${esc(err.message)}).</p></div>`; return; }
+  const offset = Date.now() / 1000 - d.now;          // reloj del PC frente al del panel
+  const now = d.now, a = d.api, g = d.game, p = d.plan, top = d.top;
+  const houses = a.houses.map(h => {
+    const late = !h.t || now - h.t > 90 * 60;
+    return `<div style="display:grid;gap:4px"><div class="stats" style="justify-content:space-between">
+      <span><b>${esc(facTxt(h.faction))} ${h.house}</b> · última foto <b>${fmtAgo(h.t, now)}</b> <span class="sub">(${fmtT(h.t)})</span></span>
+      <span>${late ? '<span class="pill bad">sin foto reciente</span>' : '<span class="pill good">al día</span>'} <b>${h.snaps24}</b>/24 h</span></div>
+      ${strip24(h.gaps, now)}</div>`;
+  }).join("") || '<p class="sub">Aún no hay fotos de la API.</p>';
+  const nextTxt = a.busy ? '<span class="pill info">descargando…</span>'
+    : a.next_run ? `Próxima descarga en <b data-until="${a.next_run}">${fmtLeft(a.next_run - now)}</b> <span class="sub">(${fmtT(a.next_run)})</span>`
+    : a.credentials === false ? '<span class="pill bad">faltan las credenciales</span>' : '<span class="sub">Calculando la próxima…</span>';
+  const chars = g.chars.map(c => `<tr><td>${esc(c.name)} <span class="sub">nv ${c.level ?? "?"}</span></td><td class="n">${money(c.money)}</td>
+      <td>${fmtAgo(c.t, now)}</td><td>${c.bank_t ? fmtAgo(c.bank_t, now) : '<span class="pill warn">sin abrir</span>'}</td></tr>`).join("");
+  const cal = top.calibration, calOk = top.calibrated;
+  const calTxt = calOk ? `<span class="pill good">comprobadas con tus ventas (${Math.round((cal.coverage || 0) * 100)} %)</span>`
+    : `<span class="pill warn">sin comprobar con tus ventas${cal && cal.sales ? ` (${cal.sales} ventas, ${Math.round((cal.coverage || 0) * 100)} %)` : ""}</span>`;
+  const topList = calOk && top.items.length
+    ? `<div class="tablewrap"><table><thead><tr><th>Objeto</th><th class="n">Vendidas/día</th><th class="n">Mínimo</th></tr></thead><tbody>${top.items.map(x => `<tr><td>${esc(x.name)}</td><td class="n">${fmtN(x.sold)}</td><td class="n">${money(x.min)}</td></tr>`).join("")}</tbody></table></div>`
+    : '<p class="sub">Las ventas que estima la API aún no se han comprobado con tus ventas reales, así que aquí no se muestran: las primeras cifras eran recolocaciones, no ventas. Se comprueban solas cada día cuando vendes algo; mientras tanto están en la pestaña Ventas.</p>';
+  el.innerHTML = `
+    <div style="display:grid;gap:12px;grid-template-columns:repeat(auto-fit,minmax(360px,1fr))">
+      <div class="panel"><header style="display:flex;gap:10px;align-items:center;flex-wrap:wrap"><h2>Descargas de la API</h2><span style="flex:1"></span><button class="seg" id="ini-now">Descargar ahora</button></header>
+        <div class="stats" style="margin-bottom:8px"><span>${nextTxt}</span>${a.error ? `<span class="pill bad">${esc(a.error)}</span>` : ""}</div>
+        <div style="display:grid;gap:10px">${houses}</div>
+        <p class="sub" style="margin-top:8px">Blizzard publica una foto por hora (hacia el minuto 22) y el panel la pide al 25. Las horas en rojo no tienen foto: ahí no se pueden estimar ventas. Solo descarga mientras el panel está abierto.</p></div>
+      <div class="panel"><header><h2>El juego</h2></header>
+        <div class="stats"><span>Último escaneo completo <b>${fmtAgo(g.scan_t, now)}</b> <span class="sub">${g.scan_items ? `(${fmtN(g.scan_items)} objetos)` : ""}</span></span>
+          <span>Datos guardados <b>${fmtAgo(g.sv_t, now)}</b> <span class="sub">(/reload o salir)</span></span></div>
+        ${chars ? `<div class="tablewrap"><table><thead><tr><th>Personaje</th><th class="n">Oro</th><th>Visto</th><th>Banco leído</th></tr></thead><tbody>${chars}</tbody></table></div>` : '<p class="sub">Aún no hay personajes exportados.</p>'}</div>
+    </div>
+    <div class="panel"><header style="display:flex;gap:10px;align-items:center;flex-wrap:wrap"><h2>Lo importante</h2>${p ? `<span class="sub">plan ${fmtAgo(p.generated, now)}</span>` : ""}</header>
+      ${p ? `<div class="tiles">
+        <div class="tile"><span class="k">Oro de tus personajes</span><span class="v">${money(p.gold)}</span></div>
+        <div class="tile hero"><span class="k">Beneficio estimado del plan</span><span class="v">${money(p.profit)}</span><span class="s">${p.roi ? Math.round(p.roi * 100) + " % sobre lo invertido" : ""}</span></div>
+        <div class="tile"><span class="k">Inversión</span><span class="v">${money(p.investment)}</span></div>
+        <div class="tile"><span class="k">Lo que te sobra, a la venta</span><span class="v">${money(p.stock_sale)}</span><span class="s">stock de bolsas y banco</span></div>
+      </div>` : '<p class="sub">Aún no hay plan.</p>'}
+      <h3 style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">Lo más vendido en tu casa (24 h) ${calTxt}</h3>${topList}</div>`;
+  $("#ini-now").onclick = async () => { await apiGet("/api/descargar", "POST"); setTimeout(loadInicio, 1500); };
+  clearInterval(iniTick);
+  iniTick = setInterval(() => {
+    if (!$("#v-inicio").classList.contains("on")) return;
+    const t = Date.now() / 1000 - offset;
+    document.querySelectorAll("#v-inicio [data-until]").forEach(s => { s.textContent = fmtLeft(+s.dataset.until - t); });
+  }, 1000);
+}
+
+function renderInicio() {
+  if (!PANEL) return needPanel("#v-inicio", "Inicio");
+  if (!$("#v-inicio").innerHTML) $("#v-inicio").innerHTML = '<div class="panel"><p class="sub">Cargando…</p></div>';
+  loadInicio();
+  clearInterval(iniTimer);
+  iniTimer = setInterval(() => { if ($("#v-inicio").classList.contains("on")) loadInicio(); }, 30000);
+}
+
 function renderSubasta() {
   if (!PANEL) return needPanel("#v-subasta", "Subasta");
   $("#v-subasta").innerHTML = `<div class="panel" id="api-status"><p class="sub">Cargando…</p></div>
@@ -817,10 +902,10 @@ async function renderVentas() {
 }
 
 const RENDER = PLAN ? { resumen: renderResumen, ruta: renderRuta, recetas: renderRecetas, transformar: renderTransformar, aprender: renderAprender, ideas: renderIdeas, cartera: renderCartera, inventario: renderInventario, mercado: renderMercado, horas: renderHoras, farmear: renderFarmear } : {};
-RENDER.subasta = renderSubasta; RENDER.ventas = renderVentas;
+RENDER.subasta = renderSubasta; RENDER.ventas = renderVentas; RENDER.inicio = renderInicio;
 function show() {
   const h = location.hash.replace("#", "");
-  const v = RENDER[h] ? h : (PLAN ? "resumen" : "subasta");
+  const v = RENDER[h] ? h : (PANEL ? "inicio" : PLAN ? "resumen" : "subasta");
   document.querySelectorAll("section.view").forEach(s => s.classList.toggle("on", s.id === "v-" + v));
   document.querySelectorAll("nav a").forEach(a => a.setAttribute("aria-current", a.dataset.v === v ? "page" : "false"));
   RENDER[v]();
