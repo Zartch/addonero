@@ -80,6 +80,7 @@ CREATE TABLE IF NOT EXISTS api_band_week (       -- resumen permanente por seman
     new REAL, sold REAL, expired REAL, cancelled REAL, partial REAL, gap REAL,
     hours REAL, n INTEGER, days INTEGER,
     price_med REAL, price_sum REAL, price_n INTEGER,
+    last_day TEXT,                                   -- último día con medición (para contar días al acumular)
     PRIMARY KEY (house, item_id, week, band)) WITHOUT ROWID;
 CREATE TABLE IF NOT EXISTS api_missing (item_id INTEGER PRIMARY KEY, t INTEGER);   -- la ruta de objetos dio 404
 """
@@ -109,7 +110,7 @@ def load_creds(work_dir=DEFAULT_WORK):
     return cid, sec
 
 
-def http_fetch(url, headers, data=None):
+def _raw_fetch(url, headers, data=None):
     """GET/POST con urllib. Devuelve (estado, cabeceras en minúsculas, cuerpo descomprimido)."""
     req = urllib.request.Request(url, data=data, headers=headers)
     try:
@@ -125,6 +126,23 @@ def http_fetch(url, headers, data=None):
 
 class ApiError(RuntimeError):
     pass
+
+
+def safe_fetch(fetch):
+    """Envuelve un fetch: los cortes de red que no son OSError (respuesta incompleta, gzip cortado) pasan a
+    ApiError, para que se registren como error de esa casa y el bucle siga. Solo el tipo: nada de cabeceras."""
+    import http.client
+    import zlib
+
+    def wrapped(url, headers, data=None):
+        try:
+            return fetch(url, headers, data)
+        except (http.client.HTTPException, EOFError, zlib.error) as e:
+            raise ApiError(f"red: {type(e).__name__}") from None
+    return wrapped
+
+
+http_fetch = safe_fetch(_raw_fetch)
 
 
 class Client:
@@ -211,8 +229,21 @@ def open_api(path_or_con):
     """Abre el archivo (o usa la conexión) y crea las tablas de la API."""
     con = open_archive(path_or_con) if isinstance(path_or_con, str) else path_or_con
     con.executescript(SCHEMA)
+    _migrate(con)
     con.commit()
     return con
+
+
+def _migrate(con):
+    """Archivos de antes del 24/11: api_band_week sin last_day y sin las franjas acumuladas por foto."""
+    cols = {r[1] for r in con.execute("PRAGMA table_info(api_band_week)")}
+    if "last_day" not in cols:
+        con.execute("ALTER TABLE api_band_week ADD COLUMN last_day TEXT")
+    r = con.execute("SELECT value FROM meta WHERE key='api_bands'").fetchone()
+    if not r or r[0] != "por-foto":
+        rebuild_bands(con)
+        con.execute("INSERT OR REPLACE INTO meta VALUES ('api_bands', 'por-foto')")
+        con.commit()
 
 
 def house_name(name):
@@ -377,6 +408,7 @@ def ingest(con, house, t, auctions):
         con.execute("INSERT INTO api_snaps VALUES (?,?,?,?,?,?)",
                     (house, t, last, len(cur), sum(v[1] for v in cur.values()), len(by_item)))
         _upsert_daily(con, mid, t, stats)
+        add_bands(con, house, [(r[2], t, last, r[3], *r[11:17]) for r in rows])
         for item in by_item:
             con.execute("""INSERT INTO items (item_id, first_seen, last_seen) VALUES (?,?,?)
                            ON CONFLICT(item_id) DO UPDATE SET last_seen = MAX(COALESCE(last_seen, 0), excluded.last_seen),
@@ -414,85 +446,91 @@ HOUR_SQL = """SELECT h.item_id, h.t, s.prev_t, h.min, h.new, h.sold, h.expired, 
               WHERE h.house=? {extra} ORDER BY h.item_id, h.t"""
 
 
-def _new_acc():
-    return {**{k: 0.0 for k in MOVES}, "secs": 0.0, "n": 0, "days": set(), "days_old": 0,
-            "week_prices": defaultdict(list), "week_meds": []}
-
-
 def _in(items):
     return f" AND {{col}} IN ({','.join('?' * len(items))})" if items else ""
 
 
-def band_stats(con, house, items=None):
-    """{objeto: [6 dicts por franja]} con unidades por movimiento, horas medidas, mediciones, días y
-    mediana de precio. Junta api_item_hour (detalle) y api_band_week (resumen). Valores redondeados."""
-    import statistics
-    items = list(items) if items else None
-    acc = defaultdict(lambda: [_new_acc() for _ in range(6)])
-    for c in contributions(con.execute(HOUR_SQL.format(extra=_in(items).format(col="h.item_id")), [house] + (items or []))):
-        a = acc[c[1]][c[3]]
+BAND_UPSERT = """INSERT INTO api_band_week
+    (house, item_id, week, band, new, sold, expired, cancelled, partial, gap, hours, n, days, price_med, price_sum, price_n, last_day)
+    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+    ON CONFLICT (house, item_id, week, band) DO UPDATE SET
+      new = new + excluded.new, sold = sold + excluded.sold, expired = expired + excluded.expired,
+      cancelled = cancelled + excluded.cancelled, partial = partial + excluded.partial, gap = gap + excluded.gap,
+      hours = hours + excluded.hours, n = n + excluded.n,
+      days = days + (CASE WHEN excluded.last_day IS NOT NULL AND (last_day IS NULL OR last_day != excluded.last_day)
+                          THEN 1 ELSE 0 END),
+      last_day = COALESCE(excluded.last_day, last_day),
+      price_sum = price_sum + excluded.price_sum, price_n = price_n + excluded.price_n,
+      price_med = CASE WHEN price_n + excluded.price_n > 0
+                       THEN (price_sum + excluded.price_sum) / (price_n + excluded.price_n) END"""
+
+
+def add_bands(con, house, rows):
+    """Suma a api_band_week lo que aporta UNA foto (filas como HOUR_SQL, todas con el mismo t).
+    Se hace al meter cada foto, así las franjas no recorren el detalle y la retención (borrar el detalle)
+    no cambia nada. El precio de cada franja y semana es la media de los mínimos.
+    Un intervalo dura como mucho 90 min: en una foto, cada (objeto, semana, franja) recibe como mucho un trozo."""
+    agg = {}
+    for c in contributions(rows):
+        a = agg.setdefault((c[1], c[2], c[3]), {**{k: 0.0 for k in MOVES}, "secs": 0.0, "n": 0, "day": None, "psum": 0.0, "pn": 0})
         if c[0] == "price":
-            a["week_prices"][c[2]].append(c[4])
+            a["psum"] += c[4]; a["pn"] += 1
         else:
             for k, v in c[4].items():
                 a[k] += v
-            a["secs"] += c[5]; a["n"] += 1; a["days"].add(c[6])
+            a["secs"] += c[5]; a["n"] += 1; a["day"] = c[6]
+    con.executemany(BAND_UPSERT, [_band_row(house, key, a) for key, a in agg.items()])
+
+
+def _band_row(house, key, a):
+    item, wk, band = key
+    return (house, item, wk, band, *(a[k] for k in MOVES), a["secs"] / 3600, a["n"], 1 if a["day"] else 0,
+            (a["psum"] / a["pn"]) if a["pn"] else None, a["psum"], a["pn"], a["day"])
+
+
+def rebuild_bands(con, house=None):
+    """Rehace api_band_week desde el detalle de api_item_hour (para archivos de antes de que se acumulara
+    al meter cada foto). Solo las semanas que tienen detalle."""
+    from oroboros_hours import week_of
+    houses = [house] if house is not None else [r[0] for r in con.execute("SELECT DISTINCT house FROM api_item_hour")]
+    for h in houses:
+        ts = [r[0] for r in con.execute("SELECT DISTINCT t FROM api_item_hour WHERE house=? ORDER BY t", (h,))]
+        weeks = {week_of(t) for t in ts}
+        for w in weeks:
+            con.execute("DELETE FROM api_band_week WHERE house=? AND week=?", (h, w))
+        for t in ts:
+            add_bands(con, h, con.execute(HOUR_SQL.format(extra="AND h.t=?"), (h, t)).fetchall())
+    con.commit()
+
+
+def band_stats(con, house, items=None):
+    """{objeto: [6 dicts por franja]} con unidades por movimiento, horas medidas, mediciones, días y
+    precio típico (mediana de las medias semanales del mínimo). Sale solo de api_band_week, que se
+    acumula al meter cada foto. Valores redondeados."""
+    import statistics
+    items = list(items) if items else None
+    acc = defaultdict(lambda: [{**{k: 0.0 for k in MOVES}, "hours": 0.0, "n": 0, "days": 0, "meds": []} for _ in range(6)])
     q = ("SELECT item_id, band, new, sold, expired, cancelled, partial, gap, hours, n, days, price_med "
          "FROM api_band_week WHERE house=?" + _in(items).format(col="item_id"))
     for r in con.execute(q, [house] + (items or [])):
         a = acc[r[0]][r[1]]
         for k, v in zip(MOVES, r[2:8]):
             a[k] += v or 0
-        a["secs"] += (r[8] or 0) * 3600; a["n"] += r[9] or 0; a["days_old"] += r[10] or 0
+        a["hours"] += r[8] or 0; a["n"] += r[9] or 0; a["days"] += r[10] or 0
         if r[11] is not None:
-            a["week_meds"].append(r[11])
+            a["meds"].append(r[11])
     out = {}
     for item, bands in acc.items():
-        res = []
-        for x in bands:
-            meds = x["week_meds"] + [statistics.median(v) for v in x["week_prices"].values()]
-            res.append({**{k: round(x[k], 6) for k in MOVES}, "hours": round(x["secs"] / 3600, 6), "n": x["n"],
-                        "days": len(x["days"]) + x["days_old"], "price_med": statistics.median(meds) if meds else None})
-        out[item] = res
+        out[item] = [{**{k: round(x[k], 6) for k in MOVES}, "hours": round(x["hours"], 6), "n": x["n"], "days": x["days"],
+                      "price_med": statistics.median(x["meds"]) if x["meds"] else None} for x in bands]
     return out
 
 
 def rollup_api(con, now, keep_days=KEEP_DAYS):
-    """Resume en api_band_week las semanas ISO completas anteriores a now − keep_days y borra su detalle
-    de api_item_hour. Devuelve las filas borradas."""
-    import statistics
-    from oroboros_hours import week_of
-    from oroboros_archive import _week_end_ts
-    cutoff = now - keep_days * 86400
-    old = con.execute("SELECT DISTINCT house, t FROM api_item_hour WHERE t < ?", (cutoff,)).fetchall()
-    weeks = {(house, week_of(t)) for house, t in old if _week_end_ts(week_of(t)) < cutoff}
-    if not weeks:
-        return 0
-    n_del = 0
+    """Borra el detalle por hora (api_item_hour) de más de `keep_days` días. Las franjas no cambian: ya están
+    en api_band_week, que se acumula al meter cada foto. Devuelve las filas borradas."""
     with con:
-        for house in {h for h, _ in weeks}:
-            mine = {w for h, w in weeks if h == house}
-            agg = {}
-            for c in contributions(con.execute(HOUR_SQL.format(extra=""), (house,))):
-                if c[2] not in mine:
-                    continue
-                a = agg.setdefault((c[1], c[2], c[3]), {**{k: 0.0 for k in MOVES}, "secs": 0.0, "n": 0, "days": set(), "prices": []})
-                if c[0] == "price":
-                    a["prices"].append(c[4])
-                else:
-                    for k, v in c[4].items():
-                        a[k] += v
-                    a["secs"] += c[5]; a["n"] += 1; a["days"].add(c[6])
-            con.executemany("INSERT OR REPLACE INTO api_band_week VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)", [
-                (house, item, wk, band, *(a[k] for k in MOVES), a["secs"] / 3600, a["n"], len(a["days"]),
-                 statistics.median(a["prices"]) if a["prices"] else None, sum(a["prices"]), len(a["prices"]))
-                for (item, wk, band), a in agg.items()])
-            ts = sorted({t for h, t in old if h == house and week_of(t) in mine})
-            for i in range(0, len(ts), 500):
-                chunk = ts[i:i + 500]
-                n_del += con.execute(f"DELETE FROM api_item_hour WHERE house=? AND t IN ({','.join('?' * len(chunk))})",
-                                     [house, *chunk]).rowcount
-    return n_del
+        return con.execute("DELETE FROM api_item_hour WHERE t < ?", (now - keep_days * 86400,)).rowcount
 
 
 def house_for_market(con, market_key):
@@ -504,6 +542,7 @@ def house_for_market(con, market_key):
         return None
     if r:
         con.executescript(SCHEMA)       # completa las tablas que añadió una versión posterior
+        _migrate(con)
     return r[0] if r else None
 
 
@@ -647,6 +686,7 @@ def fill_names(con, client, limit=2000, clock=time.time):
             con.execute("INSERT OR REPLACE INTO api_missing VALUES (?,?)", (i, int(clock())))
         else:
             break                       # otro error: se reintenta otro día
+        con.commit()                    # no dejar la escritura abierta mientras se pregunta a la red
     con.commit()
     return {"asked": len(ids), "named": named}
 
@@ -689,8 +729,8 @@ def run_once(archive, client, houses=DEFAULT_HOUSES, realm=DEFAULT_REALM, log=_l
                     out.append({"house": h, "status": st, "t": t, **r})
                 else:
                     out.append({"house": h, "status": st, "t": last})
-            except (ApiError, OSError, ValueError) as e:
-                msg = str(e) if isinstance(e, ApiError) else type(e).__name__
+            except (ApiError, OSError, ValueError, sqlite3.Error) as e:
+                msg = str(e) if isinstance(e, (ApiError, sqlite3.Error)) else type(e).__name__
                 log(f"casa {h}: error: {msg}")
                 out.append({"house": h, "status": "error", "error": msg})
     finally:
@@ -823,9 +863,14 @@ def main():
     _log(f"Descargando las casas {houses} cada hora (minuto 25). Ctrl+C para parar.")
     try:
         while True:
-            res = run_once(archive, client, houses, a.reino)
-            maintenance(archive, client, plan_db=plan_db)
-            time.sleep(wait_after(res, time.time()))
+            try:
+                res = run_once(archive, client, houses, a.reino)
+                maintenance(archive, client, plan_db=plan_db)
+                wait = wait_after(res, time.time())
+            except Exception as e:          # que nada pare la descarga de cada hora
+                _log(f"error: {type(e).__name__}; reintento en 5 min")
+                wait = 300
+            time.sleep(wait)
     except KeyboardInterrupt:
         _log("Parado.")
 

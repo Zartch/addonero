@@ -1599,6 +1599,53 @@ check(abs(_cal["share"] - 2 / 3) < 1e-9 and any(d["item"] == 7002 and d["cancell
       f"calibración: tu parte de lo vendido estimado y el detalle de lo no cubierto ({_cal['share']})")
 check(API.is_calibrated(sqlite3.connect(_ka), 111) is False, "calibración: con pocas ventas o menos del 80 %, las ventas de la API siguen como estimadas")
 
+# --- revisión final: retención con el corte entre dos semanas (domingo 8/11 → lunes 9/11) ---
+_bd = os.path.join(_tf.mkdtemp(), "borde.sqlite")
+_cb = API.open_api(_bd); API.set_house(_cb, 111, "Casa de subastas de la Alianza", realm="R5")
+_lv = [_au(1, 100, 1, 50, "LONG"), _au(2, 100, 1, 52, "LONG")]
+for _k in range(8):
+    API.ingest(_cb, 111, _ts(8, 20, 23) + _k * 3600, _lv)
+    _lv = [_lv[1], _au(200 + _k, 100, 1, 50, "LONG")]
+_b0 = API.band_stats(_cb, 111)[100]
+API.rollup_api(_cb, _ts(9, 0) + 14 * 86400, keep_days=14)      # corta a medianoche del domingo
+_b1 = API.band_stats(_cb, 111)[100]
+check(_b0 == _b1 and abs(sum(b["sold"] for b in _b1) - 7) < 1e-6,
+      f"retención: con el corte entre dos semanas, nada se cuenta dos veces ({sum(b['sold'] for b in _b0)} → {sum(b['sold'] for b in _b1)})")
+_cb.execute("DELETE FROM api_item_hour"); _cb.commit()
+check(API.band_stats(_cb, 111)[100] == _b0, "franjas: salen del resumen que se acumula al meter cada foto (no recorren el detalle)")
+_cb.close()
+# --- revisión final: errores de red que no son OSError no tumban la descarga ---
+import http.client as _hc
+def _boom(exc):
+    def f(url, headers, data=None):
+        if "oauth" in url:
+            return (200, {}, b'{"access_token": "T", "expires_in": 86400}')
+        raise exc
+    return f
+for _exc in (_hc.IncompleteRead(b"x"), EOFError("gzip cortado")):
+    _cx_ = API.Client(("ID", "S"), fetch=API.safe_fetch(_boom(_exc)), cache_dir=_tf.mkdtemp())
+    try:
+        _rr = API.run_once(os.path.join(_tf.mkdtemp(), "e.sqlite"), _cx_, [111], realm="R5", log=lambda *_: None)
+        _okx = _rr[0]["status"] == "error"
+    except Exception as _e:
+        _okx, _rr = False, _e
+    check(_okx, f"descarga: un {type(_exc).__name__} se registra como error y el bucle sigue ({_rr})")
+# --- revisión final: fill_names no deja la escritura abierta mientras pide a la red ---
+_fd = os.path.join(_tf.mkdtemp(), "f.sqlite"); _cf = API.open_api(_fd)
+_cf.execute("INSERT INTO items (item_id) VALUES (1), (2), (3)"); _cf.commit()
+_blocked = []
+def _probe(url, headers, data=None):
+    if "oauth" in url:
+        return (200, {}, b'{"access_token": "T", "expires_in": 86400}')
+    try:
+        _o = sqlite3.connect(_fd, timeout=0); _o.execute("BEGIN IMMEDIATE"); _o.rollback(); _o.close()
+    except sqlite3.OperationalError:
+        _blocked.append(url)
+    return (200, {}, b'{"name": "X"}')
+API.fill_names(_cf, API.Client(("ID", "S"), fetch=_probe, cache_dir=_tf.mkdtemp()), limit=10)
+_cf.close()
+check(not _blocked, f"nombres: otro programa puede escribir en el archivo mientras se piden ({len(_blocked)} bloqueos)")
+
 # --- espera entre descargas ---
 _w = API.wait_after([{"t": _ts(24, 10, 23)}], _ts(24, 10, 30))
 check(_w == API.next_check(_ts(24, 10, 30)) and abs(_w - 55 * 60) < 2, f"espera: con la foto de esta hora, hasta el minuto 25 siguiente ({_w})")
@@ -1646,6 +1693,18 @@ except Exception as _ex:
     _ok2 = False; _e2 = _ex
 _lock.rollback(); _lock.close()
 check(_ok2, f"panel: responde mientras la descarga está escribiendo en el archivo ({str(_e2)[:80]})")
+def _raw(path, method="GET", headers=None):
+    req = _ur.Request(f"http://127.0.0.1:{_port}{path}", method=method, data=b"" if method == "POST" else None, headers=headers or {})
+    try:
+        with _ur.urlopen(req, timeout=10) as r:
+            return r.status
+    except _ur.HTTPError as e:
+        return e.code
+check(_raw("/api/objeto/2589", headers={"Host": "malo.example:80"}) == 403,
+      "panel: rechaza otro nombre de servidor (DNS rebinding: no se leen tu inventario ni tu libro)")
+check(_raw("/api/parar", "POST", {"Origin": "http://malo.example"}) == 403 and _thr.is_alive(),
+      "panel: una web cualquiera no puede parar el panel (Origin distinto)")
+check(_raw("/api/estado", headers={"Host": f"localhost:{_port}"}) == 200, "panel: localhost también vale")
 _get("/api/descargar", "POST")
 check(_st.get("woken"), "panel: «descargar ahora» despierta la descarga")
 _get("/api/parar", "POST")

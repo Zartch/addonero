@@ -203,11 +203,23 @@ def make_server(work_dir, port=DEFAULT_PORT, state=None, wake=None, archive=None
             self.end_headers()
             self.wfile.write(data)
 
+        def _allowed(self, post=False):
+            """Solo peticiones a 127.0.0.1/localhost con nuestro puerto (contra DNS rebinding) y, en los POST,
+            desde nuestra propia página (contra webs que intenten parar el panel)."""
+            port = self.server.server_address[1]
+            hosts = {f"127.0.0.1:{port}", f"localhost:{port}"}
+            if (self.headers.get("Host") or "") not in hosts:
+                return False
+            origin = self.headers.get("Origin")
+            return not (post and origin and origin not in {f"http://{h}" for h in hosts})
+
         def _con(self):
             # solo lectura: no toca el esquema (eso pide escribir y chocaría con la descarga)
             return sqlite3.connect(archive, timeout=30)
 
         def do_GET(self):
+            if not self._allowed():
+                return self._send(403, {"error": "solo desde este PC"})
             u = urllib.parse.urlparse(self.path)
             qs = urllib.parse.parse_qs(u.query)
             try:
@@ -233,6 +245,8 @@ def make_server(work_dir, port=DEFAULT_PORT, state=None, wake=None, archive=None
                 self._send(500, {"error": type(e).__name__, "detail": str(e)[:200]})
 
         def do_POST(self):
+            if not self._allowed(post=True):
+                return self._send(403, {"error": "solo desde la página del panel"})
             if self.path == "/api/descargar":
                 if wake:
                     wake()
