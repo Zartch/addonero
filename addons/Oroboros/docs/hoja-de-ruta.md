@@ -1,6 +1,6 @@
 # Hoja de ruta: datos, seguimiento de precios y automatización
 
-Actualizado el 19/11/2026. Este documento resume **qué esperamos** de cada fase y en qué estado está. El detalle técnico de cada una está en `docs/modelo-y-seguimiento.md`, que es la referencia para planificarla.
+Actualizado el 24/11/2026. Este documento resume **qué esperamos** de cada fase y en qué estado está. El detalle técnico de cada una está en `docs/modelo-y-seguimiento.md`, que es la referencia para planificarla.
 
 **Cómo se trabaja:** una fase cada vez. Al empezarla se escribe su plan en `docs/planes/`, se ejecuta con pruebas y commits, y al terminarla se marca aquí como hecha, con lo aprendido. No se empieza una fase sin haber cerrado la anterior.
 
@@ -21,7 +21,10 @@ El usuario quiere ganar oro con la subasta de WoW Forever sabiendo **cuándo** c
 | 2 | Seguimiento de precios al estilo Camel | ✅ Hecho fuera del juego (19/11); falta comprobarlo en el juego. Plan en `docs/planes/2026-11-19-fase2-seguimiento-precios.md` |
 | 3 | Automatización | ✅ Hecho fuera del juego (19/11); falta comprobarlo en el juego. Plan en `docs/planes/2026-11-19-fase3-automatizacion.md` |
 | — | API de Blizzard y panel de escritorio | ✅ Hecho (24/11), plan en `docs/planes/2026-11-23-api-blizzard.md` |
-| 4 | Cálculos avanzados | ⏳ Siguiente, cuando haya un par de semanas de datos |
+| 4 | Cálculos avanzados | ⏳ Cuando haya un par de semanas de datos |
+| 5 | Cálculo fiable del oro (depósito, variantes, reventa por escalones, ventas) | ✅ Hecho fuera del juego (24/11); falta medir el depósito real en el juego |
+| 6 | Catálogo de Forever al día (antes de las bandas del 9/12) | ⏳ Siguiente |
+| 7 | Maneras nuevas: Aguasnegras, enfriamientos como renta, gangas en el panel | ⏳ Después de la 6 |
 
 ## Fase 1: modelo de datos
 
@@ -137,6 +140,59 @@ Lo aprendido:
 3. **Caducadas**: separar lo que caduca de lo que se vende de verdad.
 4. **Velocidad de rebaja**: cuánto tarda alguien en ponerse por debajo de tu precio.
 5. **Precio y ventas**: qué precio gana más, no solo cuál es el más bajo.
+
+## Repaso de las maneras de ganar oro (24/11): fases 5 a 7
+
+El 24/11 se repasaron todas las maneras de ganar oro (fabricar, transformar, aprender, revender, vender lo que sobra, ideas, farmeo y franjas) con el plan real y con lo publicado sobre Forever. Conclusión: antes de añadir maneras nuevas hay que corregir el cálculo. Con los datos de ese día, 266 de las 275 oportunidades eran reventas, y muchas no eran reales.
+
+### Fase 5: cálculo fiable del oro
+
+**Qué esperamos:** que el beneficio que promete el plan se parezca al que se cobra.
+
+**Hecho cuando:**
+1. **Depósito.** El plan deja de restar 1 plata fija. Usa el depósito de Forever (5 %, 20 % y 60 % del precio de vendedor para 2, 8 y 24 h; mínimo 1 cobre; se devuelve al vender y se pierde al caducar o cancelar) y cuenta las republicaciones esperadas cuando el lote no cabe en las ventas de un día. El addon apunta el depósito real que da el juego al publicar, y con 3 mediciones el plan usa el porcentaje medido (una guía trae un ejemplo que triplica la fórmula).
+2. **Variantes de equipo.** La API distingue las variantes de un mismo objeto («del bandido», «de la ballena») con `bonus_lists`. Se guardan, las ventas se clasifican por variante, y el plan no propone reventas ni rebotes de objetos con más de una variante (su precio por número de objeto no significa nada).
+3. **Reventa por escalones.** Con la lista completa de subastas de la API, una reventa es: comprar todo lo que hay por debajo de un salto de precio y volver a ponerlo justo por debajo del escalón siguiente, sin pasar de la mediana de 7 días, y solo lo que el mercado absorbe. Sin API, sigue la regla anterior.
+4. **Ventas estimadas.** Una subasta que desaparece mientras sigue viva otra más barata del mismo objeto no se vendió (quien compra, compra primero lo más barato): pasa a «cancelada».
+
+**Lo medido el 24/11 (casa 111, cuatro fotos seguidas):**
+- La regla del punto 4 pasa a canceladas un 20 % de las unidades «vendidas».
+- El grueso de las unidades vendidas es munición a 1–4 cobres (flechas y balas, en lotes de 200 a 8000): infla el total, pero no afecta a los objetos con los que se comercia.
+- 1557 de 7123 objetos tienen más de una variante.
+- Comprar por debajo del precio de vendedor no compensa: menos de 1 oro en total en cada casa.
+- La subasta **no** se comparte entre facciones: no hay ni un número de subasta común entre la 111 y la 114. La facción se queda en la clave de mercado.
+
+**Hecho (24/11), con pruebas fuera del juego.** Lo aprendido:
+- Con los datos reales, las reventas pasan de 266 a 7 y el beneficio prometido del plan baja de 85 a unos 4 oro: lo de antes no se podía cobrar.
+- Las variantes van en una tabla aparte (`api_var`) y no en `api_live`: el panel en marcha escribe en `api_live` con el código que tenía al arrancar, y cambiarle las columnas le rompía la descarga. **Hay que reiniciar el panel** para que empiece a guardar variantes; hasta entonces el plan no descarta el equipo con variantes.
+- Las constantes están en `tools/oroboros_plan.py`: `DEPOSIT_RATE`, `SELL_SHARE` (cuento con que te llevas la mitad de las ventas del día), `FLIP_GAP` (salto del 25 %) y `FLIP_MIN_MARGIN` (15 %).
+- Queda a la vista otro problema: fabricaciones de miles de unidades por céntimos (3047 pescados por 24 platas). Falta un mínimo de beneficio por clic.
+
+**Por comprobar en el juego:**
+1. Que al vender con la ruta, la línea de estado dice «Depósito: …» (si no sale, `CalculateCommodityDeposit` o `CalculateItemDeposit` no existen en Forever).
+2. Tras 3 ventas, que el plan usa el porcentaje medido (`Data.deposit_measured`) y cuánto se aparta del 60 %.
+
+### Fase 6: catálogo de Forever al día
+
+**Qué esperamos:** que las ideas de evento y el plan conozcan lo que Forever cambió, antes del 9/12.
+
+**Hecho cuando** `catalog.json` y el plan recogen, cada dato con su fuente y marcado como comprobado o no:
+- elixires de estadísticas distintas que se acumulan, y los tres nuevos de nivel 55;
+- frascos naturales (bonificación extra en Hyjal y Barrow Deeps) y pilas de 20;
+- pociones de sanación en Primeros auxilios, no en Alquimia;
+- techo de precio del mercado negro (Loto negro y Cristal arcano a 50 oro, sin verificar) para los objetivos de las ideas;
+- día de reinicio semanal de las bandas, para el ciclo semanal.
+
+### Fase 7: maneras nuevas
+
+**Qué esperamos:** tres fuentes de oro que hoy no se miran.
+
+**Hecho cuando:**
+- **Aguasnegras → tu casa:** el plan propone comprar en la 117 y vender en la tuya solo lo que tiene ventas comprobadas en la tuya (el 24/11 había 327 objetos más baratos después de la comisión, pero son precios mínimos de un mercado pequeño).
+- **Enfriamientos como renta diaria:** «qué aprender» valora las recetas con enfriamiento por lo que dan al día (Arcanita y esencias a Alquimia 275).
+- **Gangas en el panel:** con cada foto, la pestaña Inicio lista lo que ha aparecido muy por debajo de su precio habitual.
+
+**Descartado con datos:** comprar bajo precio de vendedor (menos de 1 oro), transmutaciones de una hora (5 platas) y pasar mercancía a la otra facción por la casa neutral (15 % de comisión).
 
 ## Ideas para después (fuera de estas fases)
 

@@ -170,6 +170,7 @@ Nadie tiene las ventas reales del mercado: Blizzard no las publica. Hay tres man
   - si tenía `time_left = SHORT` (menos de 30 min) → **caducada**;
   - si no era de las más baratas cuando desapareció → probablemente **cancelada** (alguien la retiró para bajar el precio);
   - lo demás → **vendida**: suma su `quantity`.
+  - Oroboros añade desde el 24/11 (fase 5 de la hoja de ruta): si sigue viva otra subasta más barata del mismo objeto y variante (`bonus_lists`), la que desaparece cuenta como **cancelada**, porque quien compra, compra primero lo más barato. En cuatro fotos reales de la casa 111 eso pasó a canceladas un 20 % de las unidades «vendidas».
   - Errores conocidos: lo que se publica y se vende entre dos fotos no se ve nunca; quien cancela y vuelve a publicar parece una venta; si falta una foto, el hueco mezcla todo. Con materiales es peor: una compra parcial baja la `quantity` de una subasta sin hacerla desaparecer (hay que restar cantidades por `id`, no solo contar desapariciones).
 - **Oroboros hoy** (`docs/franjas-horarias.md`): sin `id`, resta cantidades totales entre escaneos y, aparte, cuánto bajó lo barato (≤ mínimo × 1,25). La idea de «lo barato que desaparece es venta» es la misma que la regla de cancelación de arriba, pero sin poder separar caducadas.
 

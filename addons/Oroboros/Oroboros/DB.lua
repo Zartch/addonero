@@ -47,6 +47,7 @@ function DB.Init(defaults)
     end
     db.route = nil
     db.ledger  = db.ledger or {}
+    db.deposits = db.deposits or {}   -- depósitos reales al publicar (para calibrar el plan)
     db.positions = db.positions or {}
     db.seenMail = db.seenMail or {}
     db.population = nil       -- ya no se usa
@@ -468,6 +469,15 @@ function DB.AddLedger(op, itemID, qty, unit, total, src)
                   unit = unit and math.floor(unit + 0.5) or nil, total = total, src = src }
     while #L > 2000 do table.remove(L, 1) end
     DB.SetItemInfo(itemID)
+end
+
+-- Depósito real que pide el juego al publicar: el plan lo compara con el precio de vendedor
+-- para saber qué porcentaje cobra Forever (las guías dan 5/20/60 % para 2/8/24 h, sin confirmar)
+function DB.AddDeposit(itemID, hours, qty, deposit)
+    if not OroborosDB or not itemID or not qty or qty <= 0 or type(deposit) ~= "number" or deposit <= 0 then return end
+    local D = OroborosDB.deposits
+    D[#D + 1] = { t = time(), item = itemID, hours = hours, qty = qty, deposit = math.floor(deposit + 0.5) }
+    while #D > 300 do table.remove(D, 1) end
 end
 
 -- Apuesta abierta: lo que el planificador te dijo que guardaras, con su objetivo y su stop

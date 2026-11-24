@@ -116,6 +116,8 @@ C_AuctionHouse = {
     PlaceBid = function(a, b) call("PlaceBid", a, b) end,
     PostCommodity = function(loc, d, n, p) call("PostCommodity", loc.slot, d, n, p) end,
     PostItem = function(loc, d, n, bid, p) call("PostItem", loc.slot, d, n, p) end,
+    CalculateCommodityDeposit = function(id, d, n) return 3 * n end,
+    CalculateItemDeposit = function(loc, d, n) return 60 end,
 }
 
 -- Profesiones

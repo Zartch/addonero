@@ -343,10 +343,20 @@ function Queue.Next()
         if not loc then setStatus("Objeto bloqueado o no encontrado; vuelve a pulsar en un momento.") return end
         local duration = ns.Cfg("postDuration")
         local hours = ns.PostHours(duration) or "?"
+        -- depósito que pide el juego (solo se lee; puede no existir en Forever)
+        local n = step.commodity and step.n or 1
+        local fn = step.commodity and C_AuctionHouse.CalculateCommodityDeposit or C_AuctionHouse.CalculateItemDeposit
+        local okDep, dep
+        if fn then okDep, dep = pcall(fn, step.commodity and a.itemID or loc, duration, n) end
+        local depTxt = ""
+        if okDep and type(dep) == "number" and dep > 0 then
+            ns.DB.AddDeposit(a.itemID, ns.PostHours(duration), n, dep)
+            depTxt = " Depósito: " .. ns.Money(dep) .. "."
+        end
         if step.commodity then
             C_AuctionHouse.PostCommodity(loc, duration, step.n, step.price)
             a.done = a.done + step.n
-            setStatus(string.format("Publicadas %d a %s (dura %s h).", step.n, ns.Money(step.price), hours))
+            setStatus(string.format("Publicadas %d a %s (dura %s h).", step.n, ns.Money(step.price), hours) .. depTxt)
             step = { phase = "idle" }
         else
             C_AuctionHouse.PostItem(loc, duration, 1, nil, step.price)
@@ -355,7 +365,7 @@ function Queue.Next()
                 setStatus(string.format("Publicado (dura %s h). Quedan %d; pulsa para el siguiente a %s.",
                     hours, a.qty - a.done, ns.Money(step.price)))
             else
-                setStatus(string.format("Publicado a %s (dura %s h).", ns.Money(step.price), hours))
+                setStatus(string.format("Publicado a %s (dura %s h).", ns.Money(step.price), hours) .. depTxt)
                 step = { phase = "idle" }
             end
         end

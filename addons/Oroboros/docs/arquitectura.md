@@ -43,6 +43,7 @@ Objetivo: ganar oro en **WoW Forever** con un addon de subasta + un planificador
 - **Lote de prueba** (18/11/2026, primer plan real): sin histórico para medir ventas/día (menos de 3 bajadas de cantidad entre días), como mucho 20 unidades o 1 oro por fabricación o reventa. Antes se suponía un 10 % de lo publicado al día y salían cientos de unidades.
 - Lo de confianza baja suma como mucho el 30 % del presupuesto.
 - Qué aprender: en Forever `GetRecipeSourceText` no da nada y la lista incluye recetas de otras expansiones. Una receta está «a tu alcance» si el catálogo dice su nivel y lo tienes, o si el juego le da dificultad 1–3; con dificultad 0 (ambiguo) va a «nivel sin comprobar», al final.
+- **Depósito y reventa (24/11, fase 5 de la hoja de ruta):** depósito del 60 % del precio de vendedor por publicación de 24 h (medido en el juego cuando hay 3 muestras), perdido en lo que hay que republicar (te llevas la mitad de las ventas del día). Reventa por escalones con la lista de la API; nada de equipo con variantes.
 - Margen mínimo 8 %. Confianza alta/media/baja por volatilidad, ventas/día y días de histórico.
 - Selección por beneficio por oro invertido × confianza. Stock propio primero: bolsas → banco → banda → banquero → otro personaje (NOTE de banco/correo).
 - No se vende stock de un objeto sobre el que hoy hay señal de compra (ideas).
@@ -83,7 +84,7 @@ Precios en cobre o `1g23s45c`. `#` = comentario.
 ## Pendiente
 - Hoja de ruta por fases (modelo de datos, seguimiento de precios, automatización, cálculos): `docs/hoja-de-ruta.md`. Fase 1 (archivo normalizado, histórico diario, resumen semanal, 8 semanas en bruto) hecha el 19/11.
 - Validar en el juego la lectura pasiva del escaneo de Auctionator.
-- Clave de mercado: Forever tiene un único reino interno (`CAMWOWEU5Realm5PvE`, sin reinos conectados; `GetRegionalRulesetName()` devuelve `nil`). Falta saber si la subasta se comparte entre facciones; si es así, quitar la facción de `ns.MarketKey`.
+- Clave de mercado: Forever tiene un único reino interno (`CAMWOWEU5Realm5PvE`, sin reinos conectados; `GetRegionalRulesetName()` devuelve `nil`). Resuelto el 24/11: la subasta **no** se comparte entre facciones (ningún número de subasta común entre las casas 111 y 114), así que la facción se queda en `ns.MarketKey`.
 - Hecho (20/11): duraciones de Forever (2/8/24 h), publicando a 24 h. `catalog.json` con datos reales (lanzamiento 4/11 y bandas del 9/12); las pruebas usan `tests/catalogo_sintetico.json`.
 - Búsqueda puntual de los objetos de la ruta para tener profundidad real cuando los precios vengan solo de Auctionator.
 - Validar en el cliente real (escaneo, banco, compra pequeña, publicación, libro de compras y facturas del correo, tooltip).

@@ -68,6 +68,11 @@ CREATE TABLE IF NOT EXISTS api_live (
     tl INTEGER,                 -- time_left: 0 SHORT, 1 MEDIUM, 2 LONG, 3 VERY_LONG
     first_t INTEGER,
     PRIMARY KEY (house, auction_id)) WITHOUT ROWID;
+-- variante de las subastas de api_live que la tienen (bonus_lists ordenadas: «12752», «12745.12760»).
+-- Tabla aparte para no cambiar api_live: un panel en marcha con el código anterior sigue escribiendo en ella.
+CREATE TABLE IF NOT EXISTS api_var (
+    house INTEGER, auction_id INTEGER, var TEXT,
+    PRIMARY KEY (house, auction_id)) WITHOUT ROWID;
 CREATE TABLE IF NOT EXISTS api_item_hour (
     house INTEGER, t INTEGER, item_id INTEGER,
     min REAL, mv REAL, qty INTEGER, n INTEGER,          -- vacíos si el objeto ya no está
@@ -277,8 +282,15 @@ def set_house(con, house, name, realm=DEFAULT_REALM, market=None):
     return mid
 
 
+def variant_of(item):
+    """Variante de un objeto de la API: sus bonus_lists ordenadas («12745.12760»), o '' si no tiene.
+    Dos piezas con el mismo número de objeto y distinta variante («del bandido», «de la ballena») son
+    productos distintos, con precios distintos."""
+    return ".".join(str(b) for b in sorted(item.get("bonus_lists") or []))
+
+
 def as_live(auctions):
-    """Lista de subastas de la API → {id: (objeto, cantidad, precio unitario o None, tl)}."""
+    """Lista de subastas de la API → {id: (objeto, cantidad, precio unitario o None, tl, variante)}."""
     out = {}
     for a in auctions or []:
         q = a.get("quantity") or 1
@@ -288,26 +300,38 @@ def as_live(auctions):
             p = a["buyout"] / q
         else:
             p = None
-        out[a["id"]] = (a["item"]["id"], q, p, TIME_LEFT.get(a.get("time_left"), 2))
+        out[a["id"]] = (a["item"]["id"], q, p, TIME_LEFT.get(a.get("time_left"), 2), variant_of(a["item"]))
     return out
 
 
 def classify(prev, cur, gap=False):
-    """Movimientos por objeto entre dos fotos ({id: (objeto, cantidad, precio, tl)}).
-    Devuelve {objeto: {new, sold, expired, cancelled, partial}} (y «gap» si hay hueco), en unidades."""
-    mins = {}
-    for item, q, p, tl in prev.values():
-        if p is not None and (item not in mins or p < mins[item]):
-            mins[item] = p
+    """Movimientos por objeto entre dos fotos ({id: (objeto, cantidad, precio, tl, variante)}).
+    Devuelve {objeto: {new, sold, expired, cancelled, partial}} (y «gap» si hay hueco), en unidades.
+
+    Una subasta que desaparece cuenta como vendida solo si era barata (≤ mínimo × CHEAP) y no sigue
+    viva ninguna más barata del mismo objeto y variante: quien compra, compra primero lo más barato,
+    así que si la barata sigue ahí, la otra la retiró su dueño (cancelada)."""
+    key = lambda v: (v[0], v[4] if len(v) > 4 else "")
+    mins, alive = {}, {}
+    for aid, v in prev.items():
+        p, k = v[2], key(v)
+        if p is None:
+            continue
+        if k not in mins or p < mins[k]:
+            mins[k] = p
+        if aid in cur and (k not in alive or p < alive[k]):
+            alive[k] = p
     out = defaultdict(lambda: {"new": 0, "sold": 0, "expired": 0, "cancelled": 0, "partial": 0})
-    for aid, (item, q, p, tl) in prev.items():
+    for aid, v in prev.items():
+        item, q, p, tl = v[:4]
         nxt = cur.get(aid)
         if nxt is None:
+            k2 = key(v)
             if gap:
                 k = "gap"
             elif tl == 0:
                 k = "expired"
-            elif p is None or p > mins[item] * CHEAP:
+            elif p is None or p > mins[k2] * CHEAP or (k2 in alive and p > alive[k2]):
                 k = "cancelled"
             else:
                 k = "sold"
@@ -319,9 +343,9 @@ def classify(prev, cur, gap=False):
                 o["gap"] = o.get("gap", 0) + q - nxt[1]
             else:
                 o["partial"] += q - nxt[1]
-    for aid, (item, q, p, tl) in cur.items():
+    for aid, v in cur.items():
         if aid not in prev:
-            out[item]["new"] += q
+            out[v[0]]["new"] += v[1]
     return dict(out)
 
 
@@ -378,14 +402,15 @@ def ingest(con, house, t, auctions):
     row = con.execute("SELECT market_id FROM api_houses WHERE house=?", (house,)).fetchone()
     mid = row[0] if row else set_house(con, house, None)
     cur = as_live(auctions)
-    prev = {r[0]: r[1:5] for r in con.execute(
-        "SELECT auction_id, item_id, qty, price, tl FROM api_live WHERE house=?", (house,))}
+    prev = {r[0]: (r[1], r[2], r[3], r[4], r[5] or "") for r in con.execute(
+        """SELECT l.auction_id, l.item_id, l.qty, l.price, l.tl, v.var FROM api_live l
+           LEFT JOIN api_var v ON v.house = l.house AND v.auction_id = l.auction_id WHERE l.house=?""", (house,))}
     first_seen = {r[0]: r[1] for r in con.execute("SELECT auction_id, first_t FROM api_live WHERE house=?", (house,))}
     first = last is None
     gap = (not first) and t - last > MAX_GAP
     moves = {} if first else classify(prev, cur, gap=gap)
     by_item = defaultdict(list)
-    for item, q, p, tl in cur.values():
+    for item, q, p, tl, _var in cur.values():
         by_item[item].append((p, q))
     stats, rows = {}, []
     for item in set(by_item) | set(moves):
@@ -404,7 +429,9 @@ def ingest(con, house, t, auctions):
         con.executemany("INSERT OR REPLACE INTO api_item_hour VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)", rows)
         con.execute("DELETE FROM api_live WHERE house=?", (house,))
         con.executemany("INSERT INTO api_live VALUES (?,?,?,?,?,?,?)",
-                        [(house, aid, it, q, p, tl, first_seen.get(aid, t)) for aid, (it, q, p, tl) in cur.items()])
+                        [(house, aid, it, q, p, tl, first_seen.get(aid, t)) for aid, (it, q, p, tl, _v) in cur.items()])
+        con.execute("DELETE FROM api_var WHERE house=?", (house,))
+        con.executemany("INSERT INTO api_var VALUES (?,?,?)", [(house, aid, v[4]) for aid, v in cur.items() if v[4]])
         con.execute("INSERT INTO api_snaps VALUES (?,?,?,?,?,?)",
                     (house, t, last, len(cur), sum(v[1] for v in cur.values()), len(by_item)))
         _upsert_daily(con, mid, t, stats)
@@ -654,6 +681,25 @@ def calibrate(archive, plan_db, house=DEFAULT_HOUSES[0], margin=CALIB_MARGIN, sa
         con.commit()
     con.close()
     return res
+
+
+def variant_items(con, house):
+    """Objetos de la última foto con más de una variante a la venta: su precio por número de objeto
+    mezcla productos distintos y no sirve para revender."""
+    return {r[0] for r in con.execute(
+        """SELECT l.item_id FROM api_live l LEFT JOIN api_var v ON v.house = l.house AND v.auction_id = l.auction_id
+           WHERE l.house=? GROUP BY l.item_id HAVING COUNT(DISTINCT COALESCE(v.var, '')) > 1""", (house,))}
+
+
+def ladders(con, house):
+    """Lista de precios de la última foto: {objeto: [(precio por unidad, unidades), …]} de barato a caro,
+    juntando las subastas al mismo precio. Sin las que solo tienen puja."""
+    out = defaultdict(list)
+    for item, price, qty in con.execute(
+            """SELECT item_id, price, SUM(qty) FROM api_live WHERE house=? AND price IS NOT NULL
+               GROUP BY item_id, price ORDER BY item_id, price""", (house,)):
+        out[item].append((price, qty))
+    return dict(out)
 
 
 def latest_prices(con, house):

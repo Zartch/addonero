@@ -34,6 +34,36 @@ TRIAL_INVEST = 10000      # 1 oro de inversión como mucho
 LOW_CONF_SHARE = 0.3      # parte del presupuesto que puede ir a cosas de confianza baja
 RISK_SHARE = 0.5          # de esa parte, lo que no es lote de prueba (reventas…) usa como mucho la mitad
 MIN_MARGIN = 0.08
+# Depósito de Forever (docs/hoja-de-ruta.md, fase 5): parte del precio de vendedor según la duración.
+# Se devuelve al vender y se pierde si la subasta caduca o se cancela. Son las cifras de las guías;
+# con DEPOSIT_MIN_SAMPLES depósitos reales apuntados por el addon, manda el porcentaje medido.
+DEPOSIT_RATE = {2: 0.05, 8: 0.20, 24: 0.60}
+POST_HOURS = 24           # el plan publica a 24 h (el máximo de Forever)
+DEPOSIT_MIN_SAMPLES = 3
+SELL_SHARE = 0.5          # parte de las ventas del día que te llevas tú (no siempre eres el más barato)
+MAX_LOST_POSTS = 3.0      # tope de publicaciones perdidas por unidad
+FLIP_GAP = 0.25           # reventa: salto mínimo entre lo que compras y el escalón siguiente
+FLIP_MIN_MARGIN = 0.15    # reventa: margen mínimo sobre lo pagado, ya con comisión y depósitos
+FLIP_MIN_PROFIT = 10000   # menos de 1 oro no merece los clics
+
+
+def lost_posts(units, vol):
+    """Publicaciones que caducan, de media por unidad, al vender `units` con `vol` ventas al día.
+    Cada POST_HOURS vendes tu parte de las ventas (SELL_SHARE); lo que queda se vuelve a publicar y
+    pierde su depósito. Con el lote dentro de lo que vendes en un día, 0. Sin ventas conocidas, 1."""
+    if not units or units <= 0:
+        return 0.0
+    if not vol or vol <= 0:
+        return 1.0
+    per_post = vol * SELL_SHARE * POST_HOURS / 24
+    lost, d = 0.0, 1
+    while lost < MAX_LOST_POSTS:
+        left = 1 - d * per_post / units
+        if left <= 0:
+            break
+        lost += left
+        d += 1
+    return min(lost, MAX_LOST_POSTS)
 HERE = os.path.dirname(os.path.abspath(__file__))
 
 
@@ -114,6 +144,19 @@ class Data:
                 self.api_rates, self.api_days = oroboros_api.sold_rates(acon, house, self.now)
                 self.api_calibrated = oroboros_api.is_calibrated(acon, house)
             acon.close()
+        # variantes de equipo y lista completa de precios de la última foto de la API (fase 5)
+        self.variants, self.ladders = set(), {}
+        if archive and os.path.exists(archive) and self.market:
+            import oroboros_api
+            acon = sqlite3.connect(archive)
+            try:
+                house = oroboros_api.house_for_market(acon, self.market)
+                if house is not None:
+                    self.variants = oroboros_api.variant_items(acon, house)
+                    self.ladders = oroboros_api.ladders(acon, house)
+            except sqlite3.OperationalError:
+                pass                                    # archivo sin tablas de la API o sin la columna de variante
+            acon.close()
         self.prices = {r["item_id"]: dict(r) for r in q("SELECT * FROM prices WHERE market=?", self.market)}
         self.history = defaultdict(list)
         for r in q("SELECT * FROM history WHERE market=? ORDER BY day", self.market):
@@ -171,6 +214,19 @@ class Data:
         for r in self.recipes:
             if r["learned"] and r["out"] and not r["cooldown_h"] and not r["enchant"]:
                 self.craft_sources[r["out"]].append(r)
+        # porcentaje de depósito: el medido en el juego si hay muestras; si no, el de las guías
+        self.deposit_rate, self.deposit_measured = DEPOSIT_RATE[POST_HOURS], 0
+        try:
+            ratios = []
+            for r in q("SELECT item_id, hours, qty, deposit FROM deposits"):
+                vend = (self.items.get(r["item_id"]) or {}).get("vendor_sell") or 0
+                if vend and r["qty"] and r["deposit"] and r["deposit"] > 1 and r["hours"] in DEPOSIT_RATE:
+                    # se lleva a 24 h con la proporción entre duraciones de las guías
+                    ratios.append(r["deposit"] / (r["qty"] * vend) * DEPOSIT_RATE[POST_HOURS] / DEPOSIT_RATE[r["hours"]])
+            if len(ratios) >= DEPOSIT_MIN_SAMPLES:
+                self.deposit_rate, self.deposit_measured = statistics.median(ratios), len(ratios)
+        except sqlite3.OperationalError:
+            pass                                    # SQLite de una versión anterior
         self.today = time.strftime("%Y-%m-%d", time.localtime(self.now))
         self._stats = {}
         self._src = {}
@@ -178,6 +234,11 @@ class Data:
     def name(self, item_id):
         it = self.items.get(item_id)
         return (it and it["name"]) or f"item:{item_id}"
+
+    def deposit(self, item_id):
+        """Depósito por unidad de una publicación de POST_HOURS (mínimo 1 cobre)."""
+        vend = (self.items.get(item_id) or {}).get("vendor_sell") or 0
+        return max(1.0, vend * self.deposit_rate)
 
     def stack(self, item_id):
         it = self.items.get(item_id)
@@ -386,7 +447,9 @@ def evaluate(data, r, horizon_h, crafts_override=None):
     cost = sum(n["unit"] * n["per_craft"] for n in nodes)
     if trial and cost * crafts > TRIAL_INVEST:
         crafts = max(1, int(TRIAL_INVEST // max(cost, 1)))
-    deposit = 100 if data.stack(r["out"]) == 1 else 100 / max(1, crafts)
+    # depósitos que se pierden por republicar lo que no se vende en un día (por fabricación)
+    lost = lost_posts(crafts * y, vol)
+    deposit = data.deposit(r["out"]) * lost * y
     net = st["sell"] * (1 - AH_CUT)
     profit = net * y - cost - deposit
     margin = profit / cost if cost else 0
@@ -410,6 +473,9 @@ def evaluate(data, r, horizon_h, crafts_override=None):
         f"Se vende a {money(st['sell'])}; quitando el 5 % de la subasta te quedan {money(net)}.",
         f"{'Ganas' if profit > 0 else 'Pierdes'} {money(abs(profit))} por unidad ({margin * 100:.0f} % sobre el coste).",
     ]
+    if deposit >= 0.02 * net * y:
+        why.append(f"Depósito: {money(data.deposit(r['out']))} por unidad y publicación de {POST_HOURS} h; no todo se "
+                   f"vende a la primera, así que cuento {money(deposit)} perdidos por fabricación en republicar.")
     if trial:
         why.append(f"Aún no hay días de escaneo suficientes para saber cuánto se vende ({st['days']} días con datos): "
                    f"lote de prueba de {units:g} (como mucho {TRIAL_UNITS} unidades o {money(TRIAL_INVEST)}).")
@@ -618,17 +684,76 @@ def select(data, plan, opps, budget, horizon_h):
 # ----------------------------------------------------------------------
 # Reventa (comprar barato lo que alguien ha tirado de precio)
 # ----------------------------------------------------------------------
+def _flip(data, char, item_id, qty, unit, max_buy, sell, conf, why):
+    """Una reventa como oportunidad, ya con comisión y depósitos; None si no llega al mínimo."""
+    st = data.stats(item_id)
+    dep = data.deposit(item_id) * lost_posts(qty, st["vol"])
+    profit = sell * (1 - AH_CUT) - unit - dep
+    if profit <= 0 or profit * qty < FLIP_MIN_PROFIT or profit / unit < FLIP_MIN_MARGIN:
+        return None
+    if dep >= 0.02 * sell:
+        why = why + [f"Depósito: cuento {money(dep)} perdidos por unidad en republicar lo que no se venda el primer día."]
+    return {
+        "kind": "flip", "char": char, "name": f"Reventa: {data.name(item_id)}", "out_item": item_id,
+        "crafts": qty, "units": qty, "yield": 1, "cost": unit, "sell": sell, "net": sell * (1 - AH_CUT),
+        "profit": profit, "profit_total": profit * qty, "margin": profit / unit, "conf": conf,
+        "max_buy": int(math.ceil(max_buy)), "min_sell": int(math.ceil((unit + dep) * 1.1 / (1 - AH_CUT))),
+        "vol": st["vol"], "qty": st["qty"],
+        "why": why + hour_buy_note(data, item_id, "Para comprar") + hour_sell_note(data, item_id),
+    }
+
+
+def ladder_flip(data, item_id, horizon_h, char):
+    """Reventa por escalones, con la lista completa de precios de la API: comprar todo lo que hay por
+    debajo de un salto de precio (≥ FLIP_GAP) y volver a ponerlo justo bajo el escalón siguiente, sin
+    pasar de la mediana de 7 días y sin comprar más de lo que el mercado te deja vender en el horizonte."""
+    lad = data.ladders.get(item_id)
+    st = data.stats(item_id)
+    if not lad or len(lad) < 2 or not st["med7"] or not st["vol"] or st["vol"] < 0.5:
+        return None
+    cap = max(1, int(st["vol"] * SELL_SHARE * horizon_h / 24))
+    if st["vol_est"]:
+        cap = min(cap, TRIAL_UNITS)
+    best, units, cost = None, 0, 0.0
+    for (p, q), (wall, _) in zip(lad, lad[1:]):
+        units += q
+        cost += p * q
+        if units > cap or (st["vol_est"] and cost > TRIAL_INVEST):
+            break
+        if wall < p * (1 + FLIP_GAP):
+            continue
+        sell = min(wall * 0.99, st["med7"])
+        conf = "media" if st["vol"] >= 5 and (st["cv"] or 0) < 0.15 and not st["vol_est"] else "baja"
+        f = _flip(data, char, item_id, units, cost / units, p, sell, conf, [
+            f"Hay {units} a {money(p)} o menos y lo siguiente está a {money(wall)} "
+            f"({(wall / p - 1) * 100:.0f} % más caro); su mediana de 7 días es {money(st['med7'])}.",
+            f"Compras las {units} (a {money(cost / units)} de media) y las vuelves a poner a ~{money(sell)}.",
+            f"Se venden unas {st['vol']:.0f} al día y cuento con que te llevas la mitad: "
+            "es una oportunidad puntual (puede que alguien vuelva a publicar barato).",
+        ])
+        if f and (best is None or f["profit_total"] > best["profit_total"]):
+            best = f
+    return best
+
+
 def find_flips(data, horizon_h, char):
     flips = []
     for item_id, p in data.prices.items():
+        if item_id in data.variants:
+            continue          # equipo con variantes: su precio por número de objeto mezcla productos distintos
         st = data.stats(item_id)
         if not p["qty"] or not st["med7"] or not st["vol"] or not st["depth"]:
-            continue
-        if p["min"] >= st["med7"] * 0.75 or st["vol"] < 0.5:
             continue
         # si ayer ya estaba a este precio, es su precio nuevo y no una bajada puntual
         past = [x for x in data.history.get(item_id, []) if x["day"] < data.today and x["mv"]]
         if past and past[-1]["mv"] <= p["min"] * 1.10:
+            continue
+        if data.ladders:      # con la lista completa de la API: por escalones
+            f = ladder_flip(data, item_id, horizon_h, char)
+            if f:
+                flips.append(f)
+            continue
+        if p["min"] >= st["med7"] * 0.75 or st["vol"] < 0.5:
             continue
         qty = max(1, min(st["depth"][0], int(st["vol"] * horizon_h / 24)))
         if st["vol_est"]:
@@ -637,24 +762,17 @@ def find_flips(data, horizon_h, char):
         if not buy:
             continue
         sell = st["med7"] * 0.97
-        profit = sell * (1 - AH_CUT) - buy[0]
-        if profit <= 0 or profit * qty < 10000:     # menos de 1g no merece los clics
-            continue
         conf = "media" if st["vol"] >= 5 and (st["cv"] or 0) < 0.15 else "baja"
-        flips.append({
-            "kind": "flip", "char": char, "name": f"Reventa: {data.name(item_id)}", "out_item": item_id,
-            "crafts": qty, "units": qty, "yield": 1, "cost": buy[0], "sell": sell, "net": sell * (1 - AH_CUT),
-            "profit": profit, "profit_total": profit * qty, "margin": profit / buy[0], "conf": conf,
-            "max_buy": int(math.ceil(buy[1])), "min_sell": int(math.ceil(buy[0] * 1.1 / (1 - AH_CUT))),
-            "vol": st["vol"], "qty": st["qty"],
-            "why": [
-                f"Ahora se vende a {money(p['min'])} y su mediana de 7 días es {money(st['med7'])} "
-                f"({(1 - p['min'] / st['med7']) * 100:.0f} % más barato).",
-                f"Compras {qty} y las vuelves a poner a ~{money(sell)}: ganas {money(profit)} cada una.",
-                f"Solo hay {st['depth'][0]}{' (estimado: sin búsqueda propia)' if st['depth_est'] else ''} a ese precio y se venden unas {st['vol']:.0f} al día: "
-                "es una oportunidad puntual y con riesgo (puede que el precio no vuelva).",
-            ] + hour_buy_note(data, item_id, "Para comprar") + hour_sell_note(data, item_id),
-        })
+        f = _flip(data, char, item_id, qty, buy[0], buy[1], sell, conf, [
+            f"Ahora se vende a {money(p['min'])} y su mediana de 7 días es {money(st['med7'])} "
+            f"({(1 - p['min'] / st['med7']) * 100:.0f} % más barato).",
+            f"Compras {qty} y las vuelves a poner a ~{money(sell)}.",
+            f"Solo hay {st['depth'][0]}{' (estimado: sin búsqueda propia)' if st['depth_est'] else ''} a ese precio "
+            f"y se venden unas {st['vol']:.0f} al día: "
+            "es una oportunidad puntual y con riesgo (puede que el precio no vuelva).",
+        ])
+        if f:
+            flips.append(f)
     return flips
 
 
@@ -885,6 +1003,8 @@ def inventory_view(data, plan, learn, horizon_h, positions=None, bets=None):
             for item, count in sorted(data.inventory.get((ow, loc), {}).items()):
                 st = data.stats(item)
                 ah = st["sell"] * (1 - AH_CUT) if st["sell"] else None
+                if ah:      # menos los depósitos que se pierden si no cabe en las ventas de un día
+                    ah = max(0.0, ah - data.deposit(item) * lost_posts(count, st["vol"]))
                 vend = (data.items.get(item) or {}).get("vendor_sell") or 0
                 used = plan.used.get((ow, loc, item), 0)
                 free = count - used

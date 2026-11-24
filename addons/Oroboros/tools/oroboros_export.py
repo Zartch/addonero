@@ -144,6 +144,7 @@ CREATE TABLE items      (item_id INTEGER PRIMARY KEY, name TEXT, quality INTEGER
                          stack INTEGER, is_commodity INTEGER, vendor_buy REAL, ilvl INTEGER);
 CREATE TABLE config     (key TEXT PRIMARY KEY, value TEXT);
 CREATE TABLE ledger     (t INTEGER, char TEXT, op TEXT, item_id INTEGER, qty REAL, unit REAL, total REAL, src TEXT);
+CREATE TABLE deposits   (t INTEGER, item_id INTEGER, hours INTEGER, qty INTEGER, deposit INTEGER);  -- depósito real al publicar
 CREATE TABLE positions  (item_id INTEGER PRIMARY KEY, qty REAL, entry REAL, target REAL, stop REAL, due TEXT,
                          t INTEGER, char TEXT);
 CREATE TABLE prices     (market TEXT, item_id INTEGER, min REAL, mv REAL, qty INTEGER, auctions INTEGER,
@@ -239,6 +240,10 @@ def write_sqlite(db, path):
     for e in (led if isinstance(led, list) else led.values()):
         con.execute("INSERT INTO ledger VALUES (?,?,?,?,?,?,?,?)", (e.get("t"), e.get("char"), e.get("op"),
                     e.get("item"), e.get("qty"), e.get("unit"), e.get("total"), e.get("src")))
+    deps = db.get("deposits") or []
+    for e in (deps if isinstance(deps, list) else deps.values()):
+        con.execute("INSERT INTO deposits VALUES (?,?,?,?,?)", (e.get("t"), e.get("item"), e.get("hours"),
+                    e.get("qty"), e.get("deposit")))
     for item_id, p in as_dict(db.get("positions")).items():
         con.execute("INSERT INTO positions VALUES (?,?,?,?,?,?,?,?)", (int(item_id), p.get("qty"), p.get("entry"),
                     p.get("target"), p.get("stop"), p.get("due"), p.get("t"), p.get("char")))

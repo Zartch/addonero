@@ -71,12 +71,12 @@ El usuario usa **Auctionator** con su escaneo completo activado. Detalle y refer
 
 Comprobado en el cliente real (18/11/2026): el addon carga con interfaz 16001 (cliente 1.60.1.70959) y el escaneo completo propio guarda ~6900 objetos con profundidad. `/oro cliente` dio: reino interno `CAMWOWEU5Realm5PvE`, nombres regionales `true`, `GetRegionalRulesetName()` = `nil`, sin reinos conectados. Clave de mercado actual: `CAMWOWEU5Realm5PvE-<Facción>` (se mantiene).
 
-Por validar en el juego: la lectura pasiva con el escaneo completo de Auctionator (el usuario no lo tiene activado; escanea con Oroboros); si la subasta se comparte entre facciones (comparar `/oro price` con un personaje de cada facción; si se comparte, quitar la facción de `ns.MarketKey`); duraciones de publicación (Auctionator usa 2/8/24 h en Forever, `postDuration` asume 12/24/48 h).
+Por validar en el juego: la lectura pasiva con el escaneo completo de Auctionator (el usuario no lo tiene activado; escanea con Oroboros); duraciones de publicación (Auctionator usa 2/8/24 h en Forever, `postDuration` asume 12/24/48 h).
 
 Goblinomics (instalado) es contabilidad y patrimonio sobre precios de TSM/Auctionator: no escanea, no ejecuta acciones ni planifica. Se solapa con el libro de compras e inventario de Oroboros, no con el escaneo, la cola ni el planificador.
 
 ## Siguiente trabajo: hoja de ruta por fases
 
-**Lee primero `docs/hoja-de-ruta.md`.** Ahí está qué esperamos de cada fase (modelo de datos, seguimiento de precios al estilo Camel, automatización y cálculos) y en qué estado está; el detalle técnico está en `docs/modelo-y-seguimiento.md`. Se trabaja una fase cada vez: plan en `docs/planes/`, ejecución con pruebas y commits, y al acabar se actualiza el estado en la hoja de ruta.
+**Lee primero `docs/hoja-de-ruta.md`.** Ahí está qué esperamos de cada fase (modelo de datos, seguimiento de precios al estilo Camel, automatización, cálculos y, desde el 24/11, las fases 5 a 7 del repaso de las maneras de ganar oro: la 5 está hecha, la siguiente es la 6, el catálogo de Forever antes del 9/12) y en qué estado está; el detalle técnico está en `docs/modelo-y-seguimiento.md`. Se trabaja una fase cada vez: plan en `docs/planes/`, ejecución con pruebas y commits, y al acabar se actualiza el estado en la hoja de ruta.
 
 Otros pendientes: ver `docs/arquitectura.md`, sección Pendiente.

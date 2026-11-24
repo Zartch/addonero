@@ -354,6 +354,8 @@ def build_ideas(data, budget, buyer, storages, route_buys, skip_items, horizon_h
     cands = (detect_pantry(data, route_buys, horizon_h) + detect_event(data) + detect_weekly(data)
              + detect_drought(data, uses) + detect_progression(data, uses, look)
              + detect_rebound(data, skip_items))
+    # equipo con variantes: su precio por número de objeto mezcla productos distintos
+    cands = [c for c in cands if c["item"] not in getattr(data, "variants", ())]
 
     # una idea por objeto: la mejor, y las demás señales como apoyo
     by_item = defaultdict(list)

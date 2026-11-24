@@ -145,7 +145,7 @@ Blizzard publica cada hora una foto de toda la subasta de Forever en su API ofic
 
 **Qué da:**
 - Precio, valor de mercado, cantidad y profundidad de cada objeto, cada hora, de tu casa (**111**, Alianza) y de la Horda (**114**) y Aguasnegras (**117**) del mismo grupo.
-- **Ventas estimadas**: cada subasta tiene su número, así que entre dos fotos se sabe cuál desapareció. Si le quedaba poco tiempo (`SHORT`), cuenta como caducada; si era cara (más de mínimo × 1,25), como cancelada; si no, como vendida. En materiales, la bajada de cantidad de una misma subasta cuenta como compra.
+- **Ventas estimadas**: cada subasta tiene su número, así que entre dos fotos se sabe cuál desapareció. Si le quedaba poco tiempo (`SHORT`), cuenta como caducada; si era cara (más de mínimo × 1,25) o sigue viva otra más barata del mismo objeto y variante (quien compra, compra primero lo más barato), como cancelada; si no, como vendida. En materiales, la bajada de cantidad de una misma subasta cuenta como compra.
 - Los nombres de los objetos que faltaban.
 
 **Qué no da:** histórico (solo la foto actual; el histórico lo construye Oroboros desde que lo pones en marcha), tu inventario, tus profesiones ni tus ventas reales (eso sigue saliendo del addon).
@@ -384,6 +384,7 @@ Todo va en `WTF/Account/<CUENTA>/SavedVariables/Oroboros.lua`, en la variable `O
 | Banco y banco de banda | Con el banco abierto | Objetos y huecos libres. |
 | Libro de compras | Al comprar en subasta | Objeto, cantidad y precio real, con la ruta o a mano. |
 | Libro de ventas | Al abrir el correo | Ventas de subasta cobradas, una sola vez cada una. |
+| Depósitos | Al vender con la ruta | El depósito real que pide el juego, con duración y cantidad (los últimos 300). |
 | Apuestas | Al ejecutar un `HOLD` | Cantidad, entrada, objetivo, stop y fecha. |
 | Rutas | Al importar | Una por personaje, con el progreso. |
 | Información de objetos | Al verlos | Nombre, calidad, nivel de objeto, tamaño de pila y precio de venta al vendedor. |
@@ -456,7 +457,8 @@ Cómo decide:
 - **Qué entra en la ruta:** primero lo que más rinde por cada oro invertido, ponderado por la confianza, hasta agotar el presupuesto.
 - **Tu stock primero:** bolsas → banco → banco de banda → banquero → otro personaje. La ruta añade los pasos de banco y correo.
 - **Oro:** si a un personaje no le llega, la ruta incluye que otro se lo envíe.
-- **Reventa:** objetos con el mínimo un 25 % por debajo de su mediana de 7 días.
+- **Reventa:** con la lista completa de subastas de la API, por escalones: comprar todo lo que hay por debajo de un salto de precio del 25 % o más y volver a ponerlo justo bajo el escalón siguiente, sin pasar de la mediana de 7 días, sin comprar más de lo que vas a poder vender (la mitad de las ventas del horizonte) y con un 15 % de margen después de comisión y depósitos. Sin API, la regla anterior: el mínimo un 25 % por debajo de su mediana de 7 días. El equipo con variantes («del bandido», «de la ballena») no se revende: su precio por número de objeto mezcla productos distintos.
+- **Depósito:** el 60 % del precio de vendedor por cada publicación de 24 h (5 % a 2 h y 20 % a 8 h; mínimo 1 cobre). Se devuelve al vender y se pierde al caducar. El plan cuenta con que te llevas la mitad de las ventas del día: lo que no cabe se vuelve a publicar y pierde su depósito. Son cifras de guías; el addon apunta el depósito real al publicar y, con 3 mediciones, el plan usa el porcentaje medido.
 - **Stock sobrante:** propone venderlo, salvo que sea material de una receta con enfriamiento, de una receta que te conviene aprender, o que ese día haya señal de compra.
 
 ### make_synthetic.py
@@ -563,6 +565,7 @@ Los multiplicadores (`uplift`, `scenario`) son suposiciones: el planificador los
 | `professions` | Nivel y máximo por personaje y profesión. |
 | `recipes` | Por personaje: receta, aprendida o no, objeto resultante, cantidades, dificultad, origen, enfriamiento. |
 | `reagents` | Materiales de cada receta. |
+| `deposits` | Depósitos reales al publicar: hora, objeto, duración, cantidad y depósito. |
 | `ledger` | Compras y ventas: hora, personaje, objeto, cantidad, precio por unidad, total. |
 | `positions` | Apuestas: cantidad, entrada, objetivo, stop, fecha. |
 | `config` | Configuración del addon, incluido el banquero. |

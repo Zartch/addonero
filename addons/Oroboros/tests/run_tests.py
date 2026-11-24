@@ -465,6 +465,9 @@ ns.Queue.Next(); check(calls() == [("PlaceBid", 9, 250000)], "BUY equipo: PlaceB
 ns.Queue.Next(); calls(); fire("COMMODITY_SEARCH_RESULTS_UPDATED", 2996)
 check(ns.Queue.Phase() == "post", "SELL: listo para publicar")
 ns.Queue.Next(); check(calls() == [("PostCommodity", 1, 3, 12, 449)], "SELL: PostCommodity 12 a 449c (rebaja 1c al ajeno), 24 h")
+_dp = list(G.OroborosDB.deposits.values())[-1]
+check((_dp.hours, _dp.qty, _dp.deposit) == (24, 12, 36),
+      f"SELL: apunta el depósito real que pide el juego ({_dp.hours}, {_dp.qty}, {_dp.deposit})")
 check("24 h" in (ns.UI.lastStatus or ""), f"SELL: el estado dice cuánto dura la subasta ({ns.UI.lastStatus})")
 
 # SELL equipo: mercado 250000 < mínimo 20g? 25g > 20g -> publica a 249999, uno por clic
@@ -1172,6 +1175,56 @@ def _flip_case(mv_yesterday):
 check(len(_flip_case(1000)) == 1, "reventa: bajada puntual frente a su mediana")
 check(len(_flip_case(310)) == 0, "reventa: no si ayer ya estaba a ese precio")
 
+# ---- Fase 5: depósito, variantes y reventa por escalones ----
+from oroboros_plan import lost_posts as _lost, ladder_flip as _lflip, SELL_SHARE as _SHARE
+import oroboros_plan as _OP
+check(_lost(10, 100) == 0 and _lost(0, 5) == 0, "depósito: un lote que cabe en las ventas de un día no pierde depósitos")
+check(abs(_lost(20, 20) - 0.5) < 1e-9, f"depósito: con el doble de lo que vendes al día, media publicación perdida por unidad ({_lost(20, 20)})")
+check(_lost(5, 0) == 1.0 and _lost(1000, 1) == _OP.MAX_LOST_POSTS, "depósito: sin ventas conocidas, una; y hay un tope")
+def _f5(vendor_sell=0, deposits=(), variants=(), ladder=None, vol=None):
+    _sh.copy(os.path.join(tmp, "a.sqlite"), fdb)
+    _f = sqlite3.connect(fdb); mk = plan["market"]
+    _f.execute("INSERT INTO items (item_id, name, vendor_sell) VALUES (777777, 'Gema de prueba', ?)", (vendor_sell,))
+    _f.execute("INSERT INTO prices VALUES (?,777777,300,300,200,10,?,60,120,180,200,'oro')", (mk, _now))
+    for k, (mv, q) in zip((4, 3, 2, 1), ((1000, 300), (1000, 280), (1000, 260), (1000, 240))):
+        _f.execute("INSERT INTO history VALUES (?,777777,?,?,?,?,'oro',NULL)", (mk, _day(k), mv, mv, q))
+    for hours, qty, dep in deposits:
+        _f.execute("INSERT INTO deposits VALUES (?,777777,?,?,?)", (_now, hours, qty, dep))
+    _f.commit(); _f.close()
+    dd = _Data(fdb, CAT_TEST, now=_now)
+    dd.variants = set(variants)
+    if ladder is not None:
+        dd.ladders = {777777: ladder}
+    return dd
+_d5 = _f5(vendor_sell=1000)
+check(_d5.deposit(777777) == 600 and _d5.deposit_measured == 0, f"depósito: 60 % del precio de vendedor a 24 h ({_d5.deposit(777777)})")
+check(_f5(vendor_sell=0).deposit(777777) == 1, "depósito: mínimo 1 cobre")
+_d5m = _f5(vendor_sell=1000, deposits=((24, 1, 3000), (24, 2, 6000), (8, 1, 1000)))
+check(_d5m.deposit_measured == 3 and abs(_d5m.deposit_rate - 3.0) < 1e-9 and _d5m.deposit(777777) == 3000,
+      f"depósito: con 3 depósitos reales manda lo medido, llevado a 24 h ({_d5m.deposit_rate})")
+check(_f5(vendor_sell=1000, deposits=((24, 1, 3000),)).deposit_rate == 0.6, "depósito: con menos de 3 mediciones, el de las guías")
+_fl = [f for f in find_flips(_f5(vendor_sell=100), 48, next(iter(_d5.chars))) if f["out_item"] == 777777]
+_fl0 = [f for f in find_flips(_f5(), 48, next(iter(_d5.chars))) if f["out_item"] == 777777]
+check(_fl and _fl0 and _fl[0]["profit"] < _fl0[0]["profit"] and _fl[0]["min_sell"] > _fl0[0]["min_sell"],
+      "reventa: el depósito de lo que no se vende a la primera baja el beneficio y sube el mínimo de venta")
+check(not [f for f in find_flips(_f5(variants=[777777]), 48, next(iter(_d5.chars))) if f["out_item"] == 777777],
+      "reventa: nada con equipo que tiene variantes (su precio mezcla productos distintos)")
+# por escalones: 12 a 300, 8 a 320 y el resto desde 900 → comprar las 20 y ponerlas bajo 900
+_dl = _f5(ladder=[(300, 12), (320, 8), (900, 40), (1000, 100)])
+_cap = int(_dl.stats(777777)["vol"] * _SHARE * 2)
+_lf = _lflip(_dl, 777777, 48, "x")
+check(_cap >= 20 and _lf and _lf["units"] == 20 and _lf["max_buy"] == 320 and abs(_lf["sell"] - 891) < 1e-6
+      and abs(_lf["cost"] - (300 * 12 + 320 * 8) / 20) < 1e-6,
+      f"reventa por escalones: compra hasta el salto y vende bajo el escalón siguiente ({_lf and (_lf['units'], _lf['max_buy'], _lf['sell'])}, tope {_cap})")
+_lf2 = _lflip(_f5(ladder=[(300, 12), (320, 8), (5000, 40)]), 777777, 48, "x")
+check(_lf2 and _lf2["sell"] == 1000, f"reventa por escalones: nunca por encima de la mediana de 7 días ({_lf2 and _lf2['sell']})")
+check(_lflip(_f5(ladder=[(300, 12), (320, 8), (350, 40), (380, 100)]), 777777, 48, "x") is None,
+      "reventa por escalones: sin salto de precio no hay reventa, aunque esté por debajo de su mediana")
+check(_lflip(_f5(ladder=[(300, 100000), (900, 40)]), 777777, 48, "x") is None,
+      "reventa por escalones: no compra más de lo que el mercado deja vender")
+_fx = [f for f in find_flips(_dl, 48, next(iter(_dl.chars))) if f["out_item"] == 777777]
+check(len(_fx) == 1 and _fx[0]["units"] == 20, "reventa: con la lista de precios de la API, find_flips usa los escalones")
+
 # El plan sale del archivo (--archive) y propone lo mismo que sin él
 arch_e = os.path.join(tmp, "arch_e.sqlite")
 _cpre = open_archive(arch_e)        # un día viejo que solo está en el archivo (como uno que el juego ya olvidó)
@@ -1391,8 +1444,27 @@ _P2 = [_au(4, 200, 1, 10, "LONG"), _au(5, 100, 1, 55, "VERY_LONG"),
 _c = API.classify(API.as_live(_P1), API.as_live(_P2))
 check(_c[100] == {"new": 1, "sold": 1, "expired": 1, "cancelled": 1, "partial": 0},
       f"API: desaparecidas: SHORT → caducada, cara → cancelada, barata → vendida ({_c.get(100)})")
-check(_c[300] == {"new": 7, "sold": 10, "expired": 0, "cancelled": 0, "partial": 5},
-      f"API: materiales: baja de cantidad del mismo id = compra parcial ({_c.get(300)})")
+check(_c[300] == {"new": 7, "sold": 0, "expired": 0, "cancelled": 10, "partial": 5},
+      f"API: materiales: baja de cantidad = compra parcial; la cara que desaparece con la barata aún viva = cancelada ({_c.get(300)})")
+# fase 5: se compra primero lo más barato, y cada variante de equipo es un producto distinto
+_av = lambda i, price, bonus=None: {"id": i, "item": dict({"id": 500}, **({"bonus_lists": bonus} if bonus else {})),
+                                    "quantity": 1, "buyout": price, "time_left": "LONG"}
+_cA = API.classify(API.as_live([_av(1, 100), _av(2, 110)]), API.as_live([_av(1, 100)]))
+check(_cA[500]["sold"] == 0 and _cA[500]["cancelled"] == 1, f"API: desaparece la cara y sigue la barata → cancelada, no vendida ({_cA[500]})")
+_cB = API.classify(API.as_live([_av(1, 100), _av(2, 110)]), API.as_live([_av(2, 110)]))
+check(_cB[500]["sold"] == 1 and _cB[500]["cancelled"] == 0, f"API: desaparece la más barata → vendida ({_cB[500]})")
+_cC = API.classify(API.as_live([_av(1, 100, [7]), _av(2, 110, [9, 8])]), API.as_live([_av(1, 100, [7])]))
+check(_cC[500]["sold"] == 1, f"API: otra variante más barata no cuenta: son productos distintos ({_cC[500]})")
+check(API.variant_of({"id": 1, "bonus_lists": [9, 8]}) == "8.9" and API.variant_of({"id": 1}) == "", "API: la variante son las bonus_lists ordenadas")
+_vd5 = _tf.mkdtemp(); _cv5 = API.open_api(os.path.join(_vd5, "v.sqlite")); API.set_house(_cv5, 111, "Casa de subastas de la Alianza", realm="R5")
+API.ingest(_cv5, 111, _T0, [_av(1, 100, [7]), _av(2, 110, [9, 8]), _av(3, 120, [7]), {"id": 4, "item": {"id": 600}, "quantity": 5, "unit_price": 10, "time_left": "LONG"},
+                            {"id": 5, "item": {"id": 600}, "quantity": 5, "unit_price": 10, "time_left": "LONG"}, {"id": 6, "item": {"id": 600}, "quantity": 2, "unit_price": 30, "time_left": "LONG"}])
+check(API.variant_items(_cv5, 111) == {500}, f"API: objetos con más de una variante a la venta ({API.variant_items(_cv5, 111)})")
+check(API.ladders(_cv5, 111)[600] == [(10, 10), (30, 2)], f"API: lista de precios de barato a caro, juntando el mismo precio ({API.ladders(_cv5, 111).get(600)})")
+API.ingest(_cv5, 111, _T0 + 3600, [_av(1, 100, [7]), _av(2, 110, [9, 8])])
+_r5 = _cv5.execute("SELECT sold, cancelled FROM api_item_hour WHERE t=? AND item_id=500", (_T0 + 3600,)).fetchone()
+check(_r5 == (0, 1), f"API: la variante se recuerda entre fotos (la cara de la misma variante que desaparece = cancelada) {_r5}")
+_cv5.close()
 check(200 not in _c, "API: lo que no cambia no genera movimientos")
 _c2 = API.classify(API.as_live([_au(1, 100, 5, 50, "LONG", True)]), API.as_live([_au(1, 100, 8, 50, "LONG", True)]))
 check(_c2.get(100, {}).get("partial", 0) == 0 and _c2.get(100, {}).get("new", 0) == 0, "API: si una subasta sube de cantidad, no cuenta")
@@ -1413,7 +1485,7 @@ check(_h1 == (50, 50, 3, 3, None), f"API: primera foto: precios por objeto y sin
 r2 = API.ingest(_con, 111, _T0 + 3600, _P2)
 _h2 = _con.execute("SELECT new, sold, expired, cancelled, partial, min, qty FROM api_item_hour WHERE house=111 AND t=? AND item_id=300",
                    (_T0 + 3600,)).fetchone()
-check(_h2 == (7, 10, 0, 0, 5, 4, 22), f"API: segunda foto: movimientos y precio por objeto {_h2}")
+check(_h2 == (7, 0, 0, 10, 5, 4, 22), f"API: segunda foto: movimientos y precio por objeto {_h2}")
 _h3 = _con.execute("SELECT min, qty, sold, expired, cancelled FROM api_item_hour WHERE house=111 AND t=? AND item_id=100",
                    (_T0 + 3600,)).fetchone()
 check(_h3 == (55, 1, 1, 1, 1), f"API: objeto con movimientos {_h3}")
@@ -1486,7 +1558,8 @@ for _t, _p in ((_T0, _P1), (_T0 + 3600, _P2)):
 _ai = os.path.join(_imp, "i.sqlite")
 _ri = API.import_dir(_ai, _imp, realm="R5")
 _cx = sqlite3.connect(_ai)
-check(_ri == 2 and _cx.execute("SELECT sold FROM api_item_hour WHERE t=? AND item_id=300", (_T0 + 3600,)).fetchone() == (10,),
+check(_ri == 2 and _cx.execute("SELECT sold FROM api_item_hour WHERE t=? AND item_id=300", (_T0 + 3600,)).fetchone() == (0,)
+      and _cx.execute("SELECT cancelled FROM api_item_hour WHERE t=? AND item_id=300", (_T0 + 3600,)).fetchone() == (10,),
       f"API: importa fotos guardadas en orden ({_ri})")
 _cx.close()
 
@@ -1494,10 +1567,10 @@ _cx.close()
 _rd = _tf.mkdtemp(); _ra = os.path.join(_rd, "r.sqlite")
 _cr = API.open_api(_ra); API.set_house(_cr, 111, "Casa de subastas de la Alianza", realm="R5")
 _base = _ts(2, 9, 23)     # lunes 2/11, semana 45
-_lv = [_au(1, 100, 1, 50, "LONG"), _au(2, 100, 1, 52, "LONG")]
+_lv = [_au(1, 100, 1, 50, "LONG"), _au(2, 100, 1, 50, "LONG")]
 for _k in range(6):        # cada hora se vende una barata y se publica otra
     API.ingest(_cr, 111, _base + _k * 3600, _lv)
-    _lv = [_lv[1], _au(10 + _k, 100, 1, 50 + _k % 2, "LONG")]
+    _lv = [_lv[1], _au(10 + _k, 100, 1, 50, "LONG")]
 for _k in range(3):        # y al día siguiente, otra vez
     API.ingest(_cr, 111, _base + 86400 + _k * 3600, _lv)
     _lv = [_lv[1], _au(30 + _k, 100, 1, 50, "LONG")]
@@ -1542,10 +1615,10 @@ import shutil as _sh, time as _time
 _vd = _tf.mkdtemp(); _va = os.path.join(_vd, "v.sqlite"); _vp = os.path.join(_vd, "plan.sqlite"); _sh.copy(out, _vp)
 _cv = API.open_api(_va); API.set_house(_cv, 111, "Casa de subastas de la Alianza", market=mk_)
 _now = int(_time.time()); _t = _now - 72 * 3600 + 60     # la última foto, posterior al precio del juego de las pruebas
-_lv = [_au(1, 2589, 1, 30, "LONG"), _au(2, 2589, 1, 31, "LONG")]
+_lv = [_au(1, 2589, 1, 30, "LONG"), _au(2, 2589, 1, 30, "LONG")]
 for _k in range(73):       # 3 días, una foto por hora: cada hora se vende una barata y se publica otra
     API.ingest(_cv, 111, _t + _k * 3600, _lv)
-    _lv = [_lv[1], _au(100 + _k, 2589, 1, 30 + _k % 2, "LONG")]
+    _lv = [_lv[1], _au(100 + _k, 2589, 1, 30, "LONG")]
 _rates, _cov = API.sold_rates(_cv, 111, _now)
 check(_cov >= 3 and abs(_rates[2589] - 24) < 0.01, f"API: vendidas por día (media de 7 días) {_rates.get(2589)} con {_cov} días")
 _cv.close()
@@ -1602,7 +1675,7 @@ check(API.is_calibrated(sqlite3.connect(_ka), 111) is False, "calibración: con 
 # --- revisión final: retención con el corte entre dos semanas (domingo 8/11 → lunes 9/11) ---
 _bd = os.path.join(_tf.mkdtemp(), "borde.sqlite")
 _cb = API.open_api(_bd); API.set_house(_cb, 111, "Casa de subastas de la Alianza", realm="R5")
-_lv = [_au(1, 100, 1, 50, "LONG"), _au(2, 100, 1, 52, "LONG")]
+_lv = [_au(1, 100, 1, 50, "LONG"), _au(2, 100, 1, 50, "LONG")]
 for _k in range(8):
     API.ingest(_cb, 111, _ts(8, 20, 23) + _k * 3600, _lv)
     _lv = [_lv[1], _au(200 + _k, 100, 1, 50, "LONG")]
