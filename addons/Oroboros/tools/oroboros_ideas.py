@@ -41,6 +41,35 @@ def _date(ts):
     return time.strftime("%d/%m", time.localtime(ts))
 
 
+def reset_weekday(data):
+    """Día del reinicio semanal de las bandas según el catálogo (lunes = 0), o None si no lo dice."""
+    wd = data.catalog.get("server", {}).get("raid_reset_weekday")
+    return wd if isinstance(wd, int) and 0 <= wd <= 6 else None
+
+
+def next_reset(data, ts):
+    """Primer reinicio semanal estrictamente posterior al día de `ts` (hora local), o None."""
+    wd = reset_weekday(data)
+    if wd is None:
+        return None
+    days = (wd - time.localtime(ts).tm_wday) % 7 or 7
+    return ts + days * 86400
+
+
+def apply_caps(data, cands):
+    """Techo de precio (catalog.json, price_caps): si un vendedor da el objeto a precio fijo, nadie lo
+    pagará más caro en subasta, así que el objetivo de una idea no pasa de ahí."""
+    caps = data.catalog.get("price_caps", {})
+    for c in cands:
+        cap = caps.get(str(c["item"]))
+        if not isinstance(cap, dict) or not cap.get("cap") or c["target"] <= cap["cap"]:
+            continue
+        c["target"], c["capped"] = cap["cap"], True
+        c["why"].append(f"Techo: {cap.get('note', 'un vendedor lo da a precio fijo')} ({_money(cap['cap'])}), así que el "
+                        "objetivo se queda ahí" + ("." if cap.get("verified") else "; el dato está sin comprobar en el juego."))
+    return cands
+
+
 def _past(data, item):
     return [h for h in data.history.get(item, []) if h["day"] < data.today and h["mv"]]
 
@@ -126,6 +155,8 @@ def outlook(data, uses):
         if 0 <= days <= 60:
             out["events"].append({"name": ev["name"], "date": _date(ts), "days": days, "note": ev.get("note")})
             out["text"].append(f"{ev['name']}: {_date(ts)} (faltan {days} días).")
+    out["facts"] = [{"text": f["text"], "verified": bool(f.get("verified")), "how": f.get("how"), "source": f.get("source")}
+                    for f in data.catalog.get("facts", []) if f.get("text")]
     return out
 
 
@@ -192,6 +223,7 @@ def detect_rebound(data, skip):
 def detect_weekly(data):
     out = []
     today_wd = time.localtime(data.now).tm_wday
+    reset = reset_weekday(data)
     for item in data.prices:
         past = _past(data, item)
         st = data.stats(item)
@@ -217,13 +249,21 @@ def detect_weekly(data):
         if st["mv"] > med * 0.97 or means[best] * (1 - AH_CUT) < st["mv"] * 1.08:
             continue
         days = (best - today_wd) % 7 or 7
+        if reset is None:
+            cycle = "Suele pasar con consumibles: la gente los compra justo antes de entrar a mazmorras o bandas."
+        elif best in (reset, (reset - 1) % 7):
+            cycle = (f"Coincide con el reinicio semanal de las bandas ({WEEKDAYS[reset]}): la gente compra consumibles "
+                     "ese día y el anterior.")
+        else:
+            cycle = (f"No coincide con el reinicio semanal de las bandas ({WEEKDAYS[reset]}): es más fácil que sea "
+                     "casualidad.")
         out.append(_cand(
             data, "semanal", item, means[best] * 0.97, days, "medio",
             f"{data.name(item)}: compra hoy, vende el {WEEKDAYS[best]}",
             [f"En las dos últimas semanas el {WEEKDAYS[best]} se ha vendido a {_money(means[best])} de media y el "
              f"{WEEKDAYS[cheap]} a {_money(means[cheap])}.",
              f"Hoy ({WEEKDAYS[today_wd]}) está a {_money(st['mv'])}.",
-             "Suele pasar con consumibles: la gente los compra justo antes de entrar a mazmorras o bandas.",
+             cycle,
              "Solo hay dos semanas de datos: el patrón puede ser casualidad."]))
     return out
 
@@ -260,6 +300,8 @@ def detect_event(data):
         if not 3 <= days <= 35:
             continue
         up = ev.get("uplift", 1.25)
+        nr = next_reset(data, ts)
+        until = f"el primer reinicio ({WEEKDAYS[time.localtime(nr).tm_wday]} {_date(nr)})" if nr else "el primer reinicio"
         for item in ev.get("items", []):
             st, med = data.stats(item), _med14(data, item)
             if not med or not st["mv"] or (st["vol"] or 0) < 2:
@@ -274,7 +316,7 @@ def detect_event(data):
                  f"Hoy está a {_money(st['mv'])}, sin subida previa respecto a su mediana ({_money(med)}).",
                  f"Escenario: sube un {(up - 1) * 100:.0f} % la semana del evento, hasta {_money(base * up)}. "
                  "Ese porcentaje es una suposición del catálogo, no un dato.",
-                 "Vende desde uno o dos días antes hasta el primer reinicio: después la oferta se pone al día."],
+                 f"Vende desde uno o dos días antes hasta {until}: después la oferta se pone al día."],
                 event=ev["name"]))
     return out
 
@@ -356,6 +398,7 @@ def build_ideas(data, budget, buyer, storages, route_buys, skip_items, horizon_h
              + detect_rebound(data, skip_items))
     # equipo con variantes: su precio por número de objeto mezcla productos distintos
     cands = [c for c in cands if c["item"] not in getattr(data, "variants", ())]
+    apply_caps(data, cands)
 
     # una idea por objeto: la mejor, y las demás señales como apoyo
     by_item = defaultdict(list)

@@ -541,12 +541,14 @@ Cada línea `HOLD` que ejecutas en el juego abre una apuesta. En la siguiente pa
 
 ## catalog.json
 
-Completa lo que el juego no da al addon, con **datos reales de Forever** (revisado el 20/11/2026). Las pruebas usan su propio catálogo inventado, `tests/catalogo_sintetico.json`.
+Completa lo que el juego no da al addon, con **datos reales de Forever** (revisado el 24/11/2026). Las pruebas usan su propio catálogo inventado, `tests/catalogo_sintetico.json`.
 
 | Sección | Contenido |
 |---|---|
-| `server` | `launch`: apertura del servidor, el 4/11/2026. `low_level_max_ilvl`: nivel de objeto hasta el que un material cuenta como de nivel bajo (40). `progression_horizon_days`: plazo de las apuestas de progresión (21). |
-| `events` | Fechas que mueven la demanda: `name`, `date`, `items`, `uplift` (multiplicador supuesto) y `note`. Trae la apertura del 9/12/2026: Barrow Deeps (10), Hyjal Summit (20) y Onyxia's Lair (40), con sus consumibles de nivel 60, y aparte la protección contra el fuego para Onyxia. Las dos tandas de 2027 se añadirán cuando tengan fecha. |
+| `facts` | Lo que el catálogo da por cierto de Forever: `text`, `source` (fuente), `verified` (comprobado en nuestros datos o en una nota oficial) y `how` (cómo se comprobó). La pestaña Ideas los enseña con su marca. |
+| `price_caps` | Techo de precio por itemID: `cap` (en cobre), `note`, `source` y `verified`. Si un vendedor da el objeto a precio fijo, el objetivo de una idea no pasa de ahí. Trae Loto negro y Cristal Arcano a 50 oro (mercado negro, sin comprobar). |
+| `server` | `raid_reset_weekday`: día del reinicio semanal de las bandas (lunes = 0; trae 2, miércoles, sin comprobar). `launch`: apertura del servidor, el 4/11/2026. `low_level_max_ilvl`: nivel de objeto hasta el que un material cuenta como de nivel bajo (40). `progression_horizon_days`: plazo de las apuestas de progresión (21). |
+| `events` | Fechas que mueven la demanda: `name`, `date`, `items`, `uplift` (multiplicador supuesto) y `note`. Trae la apertura del 9/12/2026 (Barrow Deeps 10, Hyjal Summit 20 y Onyxia's Lair 40) en tres eventos: pociones y hierbas, elixires (con los 13 nuevos de nivel 55) y frascos (con los cuatro naturales); y aparte la protección contra el fuego para Onyxia. Un objeto va en un solo evento. Las dos tandas de 2027 se añadirán cuando tengan fecha. |
 | `progression` | Por itemID de nivel bajo: `note` (para qué se sigue usando a nivel 60) y `scenario` (multiplicador supuesto). |
 | `recipes`, `professions` | Opcionales. Ya no hacen falta con ProfessionDB, que da nivel, origen y coste de cada receta. Si se ponen, `recipes` manda sobre ProfessionDB (`skill`, `learn_cost`, `cooldown_h`, `learn_note`), y `professions` se usa solo si ProfessionDB no está instalada. |
 

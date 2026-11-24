@@ -1,6 +1,6 @@
 # Hoja de ruta: datos, seguimiento de precios y automatización
 
-Actualizado el 24/11/2026. Este documento resume **qué esperamos** de cada fase y en qué estado está. El detalle técnico de cada una está en `docs/modelo-y-seguimiento.md`, que es la referencia para planificarla.
+Actualizado el 25/11/2026. Este documento resume **qué esperamos** de cada fase y en qué estado está. El detalle técnico de cada una está en `docs/modelo-y-seguimiento.md`, que es la referencia para planificarla.
 
 **Cómo se trabaja:** una fase cada vez. Al empezarla se escribe su plan en `docs/planes/`, se ejecuta con pruebas y commits, y al terminarla se marca aquí como hecha, con lo aprendido. No se empieza una fase sin haber cerrado la anterior.
 
@@ -23,8 +23,8 @@ El usuario quiere ganar oro con la subasta de WoW Forever sabiendo **cuándo** c
 | — | API de Blizzard y panel de escritorio | ✅ Hecho (24/11), plan en `docs/planes/2026-11-23-api-blizzard.md` |
 | 4 | Cálculos avanzados | ⏳ Cuando haya un par de semanas de datos |
 | 5 | Cálculo fiable del oro (depósito, variantes, reventa por escalones, ventas) | ✅ Hecho fuera del juego (24/11); falta medir el depósito real en el juego |
-| 6 | Catálogo de Forever al día (antes de las bandas del 9/12) | ⏳ Siguiente |
-| 7 | Maneras nuevas: Aguasnegras, enfriamientos como renta, gangas en el panel | ⏳ Después de la 6 |
+| 6 | Catálogo de Forever al día (antes de las bandas del 9/12) | ✅ Hecho (25/11); falta comprobar en el juego el día de reinicio y el vendedor del mercado negro |
+| 7 | Maneras nuevas: Aguasnegras, enfriamientos como renta, gangas en el panel | ⏳ Siguiente |
 
 ## Fase 1: modelo de datos
 
@@ -182,6 +182,20 @@ El 24/11 se repasaron todas las maneras de ganar oro (fabricar, transformar, apr
 - pociones de sanación en Primeros auxilios, no en Alquimia;
 - techo de precio del mercado negro (Loto negro y Cristal arcano a 50 oro, sin verificar) para los objetivos de las ideas;
 - día de reinicio semanal de las bandas, para el ciclo semanal.
+
+**Hecho (25/11).** Plan en `docs/planes/2026-11-24-catalogo-forever.md`. `catalog.json` tiene tres secciones nuevas: `facts` (10 datos de Forever, cada uno con fuente y marca), `price_caps` (techos) y `server.raid_reset_weekday`. La apertura de las bandas son ahora tres eventos: pociones y hierbas, elixires y frascos. En las ideas, el objetivo no pasa del techo, la idea de evento dice la fecha del primer reinicio (miércoles 16/12) y el ciclo semanal dice si el día caro coincide con el reinicio. La pestaña Ideas enseña los datos del catálogo con su marca y su fuente.
+
+**Lo aprendido en nuestros datos:**
+- Los elixires nuevos de nivel 55 no son tres: son 13 (objetos 250328 a 250351), y ya se venden entre 0,7 y 1,6 oro.
+- Los frascos naturales son cuatro (274273 a 274276, Alquimia 300). El 24/11 no había ninguno en subasta.
+- Las pociones de sanación ya salían bien: la profesión de cada receta viene de ProfessionDB, y ahí son de Primeros auxilios. Alquimia hace las «descoloridas».
+- Loto negro (8,4 oro) y Cristal Arcano (14,4 oro) están muy por debajo del techo de 50: hoy el techo no cambia ninguna idea.
+
+**Por comprobar en el juego:**
+1. El día de reinicio: en la ventana de información de banda, desde el 9/12. Si no es miércoles, se cambia `raid_reset_weekday` (lunes = 0).
+2. Que el vendedor del mercado negro (Mister Graphed, Powderfuse Port) vende Loto negro y Cristal Arcano a 50 oro. Si es así, se pone `verified: true` en `price_caps`.
+
+**Sin hacer, para decidir:** la idea de evento toma como base la mediana de 14 días aunque el objeto esté hoy muy por debajo, así que un elixir hundido sale con un objetivo doble (rebote más evento). Y sigue faltando el mínimo de beneficio por clic.
 
 ### Fase 7: maneras nuevas
 

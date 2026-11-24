@@ -77,6 +77,6 @@ Goblinomics (instalado) es contabilidad y patrimonio sobre precios de TSM/Auctio
 
 ## Siguiente trabajo: hoja de ruta por fases
 
-**Lee primero `docs/hoja-de-ruta.md`.** Ahí está qué esperamos de cada fase (modelo de datos, seguimiento de precios al estilo Camel, automatización, cálculos y, desde el 24/11, las fases 5 a 7 del repaso de las maneras de ganar oro: la 5 está hecha, la siguiente es la 6, el catálogo de Forever antes del 9/12) y en qué estado está; el detalle técnico está en `docs/modelo-y-seguimiento.md`. Se trabaja una fase cada vez: plan en `docs/planes/`, ejecución con pruebas y commits, y al acabar se actualiza el estado en la hoja de ruta.
+**Lee primero `docs/hoja-de-ruta.md`.** Ahí está qué esperamos de cada fase (modelo de datos, seguimiento de precios al estilo Camel, automatización, cálculos y, desde el 24/11, las fases 5 a 7 del repaso de las maneras de ganar oro: la 5 y la 6 están hechas, la siguiente es la 7, las maneras nuevas) y en qué estado está; el detalle técnico está en `docs/modelo-y-seguimiento.md`. Se trabaja una fase cada vez: plan en `docs/planes/`, ejecución con pruebas y commits, y al acabar se actualiza el estado en la hoja de ruta.
 
 Otros pendientes: ver `docs/arquitectura.md`, sección Pendiente.

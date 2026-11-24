@@ -509,6 +509,14 @@ function renderAprender() {
 
 const RISK = { bajo: "good", medio: "warn", alto: "bad" };
 let ideaChar = null;
+// Datos de Forever que el catálogo da por ciertos: cada uno con su marca y su fuente
+function factsHtml(facts) {
+  if (!facts || !facts.length) return "";
+  const ok = facts.filter(f => f.verified).length;
+  const src = f => /^https?:\/\//.test(f.source || "") ? `<a href="${esc(f.source)}" target="_blank" rel="noopener noreferrer">fuente</a>` : esc(f.source || "sin fuente");
+  return `<details style="margin-top:8px"><summary>Lo que el catálogo da por cierto de Forever (${ok} comprobados, ${facts.length - ok} sin comprobar)</summary>
+    <ul class="why">${facts.map(f => `<li>${f.verified ? "✔ Comprobado" : "? Sin comprobar"}: ${esc(f.text)} ${f.verified && f.how ? `(${esc(f.how)}) ` : ""}— ${src(f)}</li>`).join("")}</ul></details>`;
+}
 function renderIdeas() {
   const I = PLAN.ideas, inc = I.ideas.filter(c => c.included), out = I.ideas.filter(c => !c.included);
   const card = c => `<div class="card">
@@ -532,7 +540,7 @@ function renderIdeas() {
   }).join("") : "";
   $("#v-ideas").innerHTML = `<div class="panel"><header><h2>Apuestas para los próximos días</h2></header>
       <p class="lead">Aquí no hay beneficio seguro: son compras de hoy para vender más adelante. Cada objetivo es un escenario, no una predicción, y por eso cada idea lleva su riesgo y su precio de salida. Se usa solo el oro que sobra después de la ruta (como mucho el ${pct(I.spec_pct)} del total). La fase del servidor se lee en los precios y en lo que se publica, no en cuánta gente hay a nivel máximo.</p>
-      <ul class="why">${I.outlook.text.map(t => `<li>${esc(t)}</li>`).join("")}</ul></div>
+      <ul class="why">${I.outlook.text.map(t => `<li>${esc(t)}</li>`).join("")}</ul>${factsHtml(I.outlook.facts)}</div>
     <div class="tiles">
       <div class="tile"><span class="k">Oro para apuestas</span><span class="v">${money(I.budget)}</span><span class="s">lo compra ${esc(I.buyer)}</span></div>
       <div class="tile"><span class="k">Lo que pones</span><span class="v">${money(I.invest)}</span><span class="s">${inc.length} ideas</span></div>

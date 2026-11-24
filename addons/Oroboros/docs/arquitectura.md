@@ -55,7 +55,7 @@ Objetivo: ganar oro en **WoW Forever** con un addon de subasta + un planificador
 | Rebote | precio ≥ 15 % bajo su mediana 14 d con ventas ≥ 3/día | medio |
 | Ciclo semanal | día caro y día barato coinciden en las dos semanas, diferencia ≥ 15 % | medio |
 | Oferta que se seca | publicado −30 % en 2 semanas y precio subiendo | medio |
-| Evento | fecha en `catalog.json` a 3–35 días (bandas: 9/12/2026) y lista de objetos con multiplicador | medio |
+| Evento | fecha en `catalog.json` a 3–35 días (bandas: 9/12/2026) y lista de objetos con multiplicador; el objetivo no pasa del techo de `price_caps` y la salida dice la fecha del primer reinicio | medio |
 | Progresión | nivel de objeto ≤ 40, con uso a nivel 60. **Compra** solo si lo publicado cae ≥ 12 % en el histórico (regresión) y el precio de los últimos 5 días ya no baja (≥ −0,5 %/día); si no, **vigilancia** con el motivo. Plazo fijo de 21 días (`progression_horizon_days`) | alto |
 
 - Fase del servidor: mediana del cambio de oferta y precio de los materiales de nivel bajo (≤ 40) frente a los de nivel alto (≥ 50). Es contexto; la decisión es objeto por objeto.

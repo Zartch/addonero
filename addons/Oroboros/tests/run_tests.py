@@ -1225,6 +1225,69 @@ check(_lflip(_f5(ladder=[(300, 100000), (900, 40)]), 777777, 48, "x") is None,
 _fx = [f for f in find_flips(_dl, 48, next(iter(_dl.chars))) if f["out_item"] == 777777]
 check(len(_fx) == 1 and _fx[0]["units"] == 20, "reventa: con la lista de precios de la API, find_flips usa los escalones")
 
+# ---- Fase 6: catálogo de Forever (techos, reinicio semanal y datos con fuente) ----
+import oroboros_ideas as _OI
+import time as _tm
+_cat_real = json.load(open(os.path.join(ROOT, "tools", "catalog.json"), encoding="utf-8"))
+check(_cat_real.get("facts") and all(f.get("text") and f.get("source") and isinstance(f.get("verified"), bool)
+                                     and (f.get("how") or not f["verified"]) for f in _cat_real["facts"]),
+      "catálogo: cada dato de Forever lleva fuente, marca de comprobado y, si lo está, cómo se comprobó")
+_caps_real = {k: v for k, v in _cat_real.get("price_caps", {}).items() if not k.startswith("_")}
+check(_caps_real and all(k.isdigit() and v.get("cap", 0) > 0 and v.get("source") and isinstance(v.get("verified"), bool)
+                         for k, v in _caps_real.items()), "catálogo: cada techo de precio lleva fuente y marca de comprobado")
+check(all(_tm.strptime(e["date"], "%Y-%m-%d") and e["items"] and all(isinstance(i, int) for i in e["items"])
+          for e in _cat_real["events"]), "catálogo: los eventos tienen fecha válida y objetos")
+_evi = [i for e in _cat_real["events"] for i in e["items"]]
+check(len(_evi) == len(set(_evi)), "catálogo: ningún objeto está en dos eventos (daría dos ideas del mismo objeto)")
+
+
+class _FD:
+    """Datos mínimos para los detectores de ideas: un objeto con 14 días de historia."""
+    def __init__(self, catalog, by_wd, mv, item=1):
+        self.now = _tm.mktime(_tm.strptime("2026-11-16 19:30", "%Y-%m-%d %H:%M"))      # lunes
+        self.today = "2026-11-16"
+        self.catalog, self.prices, self._mv = catalog, {item: {}}, mv
+        self.history = {item: []}
+        for k in range(14, 0, -1):
+            lt = _tm.localtime(self.now - k * 86400)
+            self.history[item].append({"day": _tm.strftime("%Y-%m-%d", lt), "mv": by_wd.get(lt.tm_wday, 100), "qty": 50})
+    def stats(self, item):
+        return {"mv": self._mv, "vol": 10, "days": 14, "depth": None}
+    def name(self, item):
+        return f"objeto {item}"
+
+
+_wk = {1: 125, 2: 130, 6: 90}                                  # martes y miércoles caros, domingo barato
+_w = lambda cat: _OI.detect_weekly(_FD(cat, _wk, 90))
+_w0, _w2, _w5 = _w({}), _w({"server": {"raid_reset_weekday": 2}}), _w({"server": {"raid_reset_weekday": 5}})
+check(len(_w0) == 1 and len(_w2) == 1 and len(_w5) == 1, "ciclo semanal: el caso de prueba se detecta")
+check(any("Suele pasar" in l for l in _w0[0]["why"]) and any(l.startswith("Coincide con el reinicio") and "miércoles" in l for l in _w2[0]["why"])
+      and any(l.startswith("No coincide con el reinicio") and "sábado" in l for l in _w5[0]["why"]),
+      "ciclo semanal: dice si el día caro coincide con el reinicio de las bandas del catálogo")
+_ev_ts = _tm.mktime(_tm.strptime("2026-12-09", "%Y-%m-%d"))
+_fd = _FD({"server": {"raid_reset_weekday": 2}}, {}, 90)
+check(_tm.strftime("%Y-%m-%d", _tm.localtime(_OI.next_reset(_fd, _ev_ts))) == "2026-12-16"
+      and _tm.strftime("%Y-%m-%d", _tm.localtime(_OI.next_reset(_fd, _ev_ts - 86400))) == "2026-12-09"
+      and _OI.next_reset(_FD({}, {}, 90), _ev_ts) is None and _OI.reset_weekday(_FD({"server": {"raid_reset_weekday": 9}}, {}, 90)) is None,
+      "reinicio: el primero después de un evento es el siguiente día de reinicio, nunca el mismo día")
+_evc = {"server": {"raid_reset_weekday": 2}, "events": [{"name": "Bandas", "date": "2026-12-09", "items": [1], "uplift": 1.3}],
+        "price_caps": {"1": {"cap": 110, "note": "un vendedor lo da a precio fijo", "verified": False}}}
+_e = _OI.detect_event(_FD(_evc, {}, 95))
+check(len(_e) == 1 and abs(_e[0]["target"] - 130) < 1e-6 and any("miércoles 16/12" in l for l in _e[0]["why"]),
+      f"evento: la salida dice la fecha del primer reinicio ({_e and _e[0]['why'][-1]})")
+_OI.apply_caps(_FD(_evc, {}, 95), _e)
+check(_e[0]["target"] == 110 and _e[0].get("capped") and "sin comprobar" in _e[0]["why"][-1],
+      "techo: el objetivo de una idea no pasa del precio fijo del vendedor, y lo avisa")
+_e2 = [{"item": 1, "target": 100, "why": []}, {"item": 2, "target": 10 ** 9, "why": []}]
+_OI.apply_caps(_FD(_evc, {}, 95), _e2)
+check(_e2[0]["target"] == 100 and not _e2[0]["why"] and _e2[1]["target"] == 10 ** 9, "techo: no toca lo que queda por debajo ni los objetos sin techo")
+_d6 = _f5(); _d6.catalog = _cat_real
+_o6 = _OI.outlook(_d6, {})
+check(len(_o6["facts"]) == len(_cat_real["facts"]) and {"text", "verified", "how", "source"} <= set(_o6["facts"][0])
+      and plan["ideas"]["outlook"]["facts"] == [], "ideas: los datos del catálogo salen en el plan para la página")
+check("factsHtml(I.outlook.facts)" in open(os.path.join(ROOT, "tools", "planner_ui.html"), encoding="utf-8").read(),
+      "página: la pestaña Ideas enseña los datos del catálogo con su marca y su fuente")
+
 # El plan sale del archivo (--archive) y propone lo mismo que sin él
 arch_e = os.path.join(tmp, "arch_e.sqlite")
 _cpre = open_archive(arch_e)        # un día viejo que solo está en el archivo (como uno que el juego ya olvidó)

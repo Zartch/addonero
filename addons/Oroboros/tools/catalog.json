@@ -1,33 +1,185 @@
 {
-  "_nota": "Datos de WoW Forever que el juego no da al addon. Revisado el 20/11/2026. Nivel requerido, origen y coste de las recetas ya no van aquí: los da ProfessionDB (ver README). Las pruebas usan su propio catálogo (tests/catalogo_sintetico.json).",
+  "_nota": "Datos de WoW Forever que el juego no da al addon. Revisado el 24/11/2026. Nivel requerido, origen y coste de las recetas ya no van aquí: los da ProfessionDB (ver README). Las pruebas usan su propio catálogo (tests/catalogo_sintetico.json).",
   "server": {
     "launch": "2026-11-04",
     "low_level_max_ilvl": 40,
-    "_nota": "Lanzamiento de WoW Forever (4/11/2026; Icy Veins, Warcraft Tavern, Gfinity). low_level_max_ilvl: nivel de objeto por debajo del cual un material cuenta como de nivel bajo para leer la fase del servidor."
+    "_nota": "Lanzamiento de WoW Forever (4/11/2026; Icy Veins, Warcraft Tavern, Gfinity). low_level_max_ilvl: nivel de objeto por debajo del cual un material cuenta como de nivel bajo para leer la fase del servidor. raid_reset_weekday: día del reinicio semanal de las bandas (lunes = 0; 2 = miércoles). Sin comprobar para Forever: es el día de la UE en las demás versiones y el 9/12/2026 cae en miércoles.",
+    "raid_reset_weekday": 2
+  },
+  "facts": [
+    {
+      "text": "Las bandas (Barrow Deeps 10, Hyjal Summit 20, Onyxia's Lair 40) abren el 9/12/2026 y se reinician cada semana.",
+      "verified": true,
+      "how": "nota oficial de Blizzard",
+      "source": "https://worldofwarcraft.blizzard.com/news/24303009"
+    },
+    {
+      "text": "El reinicio semanal de las bandas es el miércoles.",
+      "verified": false,
+      "source": "Día de reinicio de la UE en las demás versiones del juego; el 9/12/2026 cae en miércoles. Se ve en el juego en la ventana de información de banda."
+    },
+    {
+      "text": "Los elixires de estadísticas distintas se acumulan sin límite; los de la misma estadística no.",
+      "verified": false,
+      "source": "https://www.chaosboost.com/articles/consumables-in-wow-forever"
+    },
+    {
+      "text": "Hay 13 elixires nuevos de nivel de objeto 55 (astucia, falange, búho, pardos, ballena, ferocidad…).",
+      "verified": true,
+      "how": "están en los objetos y recetas del juego y en la subasta (24/11)",
+      "source": "https://www.chaosboost.com/articles/consumables-in-wow-forever"
+    },
+    {
+      "text": "Hay cuatro frascos naturales nuevos (acierto, agresividad, precisión, presteza), de Alquimia 300.",
+      "verified": true,
+      "how": "recetas en ProfessionDB (24/11); aún no hay ninguno en subasta",
+      "source": "https://www.chaosboost.com/articles/consumables-in-wow-forever"
+    },
+    {
+      "text": "Los frascos naturales dan una bonificación extra dentro de Hyjal y Barrow Deeps.",
+      "verified": false,
+      "source": "https://www.chaosboost.com/articles/consumables-in-wow-forever"
+    },
+    {
+      "text": "Los frascos se apilan de 20 en 20.",
+      "verified": true,
+      "how": "tamaño de pila que da el juego",
+      "source": "https://www.chaosboost.com/articles/consumables-in-wow-forever"
+    },
+    {
+      "text": "Las pociones de sanación (de menor a sublime) son de Primeros auxilios; Alquimia solo hace las «descoloridas».",
+      "verified": true,
+      "how": "profesión de cada receta en ProfessionDB (24/11)",
+      "source": "https://www.chaosboost.com/articles/consumables-in-wow-forever"
+    },
+    {
+      "text": "Un vendedor del mercado negro da Loto negro y Cristal Arcano a 50 oro: su precio en subasta no puede pasar de ahí.",
+      "verified": false,
+      "source": "https://lfcarry.com/guides/wow-forever-gold-economy"
+    },
+    {
+      "text": "Lista de consumibles que piden las bandas y cuánto suben en la semana de apertura.",
+      "verified": false,
+      "source": "https://timesaver.gg/blog/wow-forever-raid-stockpile"
+    }
+  ],
+  "price_caps": {
+    "_nota": "Techo de precio: objetos que un vendedor da a precio fijo. El objetivo de una idea nunca pasa de aquí. Precios en cobre.",
+    "13468": {
+      "cap": 500000,
+      "verified": false,
+      "note": "un vendedor del mercado negro (Powderfuse Port, Riverglades) lo vende a 50 oro",
+      "source": "https://lfcarry.com/guides/wow-forever-gold-economy"
+    },
+    "12363": {
+      "cap": 500000,
+      "verified": false,
+      "note": "un vendedor del mercado negro (Powderfuse Port, Riverglades) lo vende a 50 oro",
+      "source": "https://lfcarry.com/guides/wow-forever-gold-economy"
+    }
   },
   "events": [
     {
-      "name": "Apertura de las bandas: Barrow Deeps (10), Hyjal Summit (20) y Onyxia's Lair (40)",
+      "name": "Apertura de las bandas: pociones y hierbas",
       "date": "2026-12-09",
-      "items": [13446, 13444, 13452, 13454, 13510, 13423, 9206, 13445, 13455, 9088, 13464, 13465, 13466, 13463, 13467, 8846, 13468],
+      "items": [
+        13446,
+        13444,
+        13423,
+        13455,
+        9088,
+        13464,
+        13465,
+        13466,
+        13463,
+        13467,
+        8846,
+        13468
+      ],
       "uplift": 1.3,
-      "note": "Fecha confirmada en la hoja de ruta oficial (9/12/2026, las tres bandas a la vez y con reinicio semanal). Qué consumibles pedirán y cuánto suben es una suposición: pociones y elixires de nivel 60, frascos y sus hierbas."
+      "note": "Barrow Deeps (10), Hyjal Summit (20) y Onyxia's Lair (40) abren a la vez el 9/12/2026, con reinicio semanal (hoja de ruta oficial). Qué consumibles pedirán y cuánto suben es una suposición. La Poción de sanación sublime (13446) ya no es de Alquimia: la hace Primeros auxilios."
+    },
+    {
+      "name": "Apertura de las bandas: elixires (se acumulan)",
+      "date": "2026-12-09",
+      "items": [
+        13452,
+        13454,
+        13453,
+        13447,
+        9206,
+        9187,
+        13445,
+        9264,
+        21546,
+        250328,
+        250329,
+        250333,
+        250335,
+        250336,
+        250337,
+        250338,
+        250341,
+        250343,
+        250347,
+        250348,
+        250350,
+        250351
+      ],
+      "uplift": 1.3,
+      "note": "En Forever los elixires de estadísticas distintas se acumulan sin límite (guías, sin confirmar por Blizzard), así que cada jugador de banda puede gastar varios a la vez. Incluye los 13 elixires nuevos de nivel 55. El multiplicador es una suposición."
+    },
+    {
+      "name": "Apertura de las bandas: frascos",
+      "date": "2026-12-09",
+      "items": [
+        13510,
+        13511,
+        13512,
+        13513,
+        274273,
+        274274,
+        274275,
+        274276
+      ],
+      "uplift": 1.3,
+      "note": "Frascos clásicos y los cuatro frascos naturales nuevos (Alquimia 300), que según las guías dan una bonificación extra en Hyjal y Barrow Deeps. El 24/11 no había ningún frasco natural en subasta. El multiplicador es una suposición."
     },
     {
       "name": "Onyxia's Lair: protección contra el fuego",
       "date": "2026-12-09",
-      "items": [13457],
+      "items": [
+        13457
+      ],
       "uplift": 1.5,
       "note": "Onyxia es un encuentro de fuego: la Poción de protección de Fuego superior suele ser la que más sube. El multiplicador es una suposición."
     }
   ],
   "progression": {
     "_nota": "Tesis para materiales de nivel bajo: para qué se siguen usando con personajes a nivel 60 y un escenario de subida. Son suposiciones, no datos: el planificador las usa como escenario con stop, nunca como predicción.",
-    "3820": {"note": "reactivo de la Poción de acción libre, que se usa en JcJ y mazmorras de nivel 60", "scenario": 1.8},
-    "2592": {"note": "la piden los que suben sastrería o primeros auxilios con el personaje ya a 60, y pocos enemigos la sueltan", "scenario": 2.0},
-    "2589": {"note": "primeros auxilios y sastrería de personajes secundarios", "scenario": 1.6},
-    "4234": {"note": "peletería de personajes secundarios y kits de armadura", "scenario": 1.6},
-    "4338": {"note": "bolsas de 12 huecos: todo personaje nuevo necesita cuatro", "scenario": 1.5},
-    "6370": {"note": "reactivo de la Poción de acción libre; sale de pesca en zonas de nivel medio", "scenario": 1.6}
+    "3820": {
+      "note": "reactivo de la Poción de acción libre, que se usa en JcJ y mazmorras de nivel 60",
+      "scenario": 1.8
+    },
+    "2592": {
+      "note": "la piden los que suben sastrería o primeros auxilios con el personaje ya a 60, y pocos enemigos la sueltan",
+      "scenario": 2.0
+    },
+    "2589": {
+      "note": "primeros auxilios y sastrería de personajes secundarios",
+      "scenario": 1.6
+    },
+    "4234": {
+      "note": "peletería de personajes secundarios y kits de armadura",
+      "scenario": 1.6
+    },
+    "4338": {
+      "note": "bolsas de 12 huecos: todo personaje nuevo necesita cuatro",
+      "scenario": 1.5
+    },
+    "6370": {
+      "note": "reactivo de la Poción de acción libre; sale de pesca en zonas de nivel medio",
+      "scenario": 1.6
+    }
   }
 }
