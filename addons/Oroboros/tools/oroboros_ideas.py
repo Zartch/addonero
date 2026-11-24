@@ -23,6 +23,7 @@ RISK_FACTOR = {"bajo": 1.0, "medio": 0.7, "alto": 0.45}
 LABEL = {"despensa": "Despensa", "rebote": "Rebote", "semanal": "Ciclo semanal", "sequia": "Oferta que se seca",
          "evento": "Evento", "progresion": "Progresión del servidor"}
 WEEKDAYS = ["lunes", "martes", "miércoles", "jueves", "viernes", "sábado", "domingo"]
+SUNK = 0.85           # por debajo del 85 % de su mediana, un objeto cuenta como hundido
 STOP = 0.8            # si cae un 20 % desde la entrada, se sale
 MAX_PER_TYPE = 4
 
@@ -306,14 +307,19 @@ def detect_event(data):
             st, med = data.stats(item), _med14(data, item)
             if not med or not st["mv"] or (st["vol"] or 0) < 2:
                 continue
-            base = max(med, st["mv"]) if st["mv"] <= med * 1.08 else None
-            if base is None:
-                continue
+            if st["mv"] > med * 1.08:
+                continue                               # ya ha subido: la apuesta llega tarde
+            # hundido (un 15 % o más bajo su mediana): nada dice que vuelva a ella antes del evento,
+            # así que el escenario parte del punto medio entre hoy y la mediana
+            sunk = st["mv"] < med * SUNK
+            base = (st["mv"] + med) / 2 if sunk else med
             out.append(_cand(
                 data, "evento", item, base * up, max(3, days - 1), "medio",
                 f"{data.name(item)} antes de: {ev['name'].lower()}",
                 [f"{ev['name']} el {_date(ts)} (faltan {days} días).",
-                 f"Hoy está a {_money(st['mv'])}, sin subida previa respecto a su mediana ({_money(med)}).",
+                 (f"Hoy está a {_money(st['mv'])}, bastante por debajo de su mediana ({_money(med)}): el escenario "
+                  f"parte del punto medio, {_money(base)}, no de la mediana." if sunk else
+                  f"Hoy está a {_money(st['mv'])}, sin subida previa respecto a su mediana ({_money(med)})."),
                  f"Escenario: sube un {(up - 1) * 100:.0f} % la semana del evento, hasta {_money(base * up)}. "
                  "Ese porcentaje es una suposición del catálogo, no un dato.",
                  f"Vende desde uno o dos días antes hasta {until}: después la oferta se pone al día."],

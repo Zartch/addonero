@@ -195,7 +195,9 @@ El 24/11 se repasaron todas las maneras de ganar oro (fabricar, transformar, apr
 1. El día de reinicio: en la ventana de información de banda, desde el 9/12. Si no es miércoles, se cambia `raid_reset_weekday` (lunes = 0).
 2. Que el vendedor del mercado negro (Mister Graphed, Powderfuse Port) vende Loto negro y Cristal Arcano a 50 oro. Si es así, se pone `verified: true` en `price_caps`.
 
-**Sin hacer, para decidir:** la idea de evento toma como base la mediana de 14 días aunque el objeto esté hoy muy por debajo, así que un elixir hundido sale con un objetivo doble (rebote más evento). Y sigue faltando el mínimo de beneficio por clic.
+**Dos arreglos después (25/11):**
+- La idea de evento ya no parte de la mediana si el objeto está hundido (un 15 % o más por debajo): parte del punto medio entre hoy y la mediana, y lo dice.
+- Mínimo por fabricación: una receta que da menos de 2 oro a la hora (a 3 s por fabricación, unos 17 cobres cada una) se descarta con su motivo. Constantes `CRAFT_SECONDS` y `MIN_CRAFT_HOUR` en `tools/oroboros_plan.py`.
 
 ### Fase 7: maneras nuevas
 

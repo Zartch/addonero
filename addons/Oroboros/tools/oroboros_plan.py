@@ -45,6 +45,9 @@ MAX_LOST_POSTS = 3.0      # tope de publicaciones perdidas por unidad
 FLIP_GAP = 0.25           # reventa: salto mínimo entre lo que compras y el escalón siguiente
 FLIP_MIN_MARGIN = 0.15    # reventa: margen mínimo sobre lo pagado, ya con comisión y depósitos
 FLIP_MIN_PROFIT = 10000   # menos de 1 oro no merece los clics
+CRAFT_SECONDS = 3         # lo que tarda una fabricación
+MIN_CRAFT_HOUR = 20000    # fabricar por menos de 2 oro a la hora no merece el tiempo
+MIN_CRAFT_PROFIT = MIN_CRAFT_HOUR * CRAFT_SECONDS / 3600      # ≈ 17 cobres por fabricación
 
 
 def lost_posts(units, vol):
@@ -508,6 +511,10 @@ def evaluate(data, r, horizon_h, crafts_override=None):
                          f"que lo que cobras al venderlo ({money(net * y)}).")
     elif margin < MIN_MARGIN:
         out["reason"] = f"Margen demasiado pequeño ({margin * 100:.1f} %): no compensa el riesgo ni el tiempo."
+    elif profit < MIN_CRAFT_PROFIT:
+        out["reason"] = (f"Ganas {money(profit)} por fabricación: a {CRAFT_SECONDS} s cada una son "
+                         f"{money(profit * 3600 / CRAFT_SECONDS)} a la hora, menos de {money(MIN_CRAFT_HOUR)}. "
+                         "No merece el tiempo.")
     return out
 
 

@@ -1225,6 +1225,18 @@ check(_lflip(_f5(ladder=[(300, 100000), (900, 40)]), 777777, 48, "x") is None,
 _fx = [f for f in find_flips(_dl, 48, next(iter(_dl.chars))) if f["out_item"] == 777777]
 check(len(_fx) == 1 and _fx[0]["units"] == 20, "reventa: con la lista de precios de la API, find_flips usa los escalones")
 
+# mínimo por fabricación: lo que da menos de 2 oro a la hora no entra, aunque el margen sea bueno
+_dm = _f5()
+_good = [o for o in (_OP.evaluate(_dm, r, 48) for r in _dm.recipes) if o.get("profit") and not o.get("reason")]
+_keep = _OP.MIN_CRAFT_PROFIT
+_OP.MIN_CRAFT_PROFIT = _good[0]["profit"] + 1
+_bad = _OP.evaluate(_dm, next(r for r in _dm.recipes if r["id"] == _good[0]["recipe"]), 48)
+_OP.MIN_CRAFT_PROFIT = _keep
+check(_good and "No merece el tiempo" in (_bad.get("reason") or "") and abs(_keep - 20000 * 3 / 3600) < 1e-9,
+      f"recetas: una fabricación que da menos de 2 oro a la hora se descarta con su motivo ({_bad.get('reason')})")
+check(all(o["profit"] >= _keep for o in plan["opportunities"] if o.get("included") and o["kind"] == "craft"),
+      "recetas: nada de lo elegido baja del mínimo por fabricación")
+
 # ---- Fase 6: catálogo de Forever (techos, reinicio semanal y datos con fuente) ----
 import oroboros_ideas as _OI
 import time as _tm
@@ -1275,6 +1287,9 @@ _evc = {"server": {"raid_reset_weekday": 2}, "events": [{"name": "Bandas", "date
 _e = _OI.detect_event(_FD(_evc, {}, 95))
 check(len(_e) == 1 and abs(_e[0]["target"] - 130) < 1e-6 and any("miércoles 16/12" in l for l in _e[0]["why"]),
       f"evento: la salida dice la fecha del primer reinicio ({_e and _e[0]['why'][-1]})")
+_es = _OI.detect_event(_FD(_evc, {}, 60))
+check(len(_es) == 1 and abs(_es[0]["target"] - 80 * 1.3) < 1e-6 and any("punto medio" in l for l in _es[0]["why"]),
+      f"evento: si el objeto está hundido, el escenario parte del punto medio entre hoy y la mediana ({_es and _es[0]['target']})")
 _OI.apply_caps(_FD(_evc, {}, 95), _e)
 check(_e[0]["target"] == 110 and _e[0].get("capped") and "sin comprobar" in _e[0]["why"][-1],
       "techo: el objetivo de una idea no pasa del precio fijo del vendedor, y lo avisa")

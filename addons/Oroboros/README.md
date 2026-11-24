@@ -453,6 +453,7 @@ Cómo decide:
 - **Riesgo:** de ese 30 %, lo que no es lote de prueba (sobre todo las reventas) usa como mucho la mitad, y el resto queda para lotes de prueba de fabricación.
 - **Ventas por día:** se estiman con las bajadas de cantidad publicada entre un día y el siguiente.
 - **Margen mínimo:** 8 % sobre el coste. Por debajo, la receta sale como no rentable, con el motivo.
+- **Mínimo por fabricación:** 2 oro a la hora, a 3 s por fabricación (unos 17 cobres cada una). Por debajo, la receta sale como no rentable: no merece el tiempo.
 - **Confianza** (alta, media, baja): según la volatilidad, las ventas por día y los días de histórico.
 - **Qué entra en la ruta:** primero lo que más rinde por cada oro invertido, ponderado por la confianza, hasta agotar el presupuesto.
 - **Tu stock primero:** bolsas → banco → banco de banda → banquero → otro personaje. La ruta añade los pasos de banco y correo.
