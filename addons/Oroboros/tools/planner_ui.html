@@ -824,7 +824,7 @@ async function loadInicio() {
     : '<p class="sub">Las ventas que estima la API aún no se han comprobado con tus ventas reales, así que aquí no se muestran: las primeras cifras eran recolocaciones, no ventas. Se comprueban solas cada día cuando vendes algo; mientras tanto están en la pestaña Ventas.</p>';
   el.innerHTML = `
     <div style="display:grid;gap:12px;grid-template-columns:repeat(auto-fit,minmax(360px,1fr))">
-      <div class="panel"><header style="display:flex;gap:10px;align-items:center;flex-wrap:wrap"><h2>Descargas de la API</h2><span style="flex:1"></span><button class="seg" id="ini-now">Descargar ahora</button></header>
+      <div class="panel"><header style="display:flex;gap:10px;align-items:center;flex-wrap:wrap"><h2>Descargas de la API</h2><span style="flex:1"></span><button class="seg" id="ini-now">Descargar ahora</button><button class="seg" id="ini-stop">Parar el panel</button></header>
         <div class="stats" style="margin-bottom:8px"><span>${nextTxt}</span>${a.error ? `<span class="pill bad">${esc(a.error)}</span>` : ""}</div>
         <div style="display:grid;gap:10px">${houses}</div>
         <p class="sub" style="margin-top:8px">Blizzard publica una foto por hora (hacia el minuto 22) y el panel la pide al 25. Las horas en rojo no tienen foto: ahí no se pueden estimar ventas. Solo descarga mientras el panel está abierto.</p></div>
@@ -842,6 +842,12 @@ async function loadInicio() {
       </div>` : '<p class="sub">Aún no hay plan.</p>'}
       <h3 style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">Lo más vendido en tu casa (24 h) ${calTxt}</h3>${topList}</div>`;
   $("#ini-now").onclick = async () => { await apiGet("/api/descargar", "POST"); setTimeout(loadInicio, 1500); };
+  $("#ini-stop").onclick = async () => {
+    if (!window.confirm("¿Parar el panel? Dejará de descargar cada hora hasta que lo abras otra vez.")) return;
+    await apiGet("/api/parar", "POST");
+    clearInterval(iniTimer); clearInterval(iniTick); clearInterval(apiStatusTimer);
+    $("#v-inicio").innerHTML = '<div class="panel"><p class="lead">Panel parado. Puedes cerrar esta ventana.</p></div>';
+  };
   clearInterval(iniTick);
   iniTick = setInterval(() => {
     if (!$("#v-inicio").classList.contains("on")) return;

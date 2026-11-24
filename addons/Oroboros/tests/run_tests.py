@@ -1751,6 +1751,7 @@ _get("/api/parar", "POST")
 _thr.join(5)
 check(not _thr.is_alive(), "panel: «parar» cierra el servidor")
 _plain = open(os.path.join(ROOT, "tools", "planner_ui.html"), encoding="utf-8").read()
+check('id="ini-stop"' in _plain and _plain.count('apiGet("/api/parar", "POST")') == 2, "panel: el botón «Parar el panel» está también en Inicio")
 check('id="v-inicio"' in _plain and '[["inicio", "Inicio"]]' in _plain and 'PANEL ? "inicio"' in _plain,
       "panel: la pestaña Inicio existe y es la que se abre primero con el panel")
 check("/*__PANEL__*/false" in _plain,"plan.html sin panel: las pestañas nuevas dicen que hay que abrir el panel")
