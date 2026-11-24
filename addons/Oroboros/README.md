@@ -216,7 +216,7 @@ Las primeras fotos dan cifras muy altas: en la 111, unas 15 000 subastas normale
 
 En `work/archivo.sqlite`:
 - `api_live` (la última foto de las tres casas): ~730 000 filas, unos 22 MB fijos;
-- `api_item_hour` (precio y movimientos por objeto y hora): unos 18 MB al día, que se guardan entre 14 y 21 días (se resumen por semanas completas): unos 250-380 MB fijos;
+- `api_item_hour` (precio y movimientos por objeto y hora): unos 18 MB al día, que se guardan 14 días: unos 250 MB fijos (las franjas ya se acumulan al meter cada foto, así que borrar el detalle no pierde nada);
 - lo permanente (`api_band_week` por franja y semana, `daily` por día): unos 40 MB al mes.
 
 ## Historial de precios (al estilo CamelCamelCamel)
