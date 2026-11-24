@@ -175,6 +175,7 @@ pythonw tools/oroboros_panel.py --find "F:/World of Warcraft/_forever_"
   - todas las del plan;
   - **Subasta**: estado de la descarga, buscador, precio en las tres casas, gráficas por hora (14 días) y por día (todo), franjas, lo que tienes y tus compras y ventas de ese objeto;
   - **Ventas**: lo más vendido (estimado) en cada casa y la calibración.
+- Aspecto: el de la subasta moderna del juego (ventana casi negra, etiquetas doradas, botones planos y pestañas colgando abajo; las del plan, con borde dorado). Solo CSS y una fuente libre (Tenor Sans): nada copiado del juego.
 - Cerrar la ventana **no** para la descarga. Para pararla, botón «Parar el panel». Abrirlo otra vez mientras sigue en marcha solo abre la ventana.
 - Acceso directo «Oroboros»: destino `pythonw.exe "<repo>\addons\Oroboros\tools\oroboros_panel.py" --find "<WoW>\_forever_" --log "<repo>\addons\Oroboros\work\panel.log"`.
 

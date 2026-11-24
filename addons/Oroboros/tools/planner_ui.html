@@ -6,170 +6,203 @@
 <title>Oroboros · Plan de oro</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,600;9..144,700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Tenor+Sans&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
 <style>
-/* Layout: barra de pestañas fija arriba; cada vista es una columna de paneles. Resumen primero, detalle después. */
+/* Estilo de la subasta moderna del juego (lienzo «Oroboros estilo WoW», versión E): ventana casi negra con
+   borde fino, título pequeño dorado centrado, etiquetas doradas, valores en blanco, botones planos y pestañas
+   planas colgando abajo (las del plan con borde dorado, como las de los addons). Un solo tema, oscuro. */
 :root {
-  --bg: #eef1f4;
-  --panel: #ffffff;
-  --ink: #18202a;
-  --ink-2: #4b5664;
-  --ink-3: #7b8592;
-  --line: #d9dee5;
-  --accent: #b07a12;          /* oro */
-  --accent-soft: #f6ead0;
-  --good: #1f7a4d; --good-soft: #dff1e7;
-  --warn: #9a5b00; --warn-soft: #fbeccc;
-  --bad: #b3261e;  --bad-soft: #f8dedb;
-  --info: #2b5c8a; --info-soft: #dfe9f4;
-  --coin-g: #c99a1c; --coin-s: #9aa3ad; --coin-c: #b06a3b;
-  --font-display: "Fraunces", Georgia, serif;
-  --font-body: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --world: #120d16;
+  --bg: #0f0e0d;              /* fondo de la ventana */
+  --panel: #151311;           /* zonas dentro de la ventana */
+  --panel-2: #1a1816;         /* botones y filas de lista */
+  --ink: #e6e0d0;             /* texto */
+  --ink-hi: #ffffff;          /* valores */
+  --ink-2: #b4ad9c;
+  --ink-3: #8c8579;
+  --line: #2c2925;            /* borde claro de los biseles */
+  --edge: #000;               /* borde oscuro */
+  --gold: #ffd100;            /* etiquetas y títulos del juego */
+  --accent: #ffd100;
+  --accent-soft: rgba(255,190,60,.16);
+  --good: #1eff00; --good-soft: #10260c;
+  --warn: #ff9d2a; --warn-soft: #2e1f08;
+  --bad: #ff4b3a;  --bad-soft: #2e0d0a;
+  --info: #4a9eff; --info-soft: #0d1a2e;
+  --coin-g: radial-gradient(circle at 35% 35%, #ffe27a, #c48a10);
+  --coin-s: radial-gradient(circle at 35% 35%, #ffffff, #8d8d8d);
+  --coin-c: radial-gradient(circle at 35% 35%, #f0a06a, #8a4a1c);
+  --font-display: "Tenor Sans", "Friz Quadrata TT", Optima, "Segoe UI", sans-serif;
+  --font-body: "Tenor Sans", "Friz Quadrata TT", Optima, "Segoe UI", sans-serif;
   --font-mono: "IBM Plex Mono", ui-monospace, Menlo, Consolas, monospace;
-  color-scheme: light;
-}
-@media (prefers-color-scheme: dark) {
-  :root:not([data-theme="light"]) {
-    --bg: #11161c; --panel: #1a2129; --ink: #e8edf2; --ink-2: #aab4bf; --ink-3: #7d8894; --line: #2d3742;
-    --accent: #e0aa3e; --accent-soft: #3a2f17;
-    --good: #5cc28d; --good-soft: #17352a; --warn: #e5a54a; --warn-soft: #3b2d14;
-    --bad: #f0857c; --bad-soft: #3d1f1d; --info: #8ab4e0; --info-soft: #1c2c3d;
-    --coin-g: #e0b23c; --coin-s: #b9c1ca; --coin-c: #d08a5c;
-    color-scheme: dark;
-  }
-}
-:root[data-theme="dark"] {
-  --bg: #11161c; --panel: #1a2129; --ink: #e8edf2; --ink-2: #aab4bf; --ink-3: #7d8894; --line: #2d3742;
-  --accent: #e0aa3e; --accent-soft: #3a2f17;
-  --good: #5cc28d; --good-soft: #17352a; --warn: #e5a54a; --warn-soft: #3b2d14;
-  --bad: #f0857c; --bad-soft: #3d1f1d; --info: #8ab4e0; --info-soft: #1c2c3d;
-  --coin-g: #e0b23c; --coin-s: #b9c1ca; --coin-c: #d08a5c;
   color-scheme: dark;
 }
 * { box-sizing: border-box; }
+html { background: radial-gradient(ellipse at 70% 10%, #4a2f52 0%, #2a1d33 40%, var(--world) 100%) fixed; background-color: var(--world); min-height: 100%; }
 html, body { margin: 0; }
-body { background: var(--bg); color: var(--ink); font: 15px/1.5 var(--font-body); }
-h1, h2, h3 { font-family: var(--font-display); text-wrap: balance; margin: 0; line-height: 1.2; }
-h1 { font-size: 26px; }
-h2 { font-size: 20px; }
-h3 { font-size: 16px; font-family: var(--font-body); font-weight: 600; }
+/* la ventana: el cuerpo de la página, con la barra de título arriba y las pestañas colgando abajo */
+body { max-width: 1240px; margin: 14px auto 0; min-height: calc(100vh - 14px); display: flex; flex-direction: column;
+       background: repeating-linear-gradient(45deg, rgba(255,255,255,.012) 0 2px, transparent 2px 5px), var(--bg);
+       border: 1px solid var(--edge); box-shadow: inset 0 0 0 1px var(--line), 0 10px 30px rgba(0,0,0,.7);
+       color: var(--ink); font: 15px/1.5 var(--font-body); }
+h1, h2, h3 { font-family: var(--font-display); font-weight: 400; text-wrap: balance; margin: 0; line-height: 1.25; color: var(--gold); }
+h1 { font-size: 15px; letter-spacing: .2px; }
+h2 { font-size: 17px; }
+h3 { font-size: 15px; }
+b, strong { color: var(--ink-hi); font-weight: 400; }
 .num, td.n { font-variant-numeric: tabular-nums; }
-a { color: var(--info); }
+a { color: var(--gold); }
 button { font: inherit; }
-:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+code { font-family: var(--font-mono); font-size: 13px; color: var(--ink-hi); }
+:focus-visible { outline: 1px solid var(--gold); outline-offset: 2px; }
 
-body > header { padding: 20px 20px 0; max-width: 1200px; margin: 0 auto; display: grid; gap: 6px; }
-body > header .meta { color: var(--ink-2); font-size: 13px; }
-nav { position: sticky; top: 0; z-index: 5; background: var(--bg); border-bottom: 1px solid var(--line); }
-nav .tabs { max-width: 1200px; margin: 0 auto; padding: 0 12px; display: flex; gap: 2px; overflow-x: auto; }
-nav a { padding: 12px 12px 10px; color: var(--ink-2); text-decoration: none; white-space: nowrap; border-bottom: 3px solid transparent; font-weight: 500; }
-nav a[aria-current="page"] { color: var(--ink); border-bottom-color: var(--accent); }
-main { max-width: 1200px; margin: 0 auto; padding: 20px; display: grid; gap: 18px; }
-section.view { display: none; gap: 18px; }
+body > header { order: 1; padding: 7px 40px 8px; text-align: center; display: grid; gap: 2px;
+                background: linear-gradient(#1a1816, #121110); border-bottom: 1px solid var(--edge); box-shadow: 0 1px 0 var(--line); }
+body > header .meta { color: var(--ink-3); font-size: 12px; }
+body > header .meta b { color: var(--ink-2); }
+main { order: 2; flex: 1; width: 100%; padding: 16px; display: grid; gap: 14px; align-content: start; }
+nav { order: 3; position: sticky; bottom: 0; z-index: 5; background: linear-gradient(rgba(18,13,22,0), var(--world) 35%); padding: 0 16px; margin: 0 -1px -1px; }
+nav .tabs { display: flex; flex-wrap: wrap; gap: 4px; padding-bottom: 8px; }
+nav a { font-family: var(--font-display); padding: 7px 16px 8px; color: var(--ink-2); text-decoration: none; white-space: nowrap; font-size: 14px;
+        background: #121110; border: 1px solid var(--edge); border-top: none; box-shadow: inset 0 0 0 1px #2a2622; }
+nav a:hover { color: var(--ink-hi); }
+nav a:not([data-v="inicio"]):not([data-v="subasta"]):not([data-v="ventas"]) { color: var(--gold); box-shadow: inset 0 0 0 1px #8a6d1c; }
+nav a[aria-current="page"] { color: var(--ink-hi) !important; background: #1c1a18; box-shadow: inset 0 0 0 1px #3a3631, inset 0 -2px 0 var(--gold) !important; }
+
+section.view { display: none; gap: 14px; }
 section.view.on { display: grid; }
-.panel { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 16px; display: grid; gap: 12px; min-width: 0; align-content: start; }
+/* zonas: sin tarjetas redondeadas; separadas por el bisel fino del juego */
+.panel { background: rgba(255,255,255,.012); border: 1px solid var(--edge); box-shadow: inset 0 0 0 1px var(--line); padding: 14px 16px; display: grid; gap: 10px; min-width: 0; align-content: start; }
 .panel > header { padding: 0; display: flex; justify-content: space-between; align-items: baseline; gap: 12px; flex-wrap: wrap; max-width: none; margin: 0; }
 .lead { color: var(--ink-2); max-width: 70ch; margin: 0; }
-.grid2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 18px; }
+.grid2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 14px; }
 
-.tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 12px; }
-.tile { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px; display: grid; gap: 2px; }
-.tile .k { color: var(--ink-2); font-size: 13px; }
-.tile .v { font-size: 22px; font-weight: 600; }
-.tile.hero { border-color: var(--accent); background: linear-gradient(0deg, var(--panel), var(--panel)), var(--accent-soft); box-shadow: inset 4px 0 0 var(--accent); }
+.tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 10px 0; }
+.tile { padding: 4px 12px; display: grid; gap: 2px; align-content: start; border-left: 1px solid var(--line); }
+.tile .k { font-family: var(--font-display); color: var(--gold); font-size: 14px; }
+.tile .v { font-size: 22px; color: var(--ink-hi); }
+.tile.hero .v { color: var(--good); }
 .tile .s { color: var(--ink-3); font-size: 12px; }
 
-.money { white-space: nowrap; font-variant-numeric: tabular-nums; }
-.money i { font-style: normal; display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin: 0 3px 1px 1px; vertical-align: middle; }
+.money { white-space: nowrap; font-variant-numeric: tabular-nums; color: var(--ink-hi); }
+.money i { font-style: normal; display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin: 0 3px 1px 2px; vertical-align: middle; box-shadow: 0 0 0 1px rgba(0,0,0,.6); }
 .money i.g { background: var(--coin-g); } .money i.s { background: var(--coin-s); } .money i.c { background: var(--coin-c); }
 .money.neg { color: var(--bad); }
 .money.pos { color: var(--good); }
 
-.pill { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; font-weight: 600; padding: 1px 8px; border-radius: 999px; white-space: nowrap; }
-.pill.good { background: var(--good-soft); color: var(--good); }
-.pill.warn { background: var(--warn-soft); color: var(--warn); }
-.pill.bad { background: var(--bad-soft); color: var(--bad); }
-.pill.info { background: var(--info-soft); color: var(--info); }
-.pill.mute { background: var(--bg); color: var(--ink-2); border: 1px solid var(--line); }
-.pill.gold { background: var(--accent-soft); color: var(--accent); }
+.pill { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; padding: 0 8px; border: 1px solid; white-space: nowrap; }
+.pill.good { background: var(--good-soft); color: var(--good); border-color: #2f6a2f; }
+.pill.warn { background: var(--warn-soft); color: var(--warn); border-color: #6b4f1a; }
+.pill.bad { background: var(--bad-soft); color: var(--bad); border-color: #6b2018; }
+.pill.info { background: var(--info-soft); color: var(--info); border-color: #1f3d6b; }
+.pill.mute { background: var(--panel-2); color: var(--ink-2); border-color: #3a3631; }
+.pill.gold { background: #2a2208; color: var(--gold); border-color: #8a6d1c; }
 
 .warnings { display: grid; gap: 8px; }
-.warning { display: flex; gap: 10px; align-items: flex-start; padding: 10px 12px; border-radius: 8px; background: var(--warn-soft); color: var(--ink); border-left: 4px solid var(--warn); }
+.warning { display: flex; gap: 10px; align-items: flex-start; padding: 8px 12px; background: var(--warn-soft); color: var(--ink); border: 1px solid #6b4f1a; }
 .warning b { color: var(--warn); }
 
 .tablewrap { overflow-x: auto; }
 table { border-collapse: collapse; width: 100%; font-size: 14px; }
-th { text-align: left; font-weight: 600; color: var(--ink-2); font-size: 12px; text-transform: uppercase; letter-spacing: .04em; padding: 8px; border-bottom: 1px solid var(--line); white-space: nowrap; }
+th { font-family: var(--font-display); text-align: left; font-weight: 400; color: var(--gold); font-size: 13px; padding: 4px 8px 6px; border-bottom: 1px solid var(--edge); box-shadow: 0 1px 0 var(--line); white-space: nowrap; }
 th.sortable { cursor: pointer; }
-th.sortable:hover { color: var(--ink); }
-td { padding: 9px 8px; border-bottom: 1px solid var(--line); vertical-align: top; }
+th.sortable:hover { color: #fff0a0; }
+td { padding: 6px 8px; vertical-align: top; }
+tbody tr:nth-child(even) td { background: rgba(255,255,255,.025); }
 td.n, th.n { text-align: right; }
 tr.click { cursor: pointer; }
-tr.click:hover td { background: var(--bg); }
-tr.detail td { background: var(--bg); padding: 14px 16px; }
+tr.click:hover td { background: linear-gradient(90deg, var(--accent-soft), rgba(255,190,60,.02)); }
+tr.detail td { background: #0b0a09; padding: 12px 16px; border-top: 1px solid var(--edge); border-bottom: 1px solid var(--edge); }
 tr.off td { color: var(--ink-3); }
 .sub { color: var(--ink-3); font-size: 12px; }
 
-.opp { display: grid; grid-template-columns: 1fr auto; gap: 4px 16px; padding: 12px 0; border-bottom: 1px solid var(--line); }
+.opp { display: grid; grid-template-columns: 1fr auto; gap: 4px 16px; padding: 10px 0; border-bottom: 1px solid var(--line); }
 .opp:last-child { border-bottom: 0; }
-.opp .t { font-weight: 600; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.opp .t { color: var(--ink-hi); display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
 .opp .w { color: var(--ink-2); font-size: 14px; grid-column: 1 / -1; }
-.opp .p { text-align: right; font-weight: 600; font-size: 17px; }
+.opp .p { text-align: right; font-size: 17px; }
 
 ul.why { margin: 0; padding-left: 18px; display: grid; gap: 4px; max-width: 80ch; }
 .tree { font-size: 14px; display: grid; gap: 2px; }
 .tree .node { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
-.tree .kids { margin-left: 18px; padding-left: 10px; border-left: 2px solid var(--line); display: grid; gap: 2px; }
+.tree .kids { margin-left: 18px; padding-left: 10px; border-left: 1px solid var(--line); display: grid; gap: 2px; }
 
-.route-tabs { display: flex; gap: 8px; flex-wrap: wrap; }
-.seg { border: 1px solid var(--line); background: var(--panel); color: var(--ink); padding: 6px 14px; border-radius: 8px; cursor: pointer; font-weight: 500; }
-.seg[aria-pressed="true"] { border-color: var(--accent); box-shadow: inset 0 -3px 0 var(--accent); }
-.btn { border: 1px solid var(--accent); background: var(--accent); color: #fff; padding: 7px 14px; border-radius: 8px; cursor: pointer; font-weight: 600; }
-.btn.ghost { background: transparent; color: var(--accent); }
-.route { font: 13px/1.6 var(--font-mono); background: var(--bg); border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; overflow-x: auto; display: grid; }
+/* botones: planos y oscuros; el elegido o el principal, con borde dorado (como «Siguiente >») */
+.route-tabs { display: flex; gap: 6px; flex-wrap: wrap; }
+.seg { font-family: var(--font-display); border: 1px solid #4a453e; background: linear-gradient(#2a2724, #1b1917); color: var(--ink); padding: 4px 14px; min-height: 30px; cursor: pointer; }
+.seg:hover { color: var(--ink-hi); border-color: #6b6358; }
+.seg[aria-pressed="true"], .btn { border: 1px solid #c9a227; background: linear-gradient(#3a2f12, #241d0b); color: var(--gold); box-shadow: inset 0 0 6px rgba(255,209,0,.15); }
+.btn { font-family: var(--font-display); padding: 4px 14px; min-height: 30px; cursor: pointer; }
+.btn.ghost { background: transparent; }
+.route { font: 13px/1.6 var(--font-mono); background: #050505; border: 1px solid #3a3631; padding: 10px 12px; overflow-x: auto; display: grid; color: var(--ink); }
 .route .l { display: grid; grid-template-columns: 56px 1fr; gap: 10px; white-space: pre; }
-.route .op { font-weight: 600; }
+.route .op { font-weight: 500; }
 .route .BUY .op { color: var(--info); } .route .SELL .op { color: var(--good); }
-.route .CRAFT .op { color: var(--accent); } .route .NOTE .op { color: var(--ink-3); } .route .HOLD .op { color: var(--warn); }
+.route .CRAFT .op { color: var(--gold); } .route .NOTE .op { color: var(--ink-3); } .route .HOLD .op { color: var(--warn); }
 .route .c { color: var(--ink-3); }
 .route .hd { color: var(--ink-3); }
 .stats { display: flex; gap: 18px; flex-wrap: wrap; color: var(--ink-2); font-size: 14px; }
-.stats b { color: var(--ink); }
+.stats b { color: var(--ink-hi); }
 
-.bar { height: 10px; border-radius: 5px; background: var(--bg); border: 1px solid var(--line); overflow: hidden; display: flex; }
-.bar span { display: block; height: 100%; background: var(--ink-3); }
-.bar span.full { background: var(--bad); }
+.bar { height: 8px; background: #000; border: 1px solid var(--edge); box-shadow: 0 0 0 1px var(--line); overflow: hidden; display: flex; }
+.bar span { display: block; height: 100%; background: #6b6358; }
+.bar span.full { background: #8a1e14; }
 .slots { display: grid; gap: 8px; }
 .slots .row { display: grid; grid-template-columns: 120px 1fr 90px; gap: 10px; align-items: center; font-size: 14px; }
-.cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 14px; }
-.card { border: 1px solid var(--line); border-radius: 10px; padding: 14px; display: grid; gap: 8px; background: var(--panel); align-content: start; }
-.card.top { border-color: var(--accent); }
-.card .big { font-size: 20px; font-weight: 600; }
+.cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 12px; }
+.card { border: 1px solid var(--edge); box-shadow: inset 0 0 0 1px var(--line); padding: 12px 14px; display: grid; gap: 8px; background: var(--panel); align-content: start; }
+.card.top { box-shadow: inset 0 0 0 1px #8a6d1c, inset 0 0 10px rgba(255,209,0,.08); }
+.card .big { font-size: 20px; color: var(--ink-hi); }
 .gap { display: grid; gap: 4px; font-size: 13px; color: var(--ink-2); }
 
 .filters { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
-input[type="search"], select { font: inherit; padding: 6px 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel); color: var(--ink); }
+input[type="search"], input[type="text"], input[type="number"], select { font: inherit; padding: 4px 10px; min-height: 30px; border: 1px solid #3a3631; background: #050505; color: var(--ink-hi); }
 .chart { width: 100%; height: auto; display: block; }
 .chart text { fill: var(--ink-3); font: 11px var(--font-body); }
-.chart .grid { stroke: var(--line); stroke-width: 1; }
-.chart .ln { fill: none; stroke: var(--accent); stroke-width: 2; }
-.chart .ar { fill: var(--accent); opacity: .12; }
+.chart .grid { stroke: #24211e; stroke-width: 1; }
+.chart .ln { fill: none; stroke: var(--gold); stroke-width: 2; }
+.chart .ar { fill: var(--gold); opacity: .10; }
 .chart .ref { stroke: var(--ink-3); stroke-dasharray: 4 4; }
-.chart .qb { fill: var(--info); opacity: .55; }
-.chart .dot { fill: var(--accent); stroke: var(--panel); stroke-width: 2; }
+.chart .qb { fill: var(--info); opacity: .45; }
+.chart .dot { fill: var(--gold); stroke: var(--bg); stroke-width: 2; }
 .chart .hair { stroke: var(--ink-3); stroke-width: 1; }
-.tip { position: fixed; pointer-events: none; background: var(--ink); color: var(--bg); padding: 6px 10px; border-radius: 6px; font-size: 13px; display: none; z-index: 20; white-space: nowrap; }
+/* tooltip como el del juego: azul noche con borde gris */
+.tip { position: fixed; pointer-events: none; background: rgba(6,8,20,.95); color: var(--ink-hi); padding: 6px 10px; border: 1px solid #8a8f99; border-radius: 3px; font-size: 13px; display: none; z-index: 20; white-space: nowrap; }
 .spark { width: 90px; height: 26px; display: block; }
-.spark path { fill: none; stroke: var(--accent); stroke-width: 1.5; }
-.spark circle { fill: var(--accent); }
+.spark path { fill: none; stroke: var(--gold); stroke-width: 1.5; }
+.spark circle { fill: var(--gold); }
+/* listas tipo «categorías» de la subasta */
 .itemlist { display: grid; gap: 2px; max-height: 520px; overflow-y: auto; }
-.itemlist button { text-align: left; border: 0; background: transparent; color: var(--ink); padding: 6px 8px; border-radius: 6px; cursor: pointer; display: flex; justify-content: space-between; gap: 8px; }
-.itemlist button[aria-pressed="true"] { background: var(--accent-soft); }
-.market { display: grid; grid-template-columns: 260px 1fr; gap: 18px; }
+.itemlist button { text-align: left; border: 1px solid #34302b; background: var(--panel-2); color: var(--ink); padding: 5px 10px; cursor: pointer; display: flex; justify-content: space-between; gap: 8px; }
+.itemlist button:hover { color: var(--ink-hi); }
+.itemlist button[aria-pressed="true"] { background: linear-gradient(90deg, rgba(255,190,60,.22), rgba(255,190,60,.04)); border-color: #5a4a26; color: var(--ink-hi); }
+.market { display: grid; grid-template-columns: 260px 1fr; gap: 16px; }
+/* Inicio (versión E) */
+.ini { display: grid; gap: 12px; }
+.ini-top { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding-bottom: 12px; border-bottom: 1px solid var(--edge); box-shadow: 0 1px 0 var(--line); }
+.ini-top .lbl { font-family: var(--font-display); color: var(--gold); font-size: 14px; }
+.ini-box { display: inline-flex; align-items: center; gap: 8px; min-height: 30px; padding: 0 10px; background: #050505; border: 1px solid #3a3631; color: var(--ink-hi); }
+.ini-body { display: flex; gap: 16px; flex-wrap: wrap; }
+.ini-side { flex: 1 1 200px; max-width: 250px; display: flex; flex-direction: column; gap: 2px; }
+.ini-side .cap { font-size: 12px; letter-spacing: 1px; color: var(--ink-3); padding: 12px 4px 6px; }
+.ini-side .cap:first-child { padding-top: 0; }
+.ini-char { padding: 5px 10px; background: var(--panel-2); border: 1px solid #34302b; }
+.ini-char.first { background: linear-gradient(90deg, rgba(255,190,60,.22), rgba(255,190,60,.04)); border-color: #5a4a26; }
+.ini-row2 { display: flex; justify-content: space-between; gap: 8px; padding: 4px 10px; background: var(--panel-2); border: 1px solid #34302b; font-size: 14px; }
+.ini-main { flex: 999 1 560px; min-width: 0; display: grid; gap: 14px; align-content: start; }
+.ini-houses .r { display: grid; grid-template-columns: 2fr 1.2fr 2.4fr .9fr; align-items: center; gap: 8px; padding: 6px 8px; }
+.ini-houses .r:nth-child(even) { background: rgba(255,255,255,.025); }
+.ini-houses .r.h { font-family: var(--font-display); color: var(--gold); font-size: 13px; padding-top: 0; }
+.ini-houses .fac { display: inline-block; width: 18px; height: 18px; border-radius: 50%; margin-right: 8px; vertical-align: -3px; box-shadow: 0 0 0 2px #0a0a0a, 0 0 0 3px #6e5a2a; }
+.ini-sep { border-top: 1px solid var(--edge); box-shadow: inset 0 1px 0 var(--line); padding-top: 12px; }
+.ini-items { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 6px 14px; }
 @media (max-width: 760px) {
+  body { margin-top: 0; }
   .market { grid-template-columns: 1fr; }
   .itemlist { max-height: 220px; }
   .slots .row { grid-template-columns: 90px 1fr 70px; }
+  .ini-side { max-width: none; }
+  .ini-houses .r { grid-template-columns: 1.6fr 1fr 1.6fr .7fr; font-size: 13px; }
 }
 @media (prefers-reduced-motion: no-preference) { nav a, .seg { transition: color .15s, border-color .15s; } }
 </style>
@@ -202,10 +235,12 @@ const PLAN = /*__PLAN__*/null;
 // true cuando la sirve el panel de escritorio (tools/oroboros_panel.py): las pestañas Subasta y Ventas piden datos
 const PANEL = /*__PANEL__*/false;
 
-const VIEWS = (PANEL ? [["inicio", "Inicio"]] : []).concat(PLAN ? [
+// Con el panel, sus pestañas van primero (Inicio, Subasta, Ventas); sin él, Subasta y Ventas al final
+const API_VIEWS = [["subasta", "Subasta"], ["ventas", "Ventas"]];
+const VIEWS = (PANEL ? [["inicio", "Inicio"]].concat(API_VIEWS) : []).concat(PLAN ? [
   ["resumen", "Resumen"], ["ruta", "Ruta"], ["recetas", "Qué ganas y por qué"],
   ["transformar", "Transformaciones"], ["aprender", "Qué aprender"], ["ideas", "Ideas"], ["cartera", "Cartera"], ["inventario", "Qué tienes"], ["mercado", "Mercado"], ["horas", "Horas"], ["farmear", "Farmear"],
-] : []).concat([["subasta", "Subasta"], ["ventas", "Ventas"]]);
+] : []).concat(PANEL ? [] : API_VIEWS);
 const $ = (s, el = document) => el.querySelector(s);
 const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
 const short = ck => ck ? ck.split("-")[0] : "—";
@@ -677,8 +712,8 @@ function renderFarmear() {
 }
 
 /* ---------------- Panel de escritorio: Subasta y Ventas (API de Blizzard) ---------------- */
-const FAC = { Alliance: ["Alianza", "#2b5c8a"], Horde: ["Horda", "#b3261e"], Neutral: ["Aguasnegras", "#1f7a4d"] };
-const facTxt = f => (FAC[f] || [f])[0], facCol = f => (FAC[f] || [0, "#7b8592"])[1];
+const FAC = { Alliance: ["Alianza", "#4a8cff"], Horde: ["Horda", "#e0483c"], Neutral: ["Aguasnegras", "#c99a3a"] };
+const facTxt = f => (FAC[f] || [f])[0], facCol = f => (FAC[f] || [0, "#8c8579"])[1];
 const fmtT = t => t ? new Date(t * 1000).toLocaleString("es-ES", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }) : "—";
 let apiItem = null, apiQuery = "", apiResults = [], apiTimer = null, apiStatusTimer = null;
 async function apiGet(path, method = "GET") {
@@ -793,9 +828,14 @@ const fmtLeft = s => {
 // Las últimas 24 h de una casa: verde con foto, rojo en los huecos
 function strip24(gaps, now) {
   const W = 240, x = t => Math.max(0, Math.min(W, (t - (now - 86400)) / 86400 * W));
-  const red = gaps.map(([a, b]) => `<rect x="${x(a)}" y="0" width="${Math.max(1, x(b) - x(a))}" height="10" fill="var(--bad)"><title>Sin fotos: ${fmtT(a)} → ${fmtT(b)}</title></rect>`).join("");
-  return `<svg viewBox="0 0 ${W} 10" preserveAspectRatio="none" style="width:100%;height:10px;border-radius:3px;display:block"><rect width="${W}" height="10" fill="var(--good)" opacity=".55"/>${red}</svg>`;
+  const red = gaps.map(([a, b]) => `<rect x="${x(a)}" y="0" width="${Math.max(1, x(b) - x(a))}" height="8" fill="#8a1e14"><title>Sin fotos: ${fmtT(a)} → ${fmtT(b)}</title></rect>`).join("");
+  return `<svg viewBox="0 0 ${W} 8" preserveAspectRatio="none" style="width:100%;height:8px;display:block;background:#000;outline:1px solid #2c2925"><rect width="${W}" height="8" fill="#2f8f3a"/>${red}</svg>`;
 }
+// Colores del juego: clase del personaje y calidad del objeto
+const CLASS_COL = { WARRIOR: "#c69b6d", PALADIN: "#f48cba", HUNTER: "#aad372", ROGUE: "#fff468", PRIEST: "#ffffff", SHAMAN: "#0070dd",
+  MAGE: "#3fc7eb", WARLOCK: "#8788ee", MONK: "#00ff98", DRUID: "#ff7c0a", DEMONHUNTER: "#a330c9", DEATHKNIGHT: "#c41e3a", EVOKER: "#33937f" };
+const QUAL_COL = ["#9d9d9d", "#ffffff", "#1eff00", "#0070dd", "#a335ee", "#ff8000", "#e6cc80", "#00ccff"];
+const qualTxt = q => q === 3 ? "#3d9bff" : q === 4 ? "#c070ff" : (QUAL_COL[q] || "#ffffff");   // azul y morado, un poco más claros para leerse sobre negro
 
 async function loadInicio() {
   const el = $("#v-inicio"); if (!el) return;
@@ -804,43 +844,51 @@ async function loadInicio() {
   catch (err) { el.innerHTML = `<div class="panel"><p class="sub">No responde el panel (${esc(err.message)}).</p></div>`; return; }
   const offset = Date.now() / 1000 - d.now;          // reloj del PC frente al del panel
   const now = d.now, a = d.api, g = d.game, p = d.plan, top = d.top;
+  // Distribución de la versión E: arriba la línea de estado (como el buscador de la subasta), a la izquierda los
+  // personajes (como las categorías), en el centro las casas (como la lista de precios) y debajo lo importante.
   const houses = a.houses.map(h => {
     const late = !h.t || now - h.t > 90 * 60;
-    return `<div style="display:grid;gap:4px"><div class="stats" style="justify-content:space-between">
-      <span><b>${esc(facTxt(h.faction))} ${h.house}</b> · última foto <b>${fmtAgo(h.t, now)}</b> <span class="sub">(${fmtT(h.t)})</span></span>
-      <span>${late ? '<span class="pill bad">sin foto reciente</span>' : '<span class="pill good">al día</span>'} <b>${h.snaps24}</b>/24 h</span></div>
-      ${strip24(h.gaps, now)}</div>`;
-  }).join("") || '<p class="sub">Aún no hay fotos de la API.</p>';
+    return `<div class="r"><span><i class="fac" style="background:radial-gradient(circle at 40% 35%, ${facCol(h.faction)}, #0a0a0a 110%)"></i><b>${esc(facTxt(h.faction))} ${h.house}</b></span>
+      <span title="${fmtT(h.t)}">${fmtAgo(h.t, now)}</span>
+      <span>${strip24(h.gaps, now)}</span>
+      <span class="n" style="text-align:right">${late ? '<span class="pill bad">sin foto</span> ' : ""}<b>${h.snaps24}</b> / 24</span></div>`;
+  }).join("");
   const nextTxt = a.busy ? '<span class="pill info">descargando…</span>'
-    : a.next_run ? `Próxima descarga en <b data-until="${a.next_run}">${fmtLeft(a.next_run - now)}</b> <span class="sub">(${fmtT(a.next_run)})</span>`
-    : a.credentials === false ? '<span class="pill bad">faltan las credenciales</span>' : '<span class="sub">Calculando la próxima…</span>';
-  const chars = g.chars.map(c => `<tr><td>${esc(c.name)} <span class="sub">nv ${c.level ?? "?"}</span></td><td class="n">${money(c.money)}</td>
-      <td>${fmtAgo(c.t, now)}</td><td>${c.bank_t ? fmtAgo(c.bank_t, now) : '<span class="pill warn">sin abrir</span>'}</td></tr>`).join("");
+    : a.next_run ? `en <b data-until="${a.next_run}">${fmtLeft(a.next_run - now)}</b> <span class="sub">(${fmtT(a.next_run)})</span>`
+    : a.credentials === false ? '<span class="pill bad">faltan las credenciales</span>' : '<span class="sub">calculando…</span>';
+  const chars = g.chars.map((c, i) => `<div class="ini-char${i === 0 ? " first" : ""}"><span style="display:block;color:${CLASS_COL[c.class] || "#e6e0d0"}">${esc(c.name)} <span class="sub">nv ${c.level ?? "?"}</span></span>${money(c.money)}</div>`).join("")
+    || '<p class="sub">Aún no hay personajes exportados.</p>';
+  const banks = g.chars.map(c => `<div class="ini-row2"><span>${esc(c.name)}</span>${c.bank_t
+    ? `<span style="color:${now - c.bank_t > 3 * 86400 ? "var(--bad)" : "var(--ink-hi)"}">${fmtAgo(c.bank_t, now)}</span>` : '<span style="color:var(--warn)">sin abrir</span>'}</div>`).join("");
   const cal = top.calibration, calOk = top.calibrated;
   const calTxt = calOk ? `<span class="pill good">comprobadas con tus ventas (${Math.round((cal.coverage || 0) * 100)} %)</span>`
-    : `<span class="pill warn">sin comprobar con tus ventas${cal && cal.sales ? ` (${cal.sales} ventas, ${Math.round((cal.coverage || 0) * 100)} %)` : ""}</span>`;
+    : `<span style="color:var(--warn);font-size:13px">sin comprobar con tus ventas${cal && cal.sales ? ` (${cal.sales} ventas, ${Math.round((cal.coverage || 0) * 100)} %)` : ""}</span>`;
   const topList = calOk && top.items.length
-    ? `<div class="tablewrap"><table><thead><tr><th>Objeto</th><th class="n">Vendidas/día</th><th class="n">Mínimo</th></tr></thead><tbody>${top.items.map(x => `<tr><td>${esc(x.name)}</td><td class="n">${fmtN(x.sold)}</td><td class="n">${money(x.min)}</td></tr>`).join("")}</tbody></table></div>`
+    ? `<div class="tablewrap"><table><thead><tr><th>Objeto</th><th class="n">Vendidas/día</th><th class="n">Precio por unidad</th></tr></thead><tbody>${top.items.map(x => `<tr><td style="color:${qualTxt(x.quality)}">${esc(x.name)}</td><td class="n">${fmtN(x.sold)}</td><td class="n">${money(x.min)}</td></tr>`).join("")}</tbody></table></div>`
     : '<p class="sub">Las ventas que estima la API aún no se han comprobado con tus ventas reales, así que aquí no se muestran: las primeras cifras eran recolocaciones, no ventas. Se comprueban solas cada día cuando vendes algo; mientras tanto están en la pestaña Ventas.</p>';
-  el.innerHTML = `
-    <div style="display:grid;gap:12px;grid-template-columns:repeat(auto-fit,minmax(360px,1fr))">
-      <div class="panel"><header style="display:flex;gap:10px;align-items:center;flex-wrap:wrap"><h2>Descargas de la API</h2><span style="flex:1"></span><button class="seg" id="ini-now">Descargar ahora</button><button class="seg" id="ini-stop">Parar el panel</button></header>
-        <div class="stats" style="margin-bottom:8px"><span>${nextTxt}</span>${a.error ? `<span class="pill bad">${esc(a.error)}</span>` : ""}</div>
-        <div style="display:grid;gap:10px">${houses}</div>
-        <p class="sub" style="margin-top:8px">Blizzard publica una foto por hora (hacia el minuto 22) y el panel la pide al 25. Las horas en rojo no tienen foto: ahí no se pueden estimar ventas. Solo descarga mientras el panel está abierto.</p></div>
-      <div class="panel"><header><h2>El juego</h2></header>
-        <div class="stats"><span>Último escaneo completo <b>${fmtAgo(g.scan_t, now)}</b> <span class="sub">${g.scan_items ? `(${fmtN(g.scan_items)} objetos)` : ""}</span></span>
-          <span>Datos guardados <b>${fmtAgo(g.sv_t, now)}</b> <span class="sub">(/reload o salir)</span></span></div>
-        ${chars ? `<div class="tablewrap"><table><thead><tr><th>Personaje</th><th class="n">Oro</th><th>Visto</th><th>Banco leído</th></tr></thead><tbody>${chars}</tbody></table></div>` : '<p class="sub">Aún no hay personajes exportados.</p>'}</div>
+  el.innerHTML = `<div class="panel ini">
+    <div class="ini-top">
+      <span class="lbl">Próxima descarga</span><span class="ini-box">${nextTxt}</span>
+      <span class="lbl">Último escaneo</span><span class="ini-box" title="${g.scan_items ? fmtN(g.scan_items) + " objetos" : ""}">${fmtAgo(g.scan_t, now)}</span>
+      <span class="lbl">Guardado</span><span class="ini-box" title="/reload o salir del juego">${fmtAgo(g.sv_t, now)}</span>
+      ${a.error ? `<span class="pill bad">${esc(a.error)}</span>` : ""}
+      <span style="flex:1"></span><button class="btn" id="ini-now">Descargar ahora</button><button class="seg" id="ini-stop">Parar el panel</button>
     </div>
-    <div class="panel"><header style="display:flex;gap:10px;align-items:center;flex-wrap:wrap"><h2>Lo importante</h2>${p ? `<span class="sub">plan ${fmtAgo(p.generated, now)}</span>` : ""}</header>
-      ${p ? `<div class="tiles">
-        <div class="tile"><span class="k">Oro de tus personajes</span><span class="v">${money(p.gold)}</span></div>
-        <div class="tile hero"><span class="k">Beneficio estimado del plan</span><span class="v">${money(p.profit)}</span><span class="s">${p.roi ? Math.round(p.roi * 100) + " % sobre lo invertido" : ""}</span></div>
-        <div class="tile"><span class="k">Inversión</span><span class="v">${money(p.investment)}</span></div>
-        <div class="tile"><span class="k">Lo que te sobra, a la venta</span><span class="v">${money(p.stock_sale)}</span><span class="s">stock de bolsas y banco</span></div>
-      </div>` : '<p class="sub">Aún no hay plan.</p>'}
-      <h3 style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">Lo más vendido en tu casa (24 h) ${calTxt}</h3>${topList}</div>`;
+    <div class="ini-body">
+      <div class="ini-side"><span class="cap">PERSONAJES</span>${chars}<span class="cap">BANCO LEÍDO</span>${banks}</div>
+      <div class="ini-main">
+        <div class="ini-houses"><div class="r h"><span>Casa de subastas</span><span>Última foto</span><span>Últimas 24 h</span><span style="text-align:right">Fotos</span></div>
+          ${houses || '<p class="sub">Aún no hay fotos de la API.</p>'}
+          <p class="sub" style="margin:6px 8px 0">Una foto por hora, hacia el minuto 22; el panel la pide al 25 y solo mientras está abierto. En rojo, las horas sin foto: ahí no se estiman ventas.</p></div>
+        <div class="ini-sep">${p ? `<div class="tiles">
+          <div class="tile"><span class="k">Oro de tus personajes</span><span class="v">${money(p.gold)}</span></div>
+          <div class="tile hero"><span class="k">Beneficio del plan</span><span class="v">${money(p.profit)}</span><span class="s">${p.roi ? "+" + Math.round(p.roi * 100) + " % sobre lo invertido" : ""}</span></div>
+          <div class="tile"><span class="k">Inversión</span><span class="v">${money(p.investment)}</span></div>
+          <div class="tile"><span class="k">Te sobra, a la venta</span><span class="v">${money(p.stock_sale)}</span><span class="s">bolsas y banco · plan ${fmtAgo(p.generated, now)}</span></div>
+        </div>` : '<p class="sub">Aún no hay plan.</p>'}</div>
+        <div class="ini-sep" style="display:grid;gap:6px"><div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap"><h3>Lo más vendido en tu casa (24 h)</h3>${calTxt}</div>${topList}</div>
+      </div>
+    </div></div>`;
   $("#ini-now").onclick = async () => { await apiGet("/api/descargar", "POST"); setTimeout(loadInicio, 1500); };
   $("#ini-stop").onclick = async () => {
     if (!window.confirm("¿Parar el panel? Dejará de descargar cada hora hasta que lo abras otra vez.")) return;

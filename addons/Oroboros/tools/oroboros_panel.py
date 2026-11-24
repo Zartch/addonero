@@ -144,10 +144,12 @@ def inicio(con, state, work_dir, sv_path=None, now=None, top=5):
         rows.sort(key=lambda x: -x["value"])
         rows = rows[:top]
         if rows:
-            names = dict(con.execute(f"SELECT item_id, name FROM items WHERE item_id IN ({','.join('?' * len(rows))})",
-                                     [x["id"] for x in rows]))
+            names = {i: (n, q) for i, n, q in con.execute(
+                f"SELECT item_id, name, quality FROM items WHERE item_id IN ({','.join('?' * len(rows))})",
+                [x["id"] for x in rows])}
             for x in rows:
-                x["name"] = names.get(x["id"]) or f"objeto {x['id']}"
+                n, q = names.get(x["id"], (None, None))
+                x["name"], x["quality"] = n or f"objeto {x['id']}", q
         topd["items"] = rows
         topd["calibrated"] = API.is_calibrated(con, h)
         topd["calibration"] = _calib_saved(con, h)
