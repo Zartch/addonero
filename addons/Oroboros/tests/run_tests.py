@@ -539,8 +539,21 @@ vals = [r.value for r in rows]
 check(vals == sorted(vals, reverse=True) and abs(total - sum(vals)) < 1e-6, "inventario: ordenado por valor y con el total")
 only = list(INV.Rows("silk")[0].values())
 check(len(only) >= 1 and all("silk" in r.name.lower() for r in only), "inventario: el buscador filtra por nombre")
+bank_only = list(INV.Rows("", "bank")[0].values())
+check(any(r.id == 4306 and r.count == 7 for r in bank_only) and all(r.id != 2996 for r in bank_only),
+      "inventario: la pestaña Banco solo cuenta lo del banco")
+check(INV.CountText(1) == "" and INV.CountText(250) == "250" and INV.CountText(12345) == "12k",
+      "inventario: cantidad en la esquina del hueco (nada si es 1, «12k» desde 10 000)")
+tl = [tuple(l.values()) for l in INV.TooltipLines(silk).values()]
+check(tl[0][0] == f"Tienes {silk.count}" and any(l[1] == "7" and "banco" in l[0] for l in tl[1:]),
+      f"inventario: el tooltip dice cuántas tienes y dónde ({tl})")
 G.SlashCmdList.OROBOROS("inventario")
 check(INV.frame is not None and INV.frame.shown, "/oro inventario abre la ventana")
+slots = INV.frame.slots
+slot_data = lambda k: G.rawget(slots[k], "data")     # los marcos simulados devuelven una función para cualquier campo
+check(len(slots) == 96 and slot_data(1) is not None and slot_data(1).id == rows[0].id
+      and (len(rows) >= 96 or slot_data(len(rows) + 1) is None),
+      "inventario: cuadrícula de 12×8 huecos, por orden de valor y vacíos al final")
 INV.frame.shown = False
 
 # Exportar a SavedVariables y pasar el exportador
