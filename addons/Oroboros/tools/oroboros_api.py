@@ -785,7 +785,7 @@ BARGAIN_SHARE = 0.5              # de lo que se vende al día, lo que cuento que
 
 def bargains(con, house, now=None, top=10):
     """Gangas de la última foto: subastas que han aparecido en ella (first_t = la foto) muy por debajo del
-    precio habitual del objeto (mediana del valor de mercado de los 7 días anteriores). No cuenta si ya
+    precio habitual del objeto (mediana de lo más barato de cada uno de los 7 días anteriores). No cuenta si ya
     había subastas viejas a ese precio (entonces es el precio nuevo, no una ganga), ni el equipo con
     variantes (mientras no haya variantes guardadas, ningún objeto que no se apile), ni lo que no tiene
     ventas estimadas. La cantidad no pasa de la mitad de lo que se vende al día. Devuelve {"t", "items": [{id, name, quality, price, max, qty,
@@ -804,8 +804,9 @@ def bargains(con, house, now=None, top=10):
     if not fresh:
         return out
     hist = defaultdict(list)
-    for item, mv in con.execute("SELECT item_id, mv FROM daily WHERE market_id=? AND day>=? AND day<? AND mv IS NOT NULL",
-                                (mk[0], _day(t - 7 * 86400), _day(t))):
+    # lo habitual es lo más barato de cada día (a ese precio se vende), no el valor de mercado
+    for item, mv in con.execute("""SELECT item_id, COALESCE(min_low, mv) FROM daily WHERE market_id=? AND day>=? AND day<?
+                                   AND COALESCE(min_low, mv) IS NOT NULL""", (mk[0], _day(t - 7 * 86400), _day(t))):
         hist[item].append(mv)
     variants = variant_items(con, house)
     has_var = has_variants(con, house)

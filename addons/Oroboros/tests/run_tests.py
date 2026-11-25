@@ -2068,6 +2068,67 @@ check(_l8 and all(abs(e["per_day"] - e["vol"] * _OP.SELL_SHARE / e["yield"]) < 1
 _ui8 = open(os.path.join(ROOT, "tools", "planner_ui.html"), encoding="utf-8").read()
 check("rotación de la casa" in _ui8 and "días medidos" in _ui8, "página: la calibración enseña la rotación y los días medidos")
 
+# ---- Auditoría a mano del 25/11: lo que el programa proponía y un jugador no haría ----
+# reventa: si cada día vuelve a haber género al precio de hoy, ese es su precio
+check(_OP.resale_price({"med7": 1000, "low7": 1000}, 2000) == 1000
+      and _OP.resale_price({"med7": 3812, "low7": 2800}, 4849) == 2800 * _OP.LOW_CEIL
+      and _OP.resale_price({"med7": 1000, "low7": None}, 900) == 900,
+      "reventa: el precio de reventa no pasa de un 15 % sobre lo más barato de cada día")
+def _f9(mins):
+    dd = _f5(ladder=[(300, 12), (320, 8), (900, 40), (1000, 100)])
+    for h, m in zip(dd.history[777777], mins):
+        h["min"] = m
+    dd._stats = {}
+    return [f for f in find_flips(dd, 48, next(iter(dd.chars))) if f["out_item"] == 777777]
+check(len(_f9([1000, 1000, 1000, 1000])) == 1, "reventa: bajada puntual (los días de antes lo más barato estaba arriba): sí")
+check(_f9([300, 310, 300, 320]) == [], "reventa: si cada día ya había género a ese precio, no hay reventa")
+# fabricar: tu parte de las ventas
+_e9 = [o for o in plan["opportunities"] if o["kind"] == "craft" and not o.get("trial") and not o.get("cooldown_h") and o.get("vol")]
+check(_e9 and all(o["units"] <= max(o["yield"], o["vol"] * _OP.SELL_SHARE * 48 / 24 + o["yield"]) for o in _e9),
+      "fabricar: el lote no pasa de tu parte de lo que se vende en el horizonte")
+# prueba de esfuerzo del depósito: con la mitad de ventas no debe dar pérdidas
+def _stress9(vendor):
+    dd = _f5(vendor_sell=vendor)
+    dd.items[777778] = dict(dd.items[777777], item_id=777778, name="Material de prueba", vendor_sell=1)
+    dd.vendor_buy[777778] = 100
+    r = {"id": 990001, "char": next(iter(dd.chars)), "prof": "Cocina", "name": "Gema cocinada", "learned": True,
+         "out": 777777, "yield": 1, "reagents": [(777778, 1)], "source": None, "cd_until": None, "enchant": False,
+         "cooldown_h": None, "skill_req": None, "learn_cost": None, "learn_note": None, "difficulty": None}
+    return _OP.evaluate(dd, r, 48), dd
+_ea, _da = _stress9(0)
+_eb, _db = _stress9(1000)
+if "profit" in _ea and "profit" in _eb:
+    _gain9 = _eb["net"] - _eb["cost"]
+    check(1 <= _eb["crafts"] < _ea["crafts"] and any("Lote reducido" in w for w in _eb["why"]) and _eb["profit"] > 0
+          and _gain9 - _db.deposit(777777) * _OP.lost_posts(_eb["crafts"], _eb["vol"] * _OP.STRESS_VOL) >= 0,
+          f"depósito alto: el lote se encoge hasta no perder con la mitad de ventas ({_ea['crafts']} → {_eb['crafts']})")
+    check(not any("Lote reducido" in w for w in _ea["why"]), "depósito mínimo: el lote no se toca")
+else:
+    check(False, f"depósito alto: la receta de prueba no se pudo valorar ({_ea.get('reason')} / {_eb.get('reason')})")
+# ideas: rebote con lo más barato de cada día, nunca en una cuesta abajo; sequía, no si ya ha saltado
+check(_OI.sliding([180, 108, 94, 87, 79, 76, 73, 56]) is True and _OI.sliding([100, 101, 99, 100, 102, 100]) is False
+      and _OI.sliding([100, 90]) is False, "ideas: una cuesta abajo de días no es un bache del que se rebota")
+class _I9:
+    today, catalog = "2026-11-25", {}
+    def __init__(self, hist, mn, mv, med7=None):
+        self.history = {5: [{"day": f"2026-11-{10 + i:02d}", "min": lo, "mv": m, "qty": q} for i, (lo, m, q) in enumerate(hist)]}
+        self.prices = {5: {"min": mn, "mv": mv, "qty": 100}}
+        self._st = {"min": mn, "mv": mv, "vol": 50, "days": len(hist), "med7": med7, "depth": None}
+    def stats(self, item):
+        return self._st
+    def name(self, item):
+        return "Objeto de prueba"
+_reb = lambda hist, mn, mv: [c["item"] for c in _OI.detect_rebound(_I9([(lo, m, 100) for lo, m in hist], mn, mv), set())]
+check(_reb([(100, 100)] * 8, 60, 62) == [5], "rebote: estable y hoy un 40 % más barato: sí")
+check(_reb([(30, 36), (32, 75), (28, 57), (28, 28), (26, 66), (39, 39), (29, 80)], 35, 35) == [],
+      "rebote: el valor de mercado salta entre dos escalones, pero lo más barato de cada día es lo de hoy: no está hundido")
+check(_reb([(180, 180), (108, 108), (94, 99), (87, 88), (79, 89), (76, 79), (73, 73), (56, 60)], 60, 60) == [],
+      "rebote: un precio que baja cada día no es un bache")
+_dry = [(10, 10 + i, 5000 - 400 * i) for i in range(10)]
+_drt = lambda mv, med7: [c["item"] for c in _OI.detect_drought(_I9(_dry, mv, mv, med7), {5: ["Receta de prueba"]})]
+check(_drt(20, 18) == [5], "sequía: cada día hay menos y el precio sube poco a poco: sí")
+check(_drt(33, 19) == [], "sequía: si hoy ya ha saltado un 25 % sobre su mediana, llegas tarde")
+
 print("\nTODO OK" if ok else "\nHAY FALLOS")
 for line in list(G.LOG.values())[-8:]:
     print("   ", line)

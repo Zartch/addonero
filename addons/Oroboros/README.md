@@ -456,6 +456,10 @@ Cómo decide:
 - **Ventas por día:** se estiman con las bajadas de cantidad publicada entre un día y el siguiente.
 - **Margen mínimo:** 8 % sobre el coste. Por debajo, la receta sale como no rentable, con el motivo.
 - **Aguasnegras → tu casa:** lista aparte en la pestaña Ideas. Compra en la subasta neutral (sin comisión para el comprador) lo que deja al menos un 15 % vendiéndolo en tu casa por debajo de lo más barato de allí y sin pasar de su mediana de 7 días. Solo materiales que se apilan y con ventas comprobadas en tu casa; como mucho, la mitad de lo que se vende en el horizonte. Usa el oro que queda para apuestas. Dice si compensa el viaje (2 oro o más, con una foto de menos de 3 h) y da las líneas `BUY` para pegar allí.
+- **Tu parte de las ventas:** el lote de una fabricación no pasa de la mitad de lo que se vende en el horizonte, igual que las reventas.
+- **Prueba de esfuerzo del depósito:** si con la mitad de las ventas estimadas el depósito perdido al republicar se come el margen, el lote se encoge hasta que no dé pérdidas, y lo dice.
+- **Techo de reventa:** una reventa (también desde Aguasnegras) no cuenta con vender más de un 15 % por encima de lo más barato de cada uno de los últimos 7 días. Si cada día vuelve a haber género al precio de hoy, ese es su precio.
+- **Ideas:** el rebote se mide con lo más barato de cada día y no entra si el precio lleva días bajando; la sequía no entra si hoy ya ha saltado un 25 % sobre su mediana; si el depósito es grande para lo que ganas, la idea avisa.
 - **Qué aprender:** el beneficio al día cuenta con la mitad de lo que se vende (como la ruta), no con todo el mercado. Es un techo con los precios de hoy.
 - **Ideas con suelo de vendedor:** si el vendedor paga más de lo que sacarías vendiendo al stop, la pérdida máxima se calcula con el precio del vendedor.
 - **Enfriamientos:** una receta con enfriamiento se valora en «qué aprender» como renta diaria: beneficio por uso × usos al día, con un máximo de 2 usos al día. Las que comparten enfriamiento (`cooldown_groups` del catálogo) no se suman: en la ruta, por personaje se queda la que más da.

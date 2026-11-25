@@ -242,10 +242,14 @@ Plan en `docs/planes/2026-11-25-pasada-de-correccion.md`.
 - Ideas: el precio del vendedor es un suelo para la pérdida.
 - Comprobado a la vista (capturas con Edge sin ventana): las pestañas Inicio, Ideas y Qué aprender se ven bien.
 
-Con los datos del 25/11, el plan pasa de «18,9 oro invirtiendo 34,5» (con 4 reventas dudosas) a 3,8 oro invirtiendo 8.
+- **Auditoría a mano** de nueve propuestas (tabla en el plan de la fase): en cinco el programa proponía algo que un jugador no haría. Cambios: el precio de reventa no pasa de un 15 % sobre lo más barato de cada día; el lote de fabricación cuenta con tu parte de las ventas; el lote se encoge si el depósito se come el margen con la mitad de ventas; el rebote se mide con lo más barato de cada día y no entra en una cuesta abajo; la sequía no entra si el precio ya ha saltado.
+- **Medición de la regla de recolocaciones** con la foto de las 10:21: quita el 10 % de las vendidas (el 41 % en equipo). La rotación sigue en unas 2 veces al día.
+
+Con los datos del 25/11, el plan pasa de «18,9 oro invirtiendo 34,5» (con 4 reventas dudosas) a 3,5 oro invirtiendo 7,6.
 
 **Lo aprendido:**
 - Una comprobación que solo mira si se escapan casos (cobertura) no dice nada de los que sobran. Hay que mirar las dos cosas.
+- El valor de mercado (media del 15 % más barato) dice cuánto cuesta comprar, no a cuánto se vende: salta al escalón de arriba cuando el de abajo es fino. Para vender, lo más barato de cada día.
 - La regla de recolocaciones no se puede probar del todo: una venta seguida de una subasta nueva igual, de otro vendedor, se ve idéntica. Se elige contar de menos.
 
 **Por comprobar:**

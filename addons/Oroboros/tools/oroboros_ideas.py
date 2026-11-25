@@ -25,6 +25,8 @@ LABEL = {"despensa": "Despensa", "rebote": "Rebote", "semanal": "Ciclo semanal",
 WEEKDAYS = ["lunes", "martes", "miércoles", "jueves", "viernes", "sábado", "domingo"]
 SUNK = 0.85           # por debajo del 85 % de su mediana, un objeto cuenta como hundido
 STOP = 0.8            # si cae un 20 % desde la entrada, se sale
+DECLINE = 0.85        # si la segunda mitad del histórico ya va un 15 % por debajo de la primera, es una cuesta abajo
+LATE = 1.25           # sequía: si hoy ya está un 25 % sobre su mediana de 7 días, llegas tarde
 MAX_PER_TYPE = 4
 
 
@@ -200,21 +202,38 @@ def detect_pantry(data, route_buys, horizon_h):
     return out
 
 
+def _lows(data, item):
+    """Lo más barato de cada día pasado (14 días): el precio al que se vende de verdad. El valor de
+    mercado salta al escalón de arriba cuando el de abajo es fino y hace parecer hundido lo que no lo está."""
+    return [h.get("min") or h["mv"] for h in _past(data, item)[-14:]]
+
+
+def sliding(values):
+    """¿Cuesta abajo? La mediana de la segunda mitad va DECLINE o menos de la primera: no es un bache
+    del que se rebota, es un precio que lleva días bajando."""
+    if len(values) < 6:
+        return False
+    k = len(values) // 2
+    return statistics.median(values[k:]) < statistics.median(values[:k]) * DECLINE
+
+
 def detect_rebound(data, skip):
     out = []
     for item in data.prices:
         if item in skip:
             continue
-        st, med = data.stats(item), _med14(data, item)
-        if not med or not st["mv"] or (st["vol"] or 0) < 3 or st["days"] < 7:
+        st, lows = data.stats(item), _lows(data, item)
+        med = statistics.median(lows) if len(lows) >= 4 else None
+        now = st["min"] or st["mv"]
+        if not med or not now or not st["mv"] or (st["vol"] or 0) < 3 or st["days"] < 7:
             continue
-        if st["mv"] > med * 0.85:
+        if now > med * SUNK or sliding(lows):
             continue
         out.append(_cand(
             data, "rebote", item, med * 0.95, 4, "medio",
             f"{data.name(item)} está hundido: compra y espera el rebote",
-            [f"Hoy está a {_money(st['mv'])}; su mediana de 14 días es {_money(med)} "
-             f"({(1 - st['mv'] / med) * 100:.0f} % menos).",
+            [f"Hoy lo más barato está a {_money(now)}; la mediana de lo más barato de cada día, en 14 días, "
+             f"es {_money(med)} ({(1 - now / med) * 100:.0f} % menos), y no venía bajando.",
              f"Se siguen vendiendo unas {st['vol']:.0f} al día, así que la demanda no ha desaparecido: "
              "lo normal es que alguien haya volcado mucho stock y el precio vuelva.",
              "El riesgo es que la bajada sea permanente (más gente farmeándolo)."]))
@@ -281,6 +300,8 @@ def detect_drought(data, uses):
         qslope = _slope([x["qty"] for x in h])
         if q0 <= 0 or q1 / q0 > 0.7 or not slope or slope < 0.003 or (qslope or 0) > -0.02:
             continue
+        if st["med7"] and st["mv"] > st["med7"] * LATE:
+            continue          # ya ha saltado: comprar hoy es comprar el pico
         target = st["mv"] * (1 + slope * 10)
         out.append(_cand(
             data, "sequia", item, target, 10, "medio",
@@ -518,6 +539,11 @@ def build_ideas(data, budget, buyer, storages, route_buys, skip_items, horizon_h
             else:
                 c["exit"].append(f"Si cae por debajo de {_money(c['stop'])}, véndelo y acepta la pérdida "
                                  f"(unos {_money(c['loss_stop'])}).")
+        # el depósito se devuelve si se vende, pero se pierde cada vez que la subasta caduca
+        dep = data.deposit(c["item"]) if hasattr(data, "deposit") else 0
+        if not c.get("saving") and dep > 0.25 * c["profit_u"]:
+            c["exit"].append(f"Ojo al publicarlo: el depósito es de {_money(dep)} por unidad y día, y se pierde si no se "
+                             f"vende. Ganas {_money(c['profit_u'])} por unidad: publícalo solo cuando esté en el objetivo.")
         lines = routes[c["char"]]
         if c["mode"] == "fabricar":
             buys, crafts, mats = [], [], []

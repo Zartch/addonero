@@ -45,6 +45,8 @@ MAX_LOST_POSTS = 3.0      # tope de publicaciones perdidas por unidad
 FLIP_GAP = 0.25           # reventa: salto mínimo entre lo que compras y el escalón siguiente
 FLIP_MIN_MARGIN = 0.15    # reventa: margen mínimo sobre lo pagado, ya con comisión y depósitos
 FLIP_MIN_PROFIT = 10000   # menos de 1 oro no merece los clics
+LOW_CEIL = 1.15           # reventa: no cuento con vender más de un 15 % por encima de lo más barato de cada día
+STRESS_VOL = 0.5          # prueba de esfuerzo: el lote no debe dar pérdidas si se vende la mitad de lo estimado
 CRAFT_SECONDS = 3         # lo que tarda una fabricación
 MIN_CRAFT_HOUR = 20000    # fabricar por menos de 2 oro a la hora no merece el tiempo
 MIN_CRAFT_PROFIT = MIN_CRAFT_HOUR * CRAFT_SECONDS / 3600      # ≈ 17 cobres por fabricación
@@ -274,6 +276,10 @@ class Data:
         past = [x for x in h if x["day"] < self.today]
         last7 = [x["mv"] for x in past[-7:] if x["mv"]]
         med7 = statistics.median(last7) if len(last7) >= 3 else None
+        # lo más barato de cada día: a ese precio se vende de verdad. El valor de mercado (media del 15 %
+        # más barato) salta al escalón de arriba cuando el de abajo es fino, y entonces engaña.
+        lows = [x.get("min") or x["mv"] for x in past[-7:] if x.get("min") or x["mv"]]
+        low7 = statistics.median(lows) if len(lows) >= 3 else None
         mvs = [x["mv"] for x in h[-14:] if x["mv"]]
         cv = statistics.pstdev(mvs) / statistics.mean(mvs) if len(mvs) >= 4 else None
         drops = daily_drops(h)
@@ -320,7 +326,7 @@ class Data:
         if depth_est and conf == "alta":
             conf = "media"          # sin profundidad real (precio de Auctionator) no damos confianza alta
         age_h = (self.now - p["t"]) / 3600 if p and p["t"] else None
-        st = {"min": p["min"] if p else None, "mv": cur, "qty": qty, "med7": med7, "cv": cv, "vol": vol,
+        st = {"min": p["min"] if p else None, "mv": cur, "qty": qty, "med7": med7, "low7": low7, "cv": cv, "vol": vol,
               "sell": sell, "sell_note": note, "trend": trend, "days": days, "conf": conf, "age_h": age_h,
               "depth": depth, "depth_est": depth_est, "src": (p or {}).get("src"), "vol_est": vol_est, "vol_src": vol_src}
         self._stats[item_id] = st
@@ -430,7 +436,7 @@ def evaluate(data, r, horizon_h, crafts_override=None):
         return out
     y = r["yield"]
     vol = st["vol"] or 0
-    cap_units = vol * horizon_h / 24
+    cap_units = vol * SELL_SHARE * horizon_h / 24      # tu parte de lo que se vende, como en las reventas
     if st["qty"]:
         cap_units = min(cap_units, max(2, st["qty"] * 0.3))
     crafts = max(1, int(cap_units / y))
@@ -467,10 +473,16 @@ def evaluate(data, r, horizon_h, crafts_override=None):
     cost = sum(n["unit"] * n["per_craft"] for n in nodes)
     if trial and cost * crafts > TRIAL_INVEST:
         crafts = max(1, int(TRIAL_INVEST // max(cost, 1)))
+    net = st["sell"] * (1 - AH_CUT)
+    # prueba de esfuerzo: las ventas por día son una estimación. Si con la mitad el depósito perdido al
+    # republicar se come el margen, el lote se encoge hasta que no dé pérdidas en ese caso.
+    dep_u, crafts_full = data.deposit(r["out"]), crafts
+    if not crafts_override and dep_u > 0 and net * y > cost:
+        while crafts > 1 and net * y - cost - dep_u * lost_posts(crafts * y, vol * STRESS_VOL) * y < 0:
+            crafts = max(1, int(crafts * 0.8))
     # depósitos que se pierden por republicar lo que no se vende en un día (por fabricación)
     lost = lost_posts(crafts * y, vol)
-    deposit = data.deposit(r["out"]) * lost * y
-    net = st["sell"] * (1 - AH_CUT)
+    deposit = dep_u * lost * y
     profit = net * y - cost - deposit
     margin = profit / cost if cost else 0
     breakeven = (cost + deposit) / y / (1 - AH_CUT)
@@ -496,6 +508,10 @@ def evaluate(data, r, horizon_h, crafts_override=None):
     if deposit >= 0.02 * net * y:
         why.append(f"Depósito: {money(data.deposit(r['out']))} por unidad y publicación de {POST_HOURS} h; no todo se "
                    f"vende a la primera, así que cuento {money(deposit)} perdidos por fabricación en republicar.")
+    if crafts < crafts_full:
+        why.append(f"Depósito alto para su margen ({money(dep_u)} por unidad y publicación, y ganas {money(net * y - cost)} "
+                   f"por fabricación): con {num(crafts_full * y):g} perderías dinero si se vendiera la mitad de lo estimado. "
+                   f"Lote reducido a {units:g}.")
     if trial:
         why.append(f"Aún no hay días de escaneo suficientes para saber cuánto se vende ({st['days']} días con datos): "
                    f"lote de prueba de {units:g} (como mucho {TRIAL_UNITS} unidades o {money(TRIAL_INVEST)}).")
@@ -727,6 +743,16 @@ def _flip(data, char, item_id, qty, unit, max_buy, sell, conf, why, min_profit=F
     }
 
 
+def resale_price(st, ceiling):
+    """A cuánto cuento con revender: bajo `ceiling` (el escalón siguiente o lo más barato de tu casa), sin
+    pasar de la mediana de 7 días ni de LOW_CEIL × lo más barato de cada día. Si cada día vuelve a haber
+    género al precio de hoy, ese es su precio y no hay reventa."""
+    sell = min(ceiling, st["med7"])
+    if st.get("low7"):
+        sell = min(sell, st["low7"] * LOW_CEIL)
+    return sell
+
+
 def ladder_flip(data, item_id, horizon_h, char):
     """Reventa por escalones, con la lista completa de precios de la API: comprar todo lo que hay por
     debajo de un salto de precio (≥ FLIP_GAP) y volver a ponerlo justo bajo el escalón siguiente, sin
@@ -746,11 +772,12 @@ def ladder_flip(data, item_id, horizon_h, char):
             break
         if wall < p * (1 + FLIP_GAP):
             continue
-        sell = min(wall * 0.99, st["med7"])
+        sell = resale_price(st, wall * 0.99)
         conf = "media" if st["vol"] >= 5 and (st["cv"] or 0) < 0.15 and not st["vol_est"] else "baja"
         f = _flip(data, char, item_id, units, cost / units, p, sell, conf, [
             f"Hay {units} a {money(p)} o menos y lo siguiente está a {money(wall)} "
-            f"({(wall / p - 1) * 100:.0f} % más caro); su mediana de 7 días es {money(st['med7'])}.",
+            f"({(wall / p - 1) * 100:.0f} % más caro); su mediana de 7 días es {money(st['med7'])} "
+            f"y lo más barato de cada día ha rondado {money(st['low7'] or st['med7'])}.",
             f"Compras las {units} (a {money(cost / units)} de media) y las vuelves a poner a ~{money(sell)}.",
             f"Se venden unas {st['vol']:.0f} al día y cuento con que te llevas la mitad: "
             "es una oportunidad puntual (puede que alguien vuelva a publicar barato).",
@@ -787,7 +814,7 @@ def find_flips(data, horizon_h, char):
         buy = data.buy_unit(item_id, qty)
         if not buy:
             continue
-        sell = st["med7"] * 0.97
+        sell = resale_price(st, st["med7"] * 0.97)
         conf = "media" if st["vol"] >= 5 and (st["cv"] or 0) < 0.15 else "baja"
         f = _flip(data, char, item_id, qty, buy[0], buy[1], sell, conf, [
             f"Ahora se vende a {money(p['min'])} y su mediana de 7 días es {money(st['med7'])} "
@@ -831,7 +858,7 @@ def find_neutral(data, horizon_h, char, budget):
         st = data.stats(item_id)
         if not vol or vol < NEUTRAL_MIN_SOLD or not st["med7"]:
             continue
-        sell = min(own[0][0] * 0.99, st["med7"])
+        sell = resale_price(st, own[0][0] * 0.99)
         top = sell * (1 - AH_CUT) / (1 + FLIP_MIN_MARGIN)       # lo más caro que aún deja el margen mínimo
         cap = max(1, int(vol * SELL_SHARE * horizon_h / 24))
         units, cost, max_buy = 0, 0.0, None
@@ -846,7 +873,7 @@ def find_neutral(data, horizon_h, char, budget):
         f = _flip(data, char, item_id, units, cost / units, max_buy, sell, conf, [
             f"En Aguasnegras hay {units} a {money(max_buy)} o menos (media {money(cost / units)}); en tu casa lo más "
             f"barato está a {money(own[0][0])} y su mediana de 7 días es {money(st['med7'])}.",
-            f"Las pones en tu casa a ~{money(sell)}: se venden unas {vol:.0f} al día (comprobado) y cuento con que "
+            f"Las pones en tu casa a ~{money(sell)}: se venden unas {vol:.0f} al día (medido con tus escaneos) y cuento con que "
             "te llevas la mitad.",
         ], min_profit=NEUTRAL_MIN_PROFIT)
         if f:
