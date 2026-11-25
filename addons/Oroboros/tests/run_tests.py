@@ -1193,6 +1193,7 @@ def _f5(vendor_sell=0, deposits=(), variants=(), ladder=None, vol=None):
     _f.commit(); _f.close()
     dd = _Data(fdb, CAT_TEST, now=_now)
     dd.variants = set(variants)
+    dd.variants_known = True
     if ladder is not None:
         dd.ladders = {777777: ladder}
     return dd
@@ -1641,6 +1642,10 @@ check(_ri == 2 and _cx.execute("SELECT sold FROM api_item_hour WHERE t=? AND ite
       f"API: importa fotos guardadas en orden ({_ri})")
 _cx.close()
 
+# Las pruebas que siguen comprueban sumas, franjas y resúmenes con un mercado de juguete en el que cada
+# hora se vende una subasta y entra otra igual. Con la regla de recolocaciones eso contaría como
+# cancelada, así que aquí se apaga; la regla tiene sus pruebas en la pasada del 25/11.
+API.RELIST_DROP = -1
 # retención: api_item_hour de las semanas viejas → api_band_week, y las franjas no cambian
 _rd = _tf.mkdtemp(); _ra = os.path.join(_rd, "r.sqlite")
 _cr = API.open_api(_ra); API.set_house(_cr, 111, "Casa de subastas de la Alianza", realm="R5")
@@ -1907,6 +1912,7 @@ check('id="v-inicio"' in _plain and '[["inicio", "Inicio"]].concat(API_VIEWS)' i
       "panel: la pestaña Inicio existe y es la que se abre primero con el panel")
 check("/*__PANEL__*/false" in _plain,"plan.html sin panel: las pestañas nuevas dicen que hay que abrir el panel")
 
+API.RELIST_DROP = 0.20
 # ---- Fase 7: Aguasnegras → tu casa, enfriamientos como renta y gangas ----
 _d7 = _tf.mkdtemp(); _c7 = API.open_api(os.path.join(_d7, "n.sqlite"))
 API.set_house(_c7, 111, "Casa de subastas de la Alianza", realm="R5")
@@ -1990,6 +1996,77 @@ check(_inc and all(e.get("income") for e in _inc if "profit" in e)
 _ui7 = open(os.path.join(ROOT, "tools", "planner_ui.html"), encoding="utf-8").read()
 check("neutralHtml(PLAN.neutral)" in _ui7 and "Gangas de la última foto" in _ui7 and "renta diaria" in _ui7,
       "página: Aguasnegras en Ideas, gangas en Inicio y la marca de renta diaria en Qué aprender")
+
+# ---- Pasada del 25/11: las «vendidas» de la API no se dan por buenas sin comprobar que no cuentan de más ----
+_d8 = _tf.mkdtemp(); _a8 = os.path.join(_d8, "p8.sqlite")
+_c8 = API.open_api(_a8); API.set_house(_c8, 111, "Casa de subastas de la Alianza", realm="R5")
+_lv8 = [_au(1, 100, 5, 50, "LONG"), _au(2, 100, 5, 50, "LONG")]
+for _k in range(28):       # 28 fotos seguidas que caen en tres fechas: poco más de un día de medición
+    API.ingest(_c8, 111, _ts(20, 22, 23) + _k * 3600, _lv8)
+    _lv8 = [_lv8[1], _au(100 + _k, 100, 5, 60 + _k, "LONG")]      # se vende la barata y entra otra más cara
+_r8, _cov8 = API.move_rates(_c8, 111, _ts(22, 2, 0))
+check(1.0 < _cov8 < 1.3, f"API: los días medidos son tiempo medido, no fechas distintas ({_cov8})")
+_t8 = API.turnover(_c8, 111, _ts(22, 2, 0))
+check(_t8 is not None and abs(_t8 - 12) < 0.01, f"API: rotación de la casa = vendidas al día entre lo que hay a la venta ({_t8})")
+def _cal8(**kw):
+    _c8.execute("INSERT OR REPLACE INTO meta VALUES ('api_calibration_111', ?)", (json.dumps(kw),)); _c8.commit()
+    return API.is_calibrated(_c8, 111)
+check(_cal8(sales=6, coverage=1.0, turnover=0.4) is True, "calibración: con cobertura y una rotación creíble, vale")
+check(_cal8(sales=6, coverage=1.0, turnover=4.7) is False,
+      "calibración: si la casa saldría vendida varias veces al día, las ventas de la API no se dan por buenas")
+check(_cal8(sales=6, coverage=1.0) is False, "calibración: una calibración vieja, sin rotación, no vale")
+# recolocaciones: la misma cantidad que reaparece igual o algo más barata la retiró su dueño
+_rl = lambda prev, cur: API.classify(API.as_live(prev), API.as_live(cur)).get(100, {})
+_o = [_au(1, 100, 5, 1000, "LONG"), _au(2, 100, 5, 1500, "LONG")]
+check(_rl(_o, [_o[1]])["sold"] == 5, "recolocación: la barata desaparece y no entra nada: vendida")
+_x = _rl(_o, [_o[1], _au(3, 100, 5, 950, "LONG")])
+check(_x["sold"] == 0 and _x["cancelled"] == 5 and _x["new"] == 5,
+      f"recolocación: reaparece la misma cantidad un 5 % más barata: cancelada ({_x})")
+check(_rl(_o, [_o[1], _au(3, 100, 5, 1000, "LONG")])["sold"] == 0, "recolocación: al mismo precio, también")
+check(_rl(_o, [_o[1], _au(3, 100, 5, 1100, "LONG")])["sold"] == 5, "recolocación: si lo nuevo es más caro, fue una venta")
+check(_rl(_o, [_o[1], _au(3, 100, 4, 950, "LONG")])["sold"] == 5, "recolocación: con otra cantidad, fue una venta")
+check(_rl(_o, [_o[1], _au(3, 100, 5, 500, "LONG")])["sold"] == 5, "recolocación: a mitad de precio no es la misma subasta")
+_o2 = [_au(1, 100, 5, 1000, "LONG"), _au(2, 100, 5, 1000, "LONG"), _au(9, 100, 5, 1500, "LONG")]
+_x = _rl(_o2, [_o2[2], _au(3, 100, 5, 990, "LONG")])
+check(_x["sold"] == 5 and _x["cancelled"] == 5, f"recolocación: cada subasta nueva empareja con una sola desaparecida ({_x})")
+# la regla empieza en una foto: las horas de antes no entran en las ventas por día
+check(API.rule_since(_c8) == 0, "regla: un archivo nuevo la lleva desde la primera foto")
+_c8.execute("UPDATE meta SET value=? WHERE key='api_rule_t'", (str(_ts(21, 20, 23)),)); _c8.commit()
+_r8b, _cov8b = API.move_rates(_c8, 111, _ts(22, 2, 0))
+check(0.2 < _cov8b < 0.3 and abs(_r8b[100]["sold"] - _r8[100]["sold"]) < 0.01,
+      f"regla: solo cuentan las fotos clasificadas con ella ({_cov8b} días)")
+_c8.execute("DELETE FROM meta WHERE key='api_rule_t'"); _c8.commit()
+check(API.move_rates(_c8, 111, _ts(22, 2, 0)) == ({}, 0), "regla: un archivo de antes, sin fotos nuevas, no da ventas por día")
+API.ingest(_c8, 111, _ts(22, 2, 23), _lv8)
+check(API.rule_since(_c8) == _ts(22, 2, 23), "regla: en un archivo de antes, empieza con la primera foto que se mete ahora")
+# el plan: con medida de tus escaneos, la API sin comprobar solo puede bajarla
+def _st8(api, cal):
+    dd = _f5(); dd.api_rates = {777777: api}; dd.api_days = 3; dd.api_calibrated = cal; dd._stats = {}
+    return dd.stats(777777)
+_s8 = _f5().stats(777777)
+_s8a, _s8b, _s8c = _st8(_s8["vol"] * 50, False), _st8(_s8["vol"] / 4, False), _st8(_s8["vol"] * 50, True)
+check(_s8["vol"] and _s8a["vol"] == _s8["vol"] and _s8a["vol_est"] is False and _s8a["vol_src"] == "escaneos",
+      f"plan: la API sin comprobar no sube las ventas medidas con tus escaneos ({_s8['vol']} → {_s8a['vol']})")
+check(abs(_s8b["vol"] - _s8["vol"] / 4) < 1e-9 and _s8b["vol_est"] is False, "plan: pero sí las baja si ve menos")
+check(_s8c["vol"] == _s8["vol"] * 50 and _s8c["vol_src"] == "api" and _s8c["vol_est"] is False,
+      "plan: comprobada con tus ventas, la API manda")
+_d8v = _f5(ladder=[(300, 12), (320, 8), (900, 40), (1000, 100)]); _d8v.variants_known = False
+check([f for f in find_flips(_d8v, 48, next(iter(_d8v.chars))) if f["out_item"] == 777777] == [],
+      "reventa: sin variantes guardadas, lo que no se apila no se revende (puede ser equipo con sufijo)")
+_d8v.items[777777]["stack"] = 20
+check(len([f for f in find_flips(_d8v, 48, next(iter(_d8v.chars))) if f["out_item"] == 777777]) == 1,
+      "reventa: sin variantes guardadas, lo que se apila sí")
+# ideas: el precio del vendedor es un suelo
+check(_OI.worst_loss(100, 80, 0) == 100 - 80 * 0.95 and _OI.worst_loss(100, 80, 90) == 10 and _OI.worst_loss(62, 50, 62) == 0,
+      "ideas: lo peor es vender al stop en la subasta o, si paga más, al vendedor")
+# catálogo: lo aprendido en la pasada
+check(_cat_real["recipes"]["18560"]["cooldown_h"] == 95 and "Hyjal" in _cat_real["recipes"]["1317279"]["learn_note"],
+      "catálogo: la tela lunar lleva su enfriamiento y la legionita dice que su receta cae en Hyjal")
+_l8 = [e for e in plan["learn"] if "profit" in e and not e.get("cooldown_h") and e.get("vol")]
+check(_l8 and all(abs(e["per_day"] - e["vol"] * _OP.SELL_SHARE / e["yield"]) < 1e-9 for e in _l8),
+      "qué aprender: cuenta con tu parte de lo que se vende al día, no con todo")
+_ui8 = open(os.path.join(ROOT, "tools", "planner_ui.html"), encoding="utf-8").read()
+check("rotación de la casa" in _ui8 and "días medidos" in _ui8, "página: la calibración enseña la rotación y los días medidos")
 
 print("\nTODO OK" if ok else "\nHAY FALLOS")
 for line in list(G.LOG.values())[-8:]:

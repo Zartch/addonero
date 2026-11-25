@@ -396,6 +396,12 @@ def _craft_lines(data, node, qty, buys, crafts, mats):
         crafts.append(f"CRAFT {node['recipe']} {n}   # {node['recipe_name']}")
 
 
+def worst_loss(entry, stop, floor):
+    """Lo que pierdes por unidad si sale mal: vendes al stop en la subasta (con su comisión) o, si paga
+    más, al vendedor, cuyo precio es un suelo. Nunca menos de cero."""
+    return max(0.0, entry - max(stop * (1 - AH_CUT), floor or 0))
+
+
 def build_ideas(data, budget, buyer, storages, route_buys, skip_items, horizon_h, held=(), banker=None):
     uses = _uses(data)
     look = outlook(data, uses)
@@ -496,7 +502,8 @@ def build_ideas(data, budget, buyer, storages, route_buys, skip_items, horizon_h
             qty = slots * c["stack"]
         free[store] -= slots
         c.update({"qty": qty, "invest": qty * c["entry"], "profit": qty * c["profit_u"], "slots": slots,
-                  "store": store, "loss_stop": qty * (c["entry"] - c["stop"] * (1 - AH_CUT)),
+                  "store": store,
+                  "loss_stop": qty * worst_loss(c["entry"], c["stop"], c["floor"]),
                   "per_slot": qty * c["profit_u"] / slots})
         left -= c["invest"]
         c["exit"] = [
@@ -504,9 +511,13 @@ def build_ideas(data, budget, buyer, storages, route_buys, skip_items, horizon_h
              f"Vende a partir del {c['sell_date']} o en cuanto pase de {_money(c['target'])}."),
         ]
         if not c.get("saving"):
-            c["exit"] += [f"No pierdes si lo vendes por encima de {_money(c['breakeven'])}.",
-                          f"Si cae por debajo de {_money(c['stop'])}, véndelo y acepta la pérdida "
-                          f"(unos {_money(c['loss_stop'])})."]
+            c["exit"].append(f"No pierdes si lo vendes por encima de {_money(c['breakeven'])}.")
+            if c["floor"] > c["stop"] * (1 - AH_CUT):
+                c["exit"].append(f"Si cae por debajo de {_money(c['stop'])}, no lo malvendas en la subasta: el vendedor "
+                                 f"paga {_money(c['floor'])}. Lo máximo que pierdes son {_money(c['loss_stop'])}.")
+            else:
+                c["exit"].append(f"Si cae por debajo de {_money(c['stop'])}, véndelo y acepta la pérdida "
+                                 f"(unos {_money(c['loss_stop'])}).")
         lines = routes[c["char"]]
         if c["mode"] == "fabricar":
             buys, crafts, mats = [], [], []

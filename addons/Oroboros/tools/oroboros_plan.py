@@ -154,6 +154,7 @@ class Data:
             acon.close()
         # variantes de equipo y lista completa de precios de la última foto de la API (fase 5)
         self.variants, self.ladders, self.neutral = set(), {}, None
+        self.variants_known = False   # ¿la última foto guardó variantes? Sin ellas, el equipo no se revende
         if archive and os.path.exists(archive) and self.market:
             import oroboros_api
             acon = sqlite3.connect(archive)
@@ -161,6 +162,7 @@ class Data:
                 house = oroboros_api.house_for_market(acon, self.market)
                 if house is not None:
                     self.variants = oroboros_api.variant_items(acon, house)
+                    self.variants_known = oroboros_api.has_variants(acon, house)
                     self.ladders = oroboros_api.ladders(acon, house)
                     nh = oroboros_api.neutral_house(acon, house)
                     if nh and nh[2]:
@@ -279,8 +281,13 @@ class Data:
         vol_est = vol is None          # sin días suficientes: ventas/día supuestas, no medidas
         vol_src = "escaneos" if vol is not None else None
         if self.api_days >= API_MIN_DAYS and item_id in self.api_rates:
-            # la API gana con 3 días; hasta calibrarla con el libro, cuenta como estimada (lotes de prueba)
-            vol, vol_src, vol_est = self.api_rates[item_id], "api", not self.api_calibrated
+            api = self.api_rates[item_id]
+            if self.api_calibrated:
+                vol, vol_src, vol_est = api, "api", False        # comprobada con tus ventas: manda
+            elif vol is None:
+                vol, vol_src, vol_est = api, "api", True         # sin comprobar: estimada (lotes de prueba)
+            else:
+                vol = min(vol, api)     # hay medida de tus escaneos: la API sin comprobar solo puede bajarla
         qty = p["qty"] if p else 0
         if vol is None and qty:
             vol = qty * 0.1
@@ -758,6 +765,8 @@ def find_flips(data, horizon_h, char):
     for item_id, p in data.prices.items():
         if item_id in data.variants:
             continue          # equipo con variantes: su precio por número de objeto mezcla productos distintos
+        if data.ladders and not data.variants_known and (data.items.get(item_id, {}).get("stack") or 1) <= 1:
+            continue          # sin variantes guardadas, lo que no se apila puede ser equipo con sufijo
         st = data.stats(item_id)
         if not p["qty"] or not st["med7"] or not st["vol"] or not st["depth"]:
             continue
@@ -951,12 +960,15 @@ def learn_suggestions(data, horizon_h):
             if (info["profession"] in my_profs or info["hidden"] or not out_item
                     or out_item not in data.prices or not data.pdb_reagents.get(rid)):
                 continue
+            extra = data.catalog.get("recipes", {}).get(str(rid), {})
             cands.append({"id": rid, "char": None, "prof": info["profession"],
                           "name": info["name"] or data.name(out_item), "learned": False, "out": out_item,
                           "yield": 1, "reagents": data.pdb_reagents[rid], "source": pdb_source_text(info),
-                          "cd_until": None, "enchant": False, "cooldown_h": None,
-                          "skill_req": info["required_skill"], "learn_cost": pdb_vendor_cost(info),
-                          "learn_note": None, "new_profession": True, "borrowed": bool(info["req_borrowed"])})
+                          "cd_until": None, "enchant": False, "cooldown_h": extra.get("cooldown_h"),
+                          "skill_req": extra.get("skill") or info["required_skill"],
+                          "learn_cost": extra.get("learn_cost") or pdb_vendor_cost(info),
+                          "learn_note": extra.get("learn_note"), "new_profession": True,
+                          "borrowed": bool(info["req_borrowed"])})
     for prof, info in ({} if data.pdb else data.catalog.get("professions", {})).items():
         if any(prof in p for p in data.professions.values()):
             continue
@@ -972,7 +984,8 @@ def learn_suggestions(data, horizon_h):
         if "profit" not in e:
             e.update({"daily_profit": None})
         else:
-            per_day = (e["vol"] or 0) / r["yield"]
+            # como en la ruta: de lo que se vende al día, cuento con que te llevas tu parte, no todo
+            per_day = (e["vol"] or 0) * SELL_SHARE / r["yield"]
             if r["cooldown_h"]:
                 per_day = min(per_day, 24 / r["cooldown_h"], COOLDOWN_USES_DAY)
             e["per_day"] = per_day
@@ -1015,7 +1028,7 @@ def learn_suggestions(data, horizon_h):
                 verdict.append(f"Renta: tiene {r['cooldown_h']:g} h de enfriamiento y cada uso deja {money(e['profit'])}: "
                                f"unos {money(dp)} al día con {e['per_day']:.1f} usos al día.")
             else:
-                verdict.append(f"≈{money(dp)} al día (vendiendo ~{e['per_day']:.1f}/día con el mercado de hoy).")
+                verdict.append(f"≈{money(dp)} al día (fabricando ~{e['per_day']:.1f}/día: la mitad de lo que se vende hoy).")
             if cost:
                 pb = e["payback_days"]
                 verdict.append(f"Aprenderla cuesta {money(cost)}: se paga en "

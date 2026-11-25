@@ -497,7 +497,7 @@ function renderAprender() {
         unk = PLAN.learn.filter(l => !l.new_profession && l.reach === "desconocido"),
         neu = PLAN.learn.filter(l => l.new_profession);
   $("#v-aprender").innerHTML = `<div class="panel"><header><h2>Recetas de tus profesiones que aún no sabes</h2></header>
-    <p class="lead">Calculado con el mercado de hoy: beneficio por unidad × lo que el mercado absorbe al día (y el enfriamiento, si lo tiene). El coste de aprender y el nivel salen del catálogo; revísalos en Wowhead.</p>
+    <p class="lead">Calculado con el mercado de hoy: beneficio por unidad × la mitad de lo que se vende al día (no vas a ser siempre el más barato) y el enfriamiento, si lo tiene. Es un techo con el mercado de hoy, no un sueldo: si más gente aprende la receta, baja. El coste de aprender y el nivel salen del catálogo; revísalos en Wowhead.</p>
     <div class="cards">${own.map(card).join("") || '<p class="lead">Ninguna receta a tu alcance compensa hoy.</p>'}</div></div>
     <div class="panel"><header><h2>Nivel sin comprobar</h2></header>
     <p class="lead">En Forever el juego no dice qué nivel pide una receta que no sabes, y la lista incluye recetas de otras expansiones. Estas pueden estar muy por encima de tu nivel: compruébalas antes de buscarlas.</p>
@@ -817,7 +817,7 @@ async function loadApiItem() {
       const last = d.hourly.length ? d.hourly[d.hourly.length - 1] : null, r = d.rates || {};
       return `<div class="panel" style="border-left:4px solid ${facCol(d.faction)}"><b>${esc(facTxt(d.faction))} (${h})</b>
         <div class="stats"><span>Mínimo <b>${money(last && last[1])}</b></span><span>Mercado <b>${money(last && last[2])}</b></span><span>Publicadas <b>${fmtN(last && last[3])}</b></span></div>
-        <div class="stats"><span>Vendidas/día <b>${fmtN(r.sold)}</b></span><span>Caducadas/día <b>${fmtN(r.expired)}</b></span><span>Canceladas/día <b>${fmtN(r.cancelled)}</b></span><span class="sub">${d.days} días de fotos</span></div></div>`;
+        <div class="stats"><span>Vendidas/día <b>${fmtN(r.sold)}</b></span><span>Caducadas/día <b>${fmtN(r.expired)}</b></span><span>Canceladas/día <b>${fmtN(r.cancelled)}</b></span><span class="sub">${fmtN(d.days)} días medidos</span></div></div>`;
     }).join("");
     const hourly = timeChart(hs.map(([h, d]) => ({ name: `${facTxt(d.faction)} ${h}`, color: facCol(d.faction), pts: d.hourly.map(r => [r[0], r[1]]) })));
     const soldH = timeChart(hs.slice(0, 1).map(([h, d]) => ({ name: `Vendidas por foto (${facTxt(d.faction)} ${h})`, color: facCol(d.faction), pts: d.hourly.filter(r => r[4] !== null).map(r => [r[0], r[4]]) })), { bars: true, fmtY: v => fmtN(v), H: 140 });
@@ -889,8 +889,9 @@ async function loadInicio() {
   const banks = g.chars.map(c => `<div class="ini-row2"><span>${esc(c.name)}</span>${c.bank_t
     ? `<span style="color:${now - c.bank_t > 3 * 86400 ? "var(--bad)" : "var(--ink-hi)"}">${fmtAgo(c.bank_t, now)}</span>` : '<span style="color:var(--warn)">sin abrir</span>'}</div>`).join("");
   const cal = top.calibration, calOk = top.calibrated;
+  const calTurn = cal && cal.turnover != null && cal.turnover > 1 ? `la casa saldría vendida ${cal.turnover.toFixed(1)} veces al día: cuenta recolocaciones como ventas` : "";
   const calTxt = calOk ? `<span class="pill good">comprobadas con tus ventas (${Math.round((cal.coverage || 0) * 100)} %)</span>`
-    : `<span style="color:var(--warn);font-size:13px">sin comprobar con tus ventas${cal && cal.sales ? ` (${cal.sales} ventas, ${Math.round((cal.coverage || 0) * 100)} %)` : ""}</span>`;
+    : `<span style="color:var(--warn);font-size:13px">sin comprobar${calTurn ? ": " + calTurn : cal && cal.sales ? ` con tus ventas (${cal.sales} ventas, ${Math.round((cal.coverage || 0) * 100)} %)` : " con tus ventas"}</span>`;
   const topList = calOk && top.items.length
     ? `<div class="tablewrap"><table><thead><tr><th>Objeto</th><th class="n">Vendidas/día</th><th class="n">Precio por unidad</th></tr></thead><tbody>${top.items.map(x => `<tr><td style="color:${qualTxt(x.quality)}">${esc(x.name)}</td><td class="n">${fmtN(x.sold)}</td><td class="n">${money(x.min)}</td></tr>`).join("")}</tbody></table></div>`
     : '<p class="sub">Las ventas que estima la API aún no se han comprobado con tus ventas reales, así que aquí no se muestran: las primeras cifras eran recolocaciones, no ventas. Se comprueban solas cada día cuando vendes algo; mientras tanto están en la pestaña Ventas.</p>';
@@ -973,9 +974,9 @@ async function renderVentas() {
       <div id="calib"></div><button class="seg" id="calib-now">Calibrar ahora con mi libro</button></div>` +
       v.houses.map(h => {
         const c = h.calibration;
-        const cal = c ? `Calibración: ${c.sales} ventas tuyas comprobadas, cobertura <b>${pct(c.coverage)}</b>, tu parte de lo vendido ${pct(c.share)}.` : "Sin calibrar todavía.";
+        const cal = c ? `Calibración: ${c.sales} ventas tuyas comprobadas, cobertura <b>${pct(c.coverage)}</b>, tu parte de lo vendido ${pct(c.share)}${c.turnover != null ? `, rotación de la casa <b>${c.turnover.toFixed(1)}</b> veces al día${c.turnover > 1 ? " (demasiado: cuenta recolocaciones como ventas; no se usan para el plan)" : ""}` : ""}.` : "Sin calibrar todavía.";
         const rows = h.top.map(r => `<tr><td><a href="#subasta" data-goto="${r.id}">${esc(r.name)}</a></td><td class="n">${fmtN(r.sold)}</td><td class="n">${fmtN(r.expired)}</td><td class="n">${fmtN(r.cancelled)}</td><td class="n">${fmtN(r.new)}</td><td class="n">${money(r.min)}</td><td class="n">${money(r.value)}</td></tr>`).join("");
-        return `<div class="panel" style="border-left:4px solid ${facCol(h.faction)}"><header><h2>${esc(facTxt(h.faction))} (${h.house})</h2><span class="sub">${h.days} días de fotos · ${cal}</span></header>
+        return `<div class="panel" style="border-left:4px solid ${facCol(h.faction)}"><header><h2>${esc(facTxt(h.faction))} (${h.house})</h2><span class="sub">${fmtN(h.days)} días medidos · ${cal}</span></header>
           ${rows ? `<div class="tablewrap"><table><thead><tr><th>Objeto</th><th class="n">Vendidas/día</th><th class="n">Caducadas/día</th><th class="n">Canceladas/día</th><th class="n">Publicadas/día</th><th class="n">Mínimo</th><th class="n">Valor vendido/día</th></tr></thead><tbody>${rows}</tbody></table></div>` : '<p class="sub">Hacen falta al menos dos fotos seguidas.</p>'}</div>`;
       }).join("");
     el.querySelectorAll("[data-goto]").forEach(a => a.onclick = () => { apiItem = +a.dataset.goto; apiResults = []; });

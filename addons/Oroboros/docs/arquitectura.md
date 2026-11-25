@@ -64,6 +64,7 @@ Objetivo: ganar oro en **WoW Forever** con un addon de subasta + un planificador
 - Salida: fecha y precio objetivo, precio de equilibrio (entrada ÷ 0,95) y stop a −20 %.
 - Multiplicadores de evento y progresión en `catalog.json` son **suposiciones** editables.
 - Aguasnegras → tu casa (`find_neutral`): lista aparte de la ruta, porque se compra en otra subasta. Solo apilables con ventas comprobadas en tu casa.
+- Ventas estimadas de la API: no se usan como medidas hasta que `is_calibrated` ve cobertura (tus ventas aparecen) y rotación creíble (la casa no se vende más de una vez al día). Las recolocaciones cuentan como canceladas y `api_rule_t` marca desde qué foto. Se prefiere contar de menos.
 - Gangas (`oroboros_api.bargains`): subastas nuevas de la última foto un 30 % bajo la mediana de 7 días, sin otras más viejas a ese precio. Las enseña la pestaña Inicio del panel.
 
 ## Cartera

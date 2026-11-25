@@ -25,6 +25,7 @@ El usuario quiere ganar oro con la subasta de WoW Forever sabiendo **cuándo** c
 | 5 | Cálculo fiable del oro (depósito, variantes, reventa por escalones, ventas) | ✅ Hecho fuera del juego (24/11); falta medir el depósito real en el juego |
 | 6 | Catálogo de Forever al día (antes de las bandas del 9/12) | ✅ Hecho (25/11); falta comprobar en el juego el día de reinicio y el vendedor del mercado negro |
 | 7 | Maneras nuevas: Aguasnegras, enfriamientos como renta, gangas en el panel | ✅ Hecho fuera del juego (25/11) |
+| 8 | Pasada de corrección: las «vendidas» de la API no se dan por buenas sin más | ✅ Hecho (25/11); falta medir la precisión con tus subastas caducadas |
 
 ## Fase 1: modelo de datos
 
@@ -225,7 +226,37 @@ El 24/11 se repasaron todas las maneras de ganar oro (fabricar, transformar, apr
 
 **Descartado con datos:** comprar bajo precio de vendedor (menos de 1 oro), transmutaciones de una hora (5 platas) y pasar mercancía a la otra facción por la casa neutral (15 % de comisión).
 
+### Fase 8: pasada de corrección (25/11)
+
+Plan en `docs/planes/2026-11-25-pasada-de-correccion.md`.
+
+**Lo que pasó:** el 24/11 la calibración dio por buenas las ventas estimadas de la API (6 ventas tuyas, todas vistas como vendidas) y el plan del 25/11 por la mañana salió con 104 oportunidades, casi todas reventas con ventas imposibles: un arma épica de 599 oro «vendiéndose» 4 veces al día. Con el presupuesto solo entraban 4, pero con más oro habrían entrado.
+
+**Hecho:**
+- La calibración pide dos cosas: que tus ventas aparezcan entre las vendidas y que la casa no salga vendida más de una vez al día. Con las fotos del 24/11 salía 4,7 veces.
+- Las recolocaciones (misma cantidad que reaparece igual o hasta un 20 % más barata) cuentan como canceladas. Las ventas por día solo usan las fotos clasificadas ya con esa regla.
+- Los «3 días de fotos» son tres días de medición, no tres fechas.
+- Con ventas medidas en tus escaneos, la API sin comprobar solo puede bajarlas.
+- «Qué aprender» cuenta con la mitad de lo que se vende, como la ruta.
+- Catálogo: tela lunar con sus 95 h, la receta de legionita cae en Hyjal Summit, depósito mínimo de 1 cobre desde el 17/11.
+- Ideas: el precio del vendedor es un suelo para la pérdida.
+- Comprobado a la vista (capturas con Edge sin ventana): las pestañas Inicio, Ideas y Qué aprender se ven bien.
+
+Con los datos del 25/11, el plan pasa de «18,9 oro invirtiendo 34,5» (con 4 reventas dudosas) a 3,8 oro invirtiendo 8.
+
+**Lo aprendido:**
+- Una comprobación que solo mira si se escapan casos (cobertura) no dice nada de los que sobran. Hay que mirar las dos cosas.
+- La regla de recolocaciones no se puede probar del todo: una venta seguida de una subasta nueva igual, de otro vendedor, se ve idéntica. Se elige contar de menos.
+
+**Por comprobar:**
+1. La rotación de la casa con la regla nueva, cuando haya tres días de fotos (a partir del 28/11). Si sigue muy por encima de 1, las ventas de la API seguirán sin usarse.
+2. La precisión de verdad: hace falta que el addon apunte tus subastas caducadas y canceladas.
+
 ## Ideas para después (fuera de estas fases)
+
+- Apuntar en el libro las subastas propias que caducan o se cancelan (correo de «subasta caducada»), para medir cuántas da por vendidas la estimación de la API.
+- Guardar las últimas fotos crudas de la API unos días, para poder volver a clasificar cuando cambie una regla.
+- Enfriamientos que no son recetas (el salero de peletería, 71 h): hoy el plan no los valora.
 
 - Alertas de precio («avísame si baja de X»), la otra mitad de Camel.
 - ~~Leer la subasta sin entrar al juego con la API oficial de Blizzard~~: hecho el 24/11 (ver arriba).

@@ -57,7 +57,7 @@ Para probar el addon en el juego, enlaza la carpeta en vez de copiarla (así los
 ## Estado
 
 - Probado en el cliente real: carga del addon, interfaz 16001 y escaneo completo propio. El resto solo con la simulación y datos sintéticos.
-- API de Blizzard y panel (24/11): probados con datos reales (descarga, archivo, plan, Resumen.lua y rutas del panel, sin la ventana). Pendiente: que la ventana de Edge se vea bien, que la calibración con el libro diga si las «vendidas» son ventas (las primeras cifras son muy altas: recolocaciones de bots) y confirmar con un personaje de la Horda que su casa es la 114.
+- API de Blizzard y panel (24/11): probados con datos reales (descarga, archivo, plan, Resumen.lua y rutas del panel, sin la ventana). Pendiente: que la ventana de Edge se vea bien, que las «vendidas» sean ventas (la calibración del 24/11 pasó contando recolocaciones; desde el 25/11 pide además una rotación creíble de la casa, ver fase 8 de la hoja de ruta) y confirmar con un personaje de la Horda que su casa es la 114.
 - Lo siguiente que hay que validar en el juego: lectura del banco (¿pestañas o clásico?), libro de compras (compra de equipo, facturas del correo), tooltip.
 - Farmeo, por validar en el juego: que se cuentan muertes y botín, el aviso al entrar en un sitio, que los nombres resueltos (`OroborosDB.farmPlaces`) caen donde están las criaturas, y los niveles de `tools/gather_skill.json`.
 
@@ -77,6 +77,6 @@ Goblinomics (instalado) es contabilidad y patrimonio sobre precios de TSM/Auctio
 
 ## Siguiente trabajo: hoja de ruta por fases
 
-**Lee primero `docs/hoja-de-ruta.md`.** Ahí está qué esperamos de cada fase (modelo de datos, seguimiento de precios al estilo Camel, automatización, cálculos y, desde el 24/11, las fases 5 a 7 del repaso de las maneras de ganar oro: las tres están hechas fuera del juego; cada una lista lo que queda por comprobar en el juego) y en qué estado está; el detalle técnico está en `docs/modelo-y-seguimiento.md`. Se trabaja una fase cada vez: plan en `docs/planes/`, ejecución con pruebas y commits, y al acabar se actualiza el estado en la hoja de ruta.
+**Lee primero `docs/hoja-de-ruta.md`.** Ahí está qué esperamos de cada fase (modelo de datos, seguimiento de precios al estilo Camel, automatización, cálculos y, desde el 24/11, las fases 5 a 8 del repaso de las maneras de ganar oro: están hechas fuera del juego; cada una lista lo que queda por comprobar) y en qué estado está; el detalle técnico está en `docs/modelo-y-seguimiento.md`. Se trabaja una fase cada vez: plan en `docs/planes/`, ejecución con pruebas y commits, y al acabar se actualiza el estado en la hoja de ruta.
 
 Otros pendientes: ver `docs/arquitectura.md`, sección Pendiente.

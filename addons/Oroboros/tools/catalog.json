@@ -71,6 +71,31 @@
       "text": "Todas las transmutaciones comparten un solo enfriamiento.",
       "verified": false,
       "source": "Así era en el juego clásico; la guía dice que en Forever está sin confirmar. https://timesaver.gg/blog/wow-forever-profession-cooldowns-gold"
+    },
+    {
+      "text": "La receta de Transmutar: legionita la suelta el Felguard Sentinel de Hyjal Summit: no se puede aprender antes de que abra la banda (9/12).",
+      "verified": false,
+      "source": "https://warcraft.wiki.gg/wiki/Transmute:_Legionite · https://timesaver.gg/blog/wow-forever-profession-cooldowns-gold"
+    },
+    {
+      "text": "Tela lunar: 95 h de enfriamiento, Sastrería 230, dos telas de inferi. El patrón lo vende Qia (Cuna del Invierno) y se liga al cogerlo.",
+      "verified": false,
+      "source": "https://timesaver.gg/blog/wow-forever-profession-cooldowns-gold"
+    },
+    {
+      "text": "El salero (peletería 250) tiene 71 h de enfriamiento y convierte una sal de roca profunda en sal refinada. Es un objeto que se usa, no una receta: el plan no lo valora.",
+      "verified": false,
+      "source": "https://timesaver.gg/blog/wow-forever-profession-cooldowns-gold"
+    },
+    {
+      "text": "El depósito mínimo de una subasta es 1 cobre desde el mantenimiento del 17/11 (antes, 1 plata). El depósito se devuelve si la subasta se vende y se pierde si caduca o la cancelas.",
+      "verified": false,
+      "source": "https://games.gg/world-of-warcraft/guides/how-to-make-gold-in-wow-forever-gathering-the-auction-house-and-bans/"
+    },
+    {
+      "text": "No hay ficha de WoW en Forever y las bandas GDKP están prohibidas. Blizzard cierra cuentas por comprar oro y por usar bots.",
+      "verified": false,
+      "source": "https://games.gg/world-of-warcraft/guides/how-to-make-gold-in-wow-forever-gathering-the-auction-house-and-bans/"
     }
   ],
   "price_caps": {
@@ -170,12 +195,14 @@
     "17187": {
       "cooldown_h": 47,
       "source": "https://timesaver.gg/blog/wow-forever-profession-cooldowns-gold",
-      "verified": false
+      "verified": false,
+      "learn_note": "La receta la vende Alchemist Pestlezugg en Tanaris."
     },
     "1317279": {
       "cooldown_h": 47,
-      "source": "https://timesaver.gg/blog/wow-forever-profession-cooldowns-gold",
-      "verified": false
+      "source": "https://timesaver.gg/blog/wow-forever-profession-cooldowns-gold · https://warcraft.wiki.gg/wiki/Transmute:_Legionite",
+      "verified": false,
+      "learn_note": "La receta la suelta el Felguard Sentinel de Hyjal Summit, una banda de 20 que abre el 9/12: antes no se puede aprender."
     },
     "17559": {
       "cooldown_h": 23,
@@ -231,6 +258,13 @@
       "cooldown_h": 1,
       "source": "https://theforeverguides.com/professions/transmutes/",
       "verified": false
+    },
+    "18560": {
+      "cooldown_h": 95,
+      "skill": 230,
+      "source": "https://timesaver.gg/blog/wow-forever-profession-cooldowns-gold",
+      "verified": false,
+      "learn_note": "El patrón lo vende Qia en Cuna del Invierno y se liga al cogerlo."
     }
   },
   "cooldown_groups": {
