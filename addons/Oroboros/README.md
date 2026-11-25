@@ -460,6 +460,11 @@ Cómo decide:
 - **Prueba de esfuerzo del depósito:** si con la mitad de las ventas estimadas el depósito perdido al republicar se come el margen, el lote se encoge hasta que no dé pérdidas, y lo dice.
 - **Techo de reventa:** una reventa (también desde Aguasnegras) no cuenta con vender más de un 15 % por encima de lo más barato de cada uno de los últimos 7 días. Si cada día vuelve a haber género al precio de hoy, ese es su precio.
 - **Ideas:** el rebote se mide con lo más barato de cada día y no entra si el precio lleva días bajando; la sequía no entra si hoy ya ha saltado un 25 % sobre su mediana; si el depósito es grande para lo que ganas, la idea avisa.
+- **No se compra lo que viene bajando:** una reventa (también desde Aguasnegras) o un rebote no entran si lo más barato de cada día va cuesta abajo, lleva tres días seguidos bajando o ayer ya estaba al precio de hoy.
+- **Precio de venta de las recetas:** tiene el mismo techo que las reventas (un 15 % sobre lo más barato de cada día).
+- **Ideas:** el beneficio de cada idea cuenta un depósito perdido.
+- **Qué aprender, con tu oro:** no cuenta con fabricar al día más de lo que tu oro compra; si no llega ni para una, lo dice. Una profesión que no tienes no lleva plazo (subirla no está contado) y no sale en la portada.
+- **Farmeo medido:** con menos de 10 muertes y 5 minutos, confianza baja y por detrás de lo medido con muestra.
 - **Qué aprender:** el beneficio al día cuenta con la mitad de lo que se vende (como la ruta), no con todo el mercado. Es un techo con los precios de hoy.
 - **Ideas con suelo de vendedor:** si el vendedor paga más de lo que sacarías vendiendo al stop, la pérdida máxima se calcula con el precio del vendedor.
 - **Enfriamientos:** una receta con enfriamiento se valora en «qué aprender» como renta diaria: beneficio por uso × usos al día, con un máximo de 2 usos al día. Las que comparten enfriamiento (`cooldown_groups` del catálogo) no se suman: en la ruta, por personaje se queda la que más da.

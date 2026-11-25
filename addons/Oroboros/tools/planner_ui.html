@@ -385,7 +385,7 @@ function renderResumen() {
       <div class="w">${fmtN(o.units)} uds × ${money(o.profit)} · ${esc((o.why || [])[2] || o.why[0] || "")}</div>
     </div>`).join("");
   const order = `<p class="lead">${esc(s.order_txt)} Unos ${s.clicks} clics en total.</p>`;
-  const top = PLAN.learn.filter(l => l.daily_profit > 0 && l.reach !== "desconocido").slice(0, 3).map(l =>
+  const top = PLAN.learn.filter(l => l.daily_profit > 0 && l.reach !== "desconocido" && !l.new_profession).slice(0, 3).map(l =>
     `<li><b>${esc(l.name)}</b> (${esc(l.prof)}): ${money(l.daily_profit)}/día${l.payback_days !== null ? ", se paga en " + (l.payback_days < 1 ? "menos de un día" : fmtN(l.payback_days) + " días") : ""}${l.skill_gap ? `; te faltan ${l.skill_gap} puntos` : ""}${l.new_profession ? "; profesión nueva" : ""}.</li>`).join("");
   $("#v-resumen").innerHTML = tiles + warn + `<div class="grid2">
     <div class="panel"><header><h2>Lo que vas a hacer</h2><a href="#ruta">Ver la ruta →</a></header>${order}<div>${opps}</div></div>

@@ -945,7 +945,8 @@ _mp = OF.measured_places([_m(1, "Bosque X", 10, 300, 5000), _m(4242, "Cueva", 5,
                          {4242: {"name": "Kobold", "lvl": 9, "cls": "normal"}}, _ac, _prices)
 _cueva = [r for r in _mp if r["sub"] == "Cueva"]
 check(len(_mp) == 2 and _cueva and abs(_cueva[0]["gph"] - 20400) < 1e-6 and _cueva[0]["mobs"][0]["name"] == "Kobold"
-      and _cueva[0]["confidence"] == "media", "farmeo: una criatura solo medida (no está en AzerothCore) aparece con su oro por hora real")
+      and _cueva[0]["confidence"] == "baja" and _mp[0]["sub"] == "Bosque X" and _mp[0]["confidence"] == "media",
+      "farmeo: una criatura solo medida (no está en AzerothCore) aparece con su oro por hora real; con 5 muertes, confianza baja")
 _fp = OF.farm_plan(_ac, _gm, _prices, {"Zartch-R": {"level": 11, "professions": {"Herboristería": {}}}},
                    {"mobs": [_m(1, "Bosque X", 10, 300, 5000)], "npcs": {}})
 _fz = _fp["chars"]["Zartch-R"]
@@ -1711,6 +1712,8 @@ _pfa(_cp, _vp); _cp.close()
 _pr = sqlite3.connect(_vp).execute("SELECT min, src, d110 FROM prices WHERE market=? AND item_id=2589", (mk_,)).fetchone()
 check(_pr == (30, "api", 2),f"plan: el precio de ahora es el más reciente (la API, con profundidad) {_pr}")
 _dv = Data(_vp, CAT_TEST, archive=_va)
+for _h in _dv.history.get(2589, []):
+    _h["qty"] = None       # sin medida de escaneos (si no, según la hora del día salían 2 o 3 bajadas y la prueba bailaba)
 _sv = _dv.stats(2589)
 check(abs(_sv["vol"] - 24) < 0.01 and _sv["vol_src"] == "api" and _sv["vol_est"] is True,
       f"plan: con 3 días de API, las ventas por día salen de la API (estimadas hasta calibrar) {_sv['vol']}, {_sv.get('vol_src')}, {_sv['vol_est']}")
@@ -2128,6 +2131,48 @@ _dry = [(10, 10 + i, 5000 - 400 * i) for i in range(10)]
 _drt = lambda mv, med7: [c["item"] for c in _OI.detect_drought(_I9(_dry, mv, mv, med7), {5: ["Receta de prueba"]})]
 check(_drt(20, 18) == [5], "sequía: cada día hay menos y el precio sube poco a poco: sí")
 check(_drt(33, 19) == [], "sequía: si hoy ya ha saltado un 25 % sobre su mediana, llegas tarde")
+
+# ---- Segunda auditoría a mano (25/11): reventas, ideas, qué aprender y farmeo ----
+check(_OI.streak([400, 349, 297, 200]) is True and _OI.streak([103, 102, 101, 100]) is False
+      and _OI.streak([200, 400, 349, 297]) is False and _OI.streak([349, 297, 200]) is False,
+      "ideas: tres bajadas seguidas que suman un 15 % son una racha; un goteo de céntimos, no")
+check(_OI.falling([3999, 1897, 999, 898], 797) is True and _OI.falling([1000, 1000, 1000, 1000], 300) is False
+      and _OI.falling([99999, 130000, 110000, 70000, 100000, 89900, 80000], 60000) is True,
+      "reventa: un precio que cae cada día (aunque solo haya 4 días de histórico) no es una bajada puntual")
+check(_f9([2000, 1500, 1000, 700]) == [], "reventa: no se compra un precio que viene bajando día tras día")
+check(_f9([1000, 1000, 1000, 320]) == [], "reventa: si ayer lo más barato ya estaba a este precio, es su precio (aunque el valor de mercado diga otra cosa)")
+# rebote: ni racha de bajadas ni un precio que ya lleva más de un día
+check(_reb([(400, 400), (400, 400), (349, 349), (297, 297), (200, 200)], 132, 132) == [],
+      "rebote: cuatro días bajando y hoy más: no es un bache")
+check(_reb([(390, 390), (300, 300), (280, 280), (259, 259), (850, 850), (470, 470), (200, 200)], 199, 199) == [],
+      "rebote: ayer ya estaba a este precio: no es un bache de hoy")
+# ideas: el beneficio cuenta un depósito perdido
+_src9 = open(os.path.join(os.path.dirname(os.path.abspath(_OI.__file__)), "oroboros_ideas.py"), encoding="utf-8").read()
+check("profit_u = net_target - entry - dep" in _src9, "ideas: el beneficio por unidad descuenta un depósito perdido")
+# qué aprender: tu oro manda; una profesión nueva no «se paga en 0 días»
+_d9 = _f5()
+_l9 = _OP.learn_suggestions(_d9, 48)
+_gold9 = sum(c["money"] or 0 for c in _d9.chars.values())
+print("   (aprender: %d recetas, %d de profesión nueva, %d con beneficio)" % (len(_l9), sum(1 for l in _l9 if l.get("new_profession")), sum(1 for l in _l9 if (l.get("daily_profit") or 0) > 0)))
+check(all(l["per_day"] <= _gold9 / l["cost"] + 1e-9 for l in _l9 if l.get("per_day") and l.get("cost")),
+      "aprender: no se fabrica al día más de lo que tu oro compra")
+check(all(l["payback_days"] is None for l in _l9 if l.get("new_profession")),
+      "aprender: una profesión nueva no dice en cuántos días se paga (subirla no está contado)")
+def _poor9():
+    import copy
+    dd = copy.copy(_d9)
+    dd.chars = {k: dict(v, money=1) for k, v in _d9.chars.items()}
+    dd._stats = {}
+    return _OP.learn_suggestions(dd, 48)
+_lp9 = [l for l in _poor9() if l.get("gold_cap")]
+check(_lp9 and all(not l["per_day"] and not l["daily_profit"] and "No te llega el oro" in l["verdict"][0] for l in _lp9),
+      "aprender: si no te llega el oro ni para una fabricación, lo dice y no promete nada")
+# farmeo: una cifra alta con cinco muertes no va delante de una medida de verdad
+_m9 = lambda sub, kills, secs, copper: {"npc": 1, "zone": "Zona", "sub": sub, "map": 1, "kills": kills, "secs": secs, "copper": copper, "items": {}}
+_mp9 = OF.measured_places([_m9("Mucho rato", 40, 1500, 20000), _m9("Golpe de suerte", 5, 74, 100000)], {}, _ac, _prices)
+check([r["sub"] for r in _mp9] == ["Mucho rato", "Golpe de suerte"] and _mp9[0]["confidence"] == "alta"
+      and _mp9[1]["confidence"] == "baja" and _mp9[1]["gph"] > _mp9[0]["gph"],
+      "farmeo: cinco muertes con un botín de suerte: confianza baja y por detrás de lo medido con muestra")
 
 print("\nTODO OK" if ok else "\nHAY FALLOS")
 for line in list(G.LOG.values())[-8:]:

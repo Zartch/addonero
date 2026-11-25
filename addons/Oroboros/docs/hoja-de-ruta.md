@@ -243,9 +243,10 @@ Plan en `docs/planes/2026-11-25-pasada-de-correccion.md`.
 - Comprobado a la vista (capturas con Edge sin ventana): las pestañas Inicio, Ideas y Qué aprender se ven bien.
 
 - **Auditoría a mano** de nueve propuestas (tabla en el plan de la fase): en cinco el programa proponía algo que un jugador no haría. Cambios: el precio de reventa no pasa de un 15 % sobre lo más barato de cada día; el lote de fabricación cuenta con tu parte de las ventas; el lote se encoge si el depósito se come el margen con la mitad de ventas; el rebote se mide con lo más barato de cada día y no entra en una cuesta abajo; la sequía no entra si el precio ya ha saltado.
+- **Segunda auditoría a mano** (las maneras que faltaban, con el plan de las 12:25; tabla en el plan de la fase): de catorce propuestas, siete no las haría un jugador, y tres de ellas estaban dentro del plan o en la portada. Cambios: no se compra un precio que viene bajando (reventas, Aguasnegras, rebote); el precio de venta de las recetas tiene el mismo techo que las reventas; las ideas cuentan un depósito perdido; «qué aprender» no promete más de lo que tu oro compra ni plazos para una profesión que no tienes; el farmeo medido con cinco muertes sale con confianza baja.
 - **Medición de la regla de recolocaciones** con la foto de las 10:21: quita el 10 % de las vendidas (el 41 % en equipo). La rotación sigue en unas 2 veces al día.
 
-Con los datos del 25/11, el plan pasa de «18,9 oro invirtiendo 34,5» (con 4 reventas dudosas) a 3,5 oro invirtiendo 7,6.
+Con los datos del 25/11, el plan pasa de «18,9 oro invirtiendo 34,5» (con 4 reventas dudosas) a 3,5 oro invirtiendo 7,6. Con los de las 12:25 y la segunda auditoría, de 4,2 oro invirtiendo 7,4 (con una reventa de un precio en caída) a 2,9 invirtiendo 7,6.
 
 **Lo aprendido:**
 - Una comprobación que solo mira si se escapan casos (cobertura) no dice nada de los que sobran. Hay que mirar las dos cosas.
@@ -261,6 +262,8 @@ Con los datos del 25/11, el plan pasa de «18,9 oro invirtiendo 34,5» (con 4 re
 - Apuntar en el libro las subastas propias que caducan o se cancelan (correo de «subasta caducada»), para medir cuántas da por vendidas la estimación de la API.
 - Guardar las últimas fotos crudas de la API unos días, para poder volver a clasificar cuando cambie una regla.
 - Enfriamientos que no son recetas (el salero de peletería, 71 h): hoy el plan no los valora.
+- «Qué tienes»: avisar de las recetas que llevas encima sin aprender, y valorar tus materiales a lo que sacarías vendiéndolos (un 5 % menos que comprarlos) al decidir si fabricar con ellos.
+- Coste de subir una profesión nueva (materiales por tramo), para que «si cambiaras de profesión» tenga plazo.
 
 - Alertas de precio («avísame si baja de X»), la otra mitad de Camel.
 - ~~Leer la subasta sin entrar al juego con la API oficial de Blizzard~~: hecho el 24/11 (ver arriba).

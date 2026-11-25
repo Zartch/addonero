@@ -311,6 +311,12 @@ class Data:
             note = f"Ahora no hay nadie vendiendo: uso la mediana de 7 días ({money(med7)})."
         else:
             sell = None
+        # el valor de mercado puede estar en el escalón de arriba: a ese precio no se vende si cada día
+        # ha habido género más barato. Mismo techo que en las reventas.
+        if sell and low7 and sell > low7 * LOW_CEIL:
+            sell = low7 * LOW_CEIL
+            note = (f"Hoy está a {money(cur or med7)}, pero lo más barato de cada día ha rondado {money(low7)} en la última "
+                    f"semana: cuento con {money(sell)}.")
         trend = None
         if len(mvs) >= 6:
             trend = statistics.mean(mvs[-3:]) / statistics.mean(mvs[:-3]) - 1
@@ -716,6 +722,9 @@ def select(data, plan, opps, budget, horizon_h):
             elif low and low_spent >= low_cap * 0.95:
                 o["skip"] = (f"Confianza baja: ya va el {LOW_CONF_SHARE * 100:.0f} % del presupuesto "
                              "a cosas sin histórico suficiente.")
+            elif low:
+                o["skip"] = (f"Confianza baja: no cabe en lo que queda de la parte del presupuesto reservada a lo "
+                             f"arriesgado ({LOW_CONF_SHARE * 100:.0f} %).")
             else:
                 o["skip"] = "No cabe en el presupuesto."
     return chosen
@@ -799,7 +808,11 @@ def find_flips(data, horizon_h, char):
             continue
         # si ayer ya estaba a este precio, es su precio nuevo y no una bajada puntual
         past = [x for x in data.history.get(item_id, []) if x["day"] < data.today and x["mv"]]
-        if past and past[-1]["mv"] <= p["min"] * 1.10:
+        lows = [x.get("min") or x["mv"] for x in past[-7:]]
+        if lows and lows[-1] <= p["min"] * oroboros_ideas.FRESH:
+            continue
+        # ni un precio que viene bajando: el escalón de arriba es género viejo que ya no se vende
+        if oroboros_ideas.falling(lows, p["min"]):
             continue
         if data.ladders:      # con la lista completa de la API: por escalones
             f = ladder_flip(data, item_id, horizon_h, char)
@@ -858,6 +871,9 @@ def find_neutral(data, horizon_h, char, budget):
         st = data.stats(item_id)
         if not vol or vol < NEUTRAL_MIN_SOLD or not st["med7"]:
             continue
+        past = [x for x in data.history.get(item_id, []) if x["day"] < data.today and x["mv"]]
+        if oroboros_ideas.falling([x.get("min") or x["mv"] for x in past[-7:]], own[0][0]):
+            continue          # en tu casa viene bajando: cuando llegues a venderlo valdrá menos
         sell = resale_price(st, own[0][0] * 0.99)
         top = sell * (1 - AH_CUT) / (1 + FLIP_MIN_MARGIN)       # lo más caro que aún deja el margen mínimo
         cap = max(1, int(vol * SELL_SHARE * horizon_h / 24))
@@ -967,6 +983,7 @@ def pdb_vendor_cost(info):
 def learn_suggestions(data, horizon_h):
     out = []
     cands = []
+    gold = sum(c["money"] or 0 for c in data.chars.values())
     for r in data.recipes:
         if r["learned"]:
             continue
@@ -1015,6 +1032,11 @@ def learn_suggestions(data, horizon_h):
             per_day = (e["vol"] or 0) * SELL_SHARE / r["yield"]
             if r["cooldown_h"]:
                 per_day = min(per_day, 24 / r["cooldown_h"], COOLDOWN_USES_DAY)
+            # no fabricas al día más de lo que tu oro compra: lo vendido se cobra después
+            afford = gold / e["cost"] if e.get("cost") and e["cost"] > 0 else None
+            e["afford"] = afford
+            if afford is not None and (afford < 1 or afford < per_day):
+                per_day, e["gold_cap"] = (afford if afford >= 1 else 0.0), True
             e["per_day"] = per_day
             e["income"] = bool(r["cooldown_h"])
             e["daily_profit"] = e["profit"] * per_day if e["profit"] > 0 else e["profit"] * per_day
@@ -1045,18 +1067,29 @@ def learn_suggestions(data, horizon_h):
             e["reach"] = "desconocido"
         dp = e.get("daily_profit")
         e["payback_days"] = (cost / dp) if (cost and dp and dp > 0) else (0 if dp and dp > 0 and not cost else None)
+        if r.get("new_profession"):
+            e["payback_days"] = None        # subir la profesión cuesta oro y tiempo que aquí no se cuentan
         verdict = []
         if dp is None:
             verdict.append(e.get("reason", "Sin datos suficientes."))
+        elif e.get("gold_cap") and not e["per_day"]:
+            verdict.append(f"No te llega el oro: los materiales de una sola fabricación cuestan {money(e['cost'])} y entre "
+                           f"todos tus personajes tienes {money(gold)}.")
         elif dp <= 0:
             verdict.append(f"Hoy no compensa: {e.get('reason', 'pierde dinero')}")
         else:
             if e.get("income"):
                 verdict.append(f"Renta: tiene {r['cooldown_h']:g} h de enfriamiento y cada uso deja {money(e['profit'])}: "
                                f"unos {money(dp)} al día con {e['per_day']:.1f} usos al día.")
+            elif e.get("gold_cap"):
+                verdict.append(f"≈{money(dp)} al día (fabricando ~{e['per_day']:.1f}/día: lo que tu oro, {money(gold)}, "
+                               f"compra en un día; cada fabricación cuesta {money(e['cost'])}).")
             else:
                 verdict.append(f"≈{money(dp)} al día (fabricando ~{e['per_day']:.1f}/día: la mitad de lo que se vende hoy).")
-            if cost:
+            if r.get("new_profession"):
+                verdict.append("Profesión nueva: subirla" + (f" hasta {r['skill_req']}" if r.get("skill_req") else "")
+                               + " cuesta materiales y tiempo que aquí no se cuentan.")
+            elif cost:
                 pb = e["payback_days"]
                 verdict.append(f"Aprenderla cuesta {money(cost)}: se paga en "
                                + ("menos de un día." if pb < 1 else f"{pb:.1f} días."))

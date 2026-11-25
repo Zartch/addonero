@@ -27,6 +27,8 @@ SUNK = 0.85           # por debajo del 85 % de su mediana, un objeto cuenta como
 STOP = 0.8            # si cae un 20 % desde la entrada, se sale
 DECLINE = 0.85        # si la segunda mitad del histórico ya va un 15 % por debajo de la primera, es una cuesta abajo
 LATE = 1.25           # sequía: si hoy ya está un 25 % sobre su mediana de 7 días, llegas tarde
+STREAK = 3            # tres bajadas seguidas de un día a otro son una racha, no un bache
+FRESH = 1.10          # si ayer lo más barato ya estaba a menos de un 10 % de hoy, ese precio no es de hoy
 MAX_PER_TYPE = 4
 
 
@@ -208,13 +210,26 @@ def _lows(data, item):
     return [h.get("min") or h["mv"] for h in _past(data, item)[-14:]]
 
 
-def sliding(values):
+def sliding(values, min_n=6):
     """¿Cuesta abajo? La mediana de la segunda mitad va DECLINE o menos de la primera: no es un bache
     del que se rebota, es un precio que lleva días bajando."""
-    if len(values) < 6:
+    if len(values) < min_n:
         return False
     k = len(values) // 2
     return statistics.median(values[k:]) < statistics.median(values[:k]) * DECLINE
+
+
+def streak(values):
+    """¿Racha de bajadas? Los últimos STREAK cambios de un día a otro son todos hacia abajo y entre todos
+    bajan DECLINE o más. Dos mitades parecidas pueden esconderla (sube y luego baja cada día)."""
+    v = values[-(STREAK + 1):]
+    return len(v) == STREAK + 1 and all(b < a for a, b in zip(v, v[1:])) and v[-1] < v[0] * DECLINE
+
+
+def falling(past_lows, now=None):
+    """¿Viene bajando? Para no comprar un precio que cae: cuesta abajo (contando hoy, vale con pocos
+    días) o racha de bajadas en los días anteriores."""
+    return sliding(list(past_lows) + ([now] if now else []), 4) or streak(list(past_lows))
 
 
 def detect_rebound(data, skip):
@@ -224,11 +239,13 @@ def detect_rebound(data, skip):
             continue
         st, lows = data.stats(item), _lows(data, item)
         med = statistics.median(lows) if len(lows) >= 4 else None
-        now = st["min"] or st["mv"]
+        now = st.get("min") or st["mv"]
         if not med or not now or not st["mv"] or (st["vol"] or 0) < 3 or st["days"] < 7:
             continue
-        if now > med * SUNK or sliding(lows):
+        if now > med * SUNK or sliding(lows) or streak(lows):
             continue
+        if lows[-1] <= now * FRESH:
+            continue          # ayer ya estaba a este precio: no es un bache de hoy, es su precio
         out.append(_cand(
             data, "rebote", item, med * 0.95, 4, "medio",
             f"{data.name(item)} está hundido: compra y espera el rebote",
@@ -250,10 +267,13 @@ def detect_weekly(data):
         if len(past) < 13 or not st["mv"] or (st["vol"] or 0) < 3:
             continue
         by = defaultdict(list)
+        # con lo más barato de cada día: el valor de mercado salta de escalón y fabrica ciclos que no existen
+        low = lambda h: h.get("min") or h["mv"]
         for h in past:
             wd = time.strptime(h["day"], "%Y-%m-%d").tm_wday
-            by[wd].append(h["mv"])
-        med = statistics.median(h["mv"] for h in past)
+            by[wd].append(low(h))
+        med = statistics.median(low(h) for h in past)
+        now = st.get("min") or st["mv"]
         means = {wd: statistics.mean(v) for wd, v in by.items() if len(v) >= 2}
         if len(means) < 5:
             continue
@@ -266,7 +286,7 @@ def detect_weekly(data):
         near = [w for w in ((best - 1) % 7, (best + 1) % 7) if w in means and all(v > med for v in by[w])]
         if max(by[best]) > min(by[best]) * 1.08 or means[best] < means[cheap] * 1.15 or not near:
             continue
-        if st["mv"] > med * 0.97 or means[best] * (1 - AH_CUT) < st["mv"] * 1.08:
+        if now > med * 0.97 or means[best] * (1 - AH_CUT) < now * 1.08:
             continue
         days = (best - today_wd) % 7 or 7
         if reset is None:
@@ -282,7 +302,7 @@ def detect_weekly(data):
             f"{data.name(item)}: compra hoy, vende el {WEEKDAYS[best]}",
             [f"En las dos últimas semanas el {WEEKDAYS[best]} se ha vendido a {_money(means[best])} de media y el "
              f"{WEEKDAYS[cheap]} a {_money(means[cheap])}.",
-             f"Hoy ({WEEKDAYS[today_wd]}) está a {_money(st['mv'])}.",
+             f"Hoy ({WEEKDAYS[today_wd]}) lo más barato está a {_money(now)}.",
              cycle,
              "Solo hay dos semanas de datos: el patrón puede ser casualidad."]))
     return out
@@ -472,7 +492,9 @@ def build_ideas(data, budget, buyer, storages, route_buys, skip_items, horizon_h
         else:
             continue
         net_target = c["target"] if c.get("saving") else c["target"] * (1 - AH_CUT)
-        profit_u = net_target - entry
+        # una apuesta rara vez se vende a la primera: cuento con perder un depósito por unidad
+        dep = data.deposit(item) if hasattr(data, "deposit") and not c.get("saving") else 0
+        profit_u = net_target - entry - dep
         c.update({"id": f"{c['type']}-{item}", "label": LABEL[c["type"]], "name": data.name(item), "mode": mode,
                   "char": char, "entry": entry, "max_buy": max_buy, "stack": stack, "cap_qty": qty,
                   "profit_u": profit_u, "gain": profit_u / entry, "breakeven": entry / (1 - AH_CUT),
@@ -543,7 +565,8 @@ def build_ideas(data, budget, buyer, storages, route_buys, skip_items, horizon_h
         dep = data.deposit(c["item"]) if hasattr(data, "deposit") else 0
         if not c.get("saving") and dep > 0.25 * c["profit_u"]:
             c["exit"].append(f"Ojo al publicarlo: el depósito es de {_money(dep)} por unidad y día, y se pierde si no se "
-                             f"vende. Ganas {_money(c['profit_u'])} por unidad: publícalo solo cuando esté en el objetivo.")
+                             f"vende. Ganas {_money(c['profit_u'])} por unidad contando ya uno perdido: publícalo solo "
+                             "cuando esté en el objetivo.")
         lines = routes[c["char"]]
         if c["mode"] == "fabricar":
             buys, crafts, mats = [], [], []

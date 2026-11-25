@@ -28,7 +28,13 @@
 
 - Tras la auditoría: `resale_price` (techo de reventa), `SELL_SHARE` en el lote de fabricación, prueba de esfuerzo del depósito (`STRESS_VOL`), `sliding` y lo más barato de cada día en el rebote, `LATE` en la sequía, aviso de depósito en las ideas, y las gangas comparan con lo más barato de cada día.
 
+- Tras la segunda auditoría: `falling`/`streak`/`FRESH` en reventas, Aguasnegras y rebote; techo `LOW_CEIL` en el precio de venta de las recetas; ciclo semanal con lo más barato de cada día; un depósito perdido en el beneficio de cada idea; tope por tu oro y profesión nueva sin plazo en «qué aprender»; confianza baja en el farmeo con poca muestra.
+
 ## Lo que no se cambia
+
+- Las ventas al día «medidas con tus escaneos» son lo que baja lo publicado de un día a otro: no ve lo que se vende y se repone, y en equipo con pocas unidades cuenta caducidades. Sigue siendo lo mejor que hay hasta que la API se calibre; por eso el equipo sale siempre con confianza baja.
+- «Qué tienes» manda al vendedor lo que vale menos de ~20 platas en total aunque en subasta valga varias veces más (Sombrerrosa, Pluma ligera). Es poco dinero y ahorra clics; queda como está.
+- «Qué tienes» no avisa de que una receta que llevas encima no está aprendida (Receta: poción de resistencia a la magia).
 
 - El tiempo de una fabricación solo cuenta los 3 s de fabricar, no el viaje al vendedor ni publicar.
 - La confianza «alta» sale de un precio estable y días de datos; no dice que las ventas estén comprobadas.
@@ -68,6 +74,31 @@ De las que entraron después de los cambios: la Sopa de pargo nocturno (rebote) 
 
 **Lo que explica casi todos los desacuerdos:** el «valor de mercado» (media del 15 % más barato) salta al escalón de arriba cuando el de abajo es fino. Sirve para saber cuánto cuesta comprar una cantidad, pero no para saber a cuánto se vende: para eso vale lo más barato de cada día.
 
+## Segunda auditoría a mano (25/11, plan de las 12:25): las maneras que faltaban
+
+Mismo método (datos crudos, cuenta a mano, comparar), ahora con reventas con datos nuevos, Aguasnegras, ideas, «qué aprender», «qué tienes» y farmeo.
+
+| Propuesta | A mano | Programa | Coinciden | Qué se cambió |
+|---|---|---|---|---|
+| Reventa: Linguini de almejas (64, **en el plan**) | No: 40s → 19s → 10s → 9s → 8s en cinco días; el escalón de arriba es género viejo | Sí | No | No se compra un precio que viene bajando (`falling`: cuesta abajo o racha, también con 4 días de histórico) |
+| Reventa: Cuervo de piedra (4 por 34 oro) | No: 20 → 9,5 → 8 → 6 oro; solo la de 6 sería defendible | Sí (no cabía) | No | Lo mismo |
+| Reventa: Estofado de langosta (227 de 229) | No: ayer lo más barato ya estaba a 4s 45c | Sí (no cabía) | No | «Ayer ya estaba a este precio» se mira con lo más barato, no con el valor de mercado |
+| Reventa: Tratado sobre Enfoque, Aro radiante | Pequeñas y defendibles, con ventas sin comprobar | Sí, confianza baja | Sí | — |
+| Aguasnegras (2 objetos, 54 platas) | No merece el viaje | «No compensa el viaje» | Sí | No entra lo que en tu casa viene bajando |
+| Rebote: Patrón: guanteletes de tormenta (**en el plan**) | No: 4 → 3,5 → 3 → 2 → 1,3 oro, cinco días bajando | Sí («no venía bajando») | No | Racha de bajadas (`streak`): tres días seguidos que suman un 15 % |
+| Rebote: Granada de torio (**en el plan**) | No: ayer ya estaba a 20s; depósito de 9s para ganar 11s | Sí | No | Si ayer ya estaba a este precio no es un bache de hoy (`FRESH`); el beneficio de una idea cuenta un depósito perdido |
+| Rebote: Almófar de oro duro (entra tras los cambios) | Sí: una semana entre 2,7 y 4 oro y hoy 5 unidades a 1,9 | Sí | Sí | — |
+| Evento: Elixir de entereza superior (3) | Sí, pequeña; el +30 % es una suposición y lo dice | Sí | Sí | — |
+| Aprender: Corona viva (**en la portada**: «34 oro al día, se paga en menos de un día») | No: 214 oro de materiales por unidad con 45 oro, y una profesión que no tienes | Sí | No | No se fabrica más de lo que tu oro compra; una profesión nueva no dice en cuántos días se paga; la portada solo muestra tus profesiones |
+| Aprender: transmutar arcanita, frascos | Sí, cuando llegues a 275/300 | Sí | Sí | — |
+| Fabricar: Venado magro (entra tras los cambios) | Sí, pero a 1s 80c–2s (lo más barato de cada día), no a 2s 53c | Sí, a 2s 53c | A medias | El precio de venta de cualquier receta tiene el mismo techo que las reventas (`LOW_CEIL`) |
+| Qué tienes: hierbas y paños a subasta, restos al vendedor | Sí en lo grande. En lo pequeño, mandar al vendedor lo que vale menos de ~20 platas pierde unas 70 platas en total | Sí | Sí, con matiz | — (ver «no se cambia») |
+| Farmeo medido: Base de Ventura y Cía., 48,8 oro/h | No: 5 muertes en 74 segundos y un objeto verde | Sí, confianza media, la primera | No | Confianza baja con menos de 10 muertes y 5 minutos, y por detrás de lo medido con muestra |
+
+**Lo que se repite:** la primera auditoría quitó el valor de mercado de reventas e ideas, pero seguía en tres sitios (el «ayer ya estaba a este precio», el precio de venta de las recetas y el ciclo semanal). Y «hundido respecto a su mediana» no distingue un bache de una bajada: hace falta mirar el orden de los días.
+
+**Una prueba que bailaba:** «con 3 días de API, las ventas salen de la API» pasaba por la mañana y fallaba a partir de las 11:45, porque según la hora el histórico de la prueba daba 2 o 3 bajadas. Ahora la prueba quita esa medida a propósito.
+
 ## Pruebas
 
-En `tests/run_tests.py`, bloque «Pasada del 25/11»: días medidos, rotación, calibración con y sin rotación, recolocaciones (seis casos), marca de la regla, precedencia de escaneos y API, reventa sin variantes, suelo del vendedor, catálogo y «qué aprender» con tu parte. Bloque «Auditoría a mano»: techo de reventa, lote con tu parte, prueba de esfuerzo del depósito, rebote (tres casos) y sequía (dos).
+En `tests/run_tests.py`, bloque «Pasada del 25/11»: días medidos, rotación, calibración con y sin rotación, recolocaciones (seis casos), marca de la regla, precedencia de escaneos y API, reventa sin variantes, suelo del vendedor, catálogo y «qué aprender» con tu parte. Bloque «Auditoría a mano»: techo de reventa, lote con tu parte, prueba de esfuerzo del depósito, rebote (tres casos) y sequía (dos). Bloque «Segunda auditoría a mano»: racha y cuesta abajo, reventa que viene bajando, reventa que ayer ya estaba a ese precio, rebote (dos casos más), depósito en las ideas, «qué aprender» (tu oro, profesión nueva, sin oro) y farmeo con poca muestra.
