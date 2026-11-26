@@ -888,6 +888,7 @@ async function loadInicio() {
     || '<p class="sub">Aún no hay personajes exportados.</p>';
   const banks = g.chars.map(c => `<div class="ini-row2"><span>${esc(c.name)}</span>${c.bank_t
     ? `<span style="color:${now - c.bank_t > 3 * 86400 ? "var(--bad)" : "var(--ink-hi)"}">${fmtAgo(c.bank_t, now)}</span>` : '<span style="color:var(--warn)">sin abrir</span>'}</div>`).join("");
+  const apiT = Math.max(0, ...(a.houses || []).map(h => h.t || 0));
   const cal = top.calibration, calOk = top.calibrated;
   const calTurn = cal && cal.turnover != null && cal.turnover > 1 ? `la casa saldría vendida ${cal.turnover.toFixed(1)} veces al día: cuenta recolocaciones como ventas` : "";
   const calTxt = calOk ? `<span class="pill good">comprobadas con tus ventas (${Math.round((cal.coverage || 0) * 100)} %)</span>`
@@ -903,7 +904,8 @@ async function loadInicio() {
   el.innerHTML = `<div class="panel ini">
     <div class="ini-top">
       <span class="lbl">Próxima descarga</span><span class="ini-box">${nextTxt}</span>
-      <span class="lbl">Último escaneo</span><span class="ini-box" title="${g.scan_items ? fmtN(g.scan_items) + " objetos" : ""}">${fmtAgo(g.scan_t, now)}</span>
+      <span class="lbl">Última foto de la API</span><span class="ini-box" title="La descarga de cada hora (Alianza, Horda y Aguasnegras)">${apiT ? fmtAgo(apiT, now) : '<span class="sub">ninguna</span>'}</span>
+      <span class="lbl">Último escaneo en el juego</span><span class="ini-box" title="El escaneo del addon en la subasta del juego${g.scan_items ? ": " + fmtN(g.scan_items) + " objetos" : ""}. Solo cambia cuando escaneas allí.">${fmtAgo(g.scan_t, now)}</span>
       <span class="lbl">Guardado</span><span class="ini-box" title="/reload o salir del juego">${fmtAgo(g.sv_t, now)}</span>
       ${a.error ? `<span class="pill bad">${esc(a.error)}</span>` : ""}
       <span style="flex:1"></span><button class="btn" id="ini-now">Descargar ahora</button><button class="seg" id="ini-stop">Parar el panel</button>
