@@ -463,6 +463,7 @@ Cómo decide:
 - **No se compra lo que viene bajando:** una reventa (también desde Aguasnegras) o un rebote no entran si lo más barato de cada día va cuesta abajo, lleva tres días seguidos bajando o ayer ya estaba al precio de hoy.
 - **Precio de venta de las recetas:** tiene el mismo techo que las reventas (un 15 % sobre lo más barato de cada día).
 - **Ideas:** el beneficio de cada idea cuenta un depósito perdido.
+- **Iconos:** el panel pide a la API de Blizzard (ruta de medios de objetos, `static-forever-eu`) el icono de cada objeto, hasta 500 por vuelta y primero lo que llevan tus personajes, y guarda solo su número en `api_icons` del archivo. «Qué tienes» lo enseña; la imagen se carga desde `render.worldofwarcraft.com`.
 - **Qué aprender, con tu oro:** no cuenta con fabricar al día más de lo que tu oro compra; si no llega ni para una, lo dice. Una profesión que no tienes no lleva plazo (subirla no está contado) y no sale en la portada.
 - **Farmeo medido:** con menos de 10 muertes y 5 minutos, confianza baja y por detrás de lo medido con muestra.
 - **Qué aprender:** el beneficio al día cuenta con la mitad de lo que se vende (como la ruta), no con todo el mercado. Es un techo con los precios de hoy.

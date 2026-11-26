@@ -2187,6 +2187,35 @@ check([r["sub"] for r in _mp9] == ["Mucho rato", "Golpe de suerte"] and _mp9[0][
       and _mp9[1]["confidence"] == "baja" and _mp9[1]["gph"] > _mp9[0]["gph"],
       "farmeo: cinco muertes con un botín de suerte: confianza baja y por detrás de lo medido con muestra")
 
+# ---- Iconos de objetos con la API (26/11) ----
+_ic_dir = _tf.mkdtemp()
+_ic = API.open_api(os.path.join(_ic_dir, "a.sqlite"))
+_ic.execute("INSERT OR IGNORE INTO items (item_id) VALUES (1), (2), (3), (4), (900)"); _ic.commit()
+_media = lambda fid: (200, {}, _js.dumps({"id": 1, "assets": [{"key": "icon", "value": "https://render.worldofwarcraft.com/forever-eu/icons/56/%d.jpg" % fid, "file_data_id": fid}]}).encode())
+_icn = _FakeNet({"/data/wow/media/item/1": _media(132889), "/data/wow/media/item/2": _media(135130),
+                 "/data/wow/media/item/900": _media(133134),
+                 "/data/wow/media/item/3": (200, {}, _js.dumps({"id": 3, "assets": []}).encode())})
+_icc = API.Client(("ID", "S"), fetch=_icn, cache_dir=_tf.mkdtemp())
+_i1 = API.fill_icons(_ic, _icc, limit=2, first=[900])
+check(_i1 == {"asked": 2, "icons": 2} and API.icons(_ic) == {1: 132889, 900: 133134},
+      f"iconos: respeta el límite y pide primero lo que llevas encima ({_i1}, {API.icons(_ic)})")
+_i2 = API.fill_icons(_ic, _icc, limit=10)
+_i3 = API.fill_icons(_ic, _icc, limit=10)
+check(_i2 == {"asked": 3, "icons": 1} and _i3["asked"] == 0 and API.icons(_ic, [2, 3, 4]) == {2: 135130},
+      f"iconos: sin icono o 404 no se vuelve a pedir, y solo se guarda el número de archivo ({_i2}, {_i3})")
+check(all("namespace=static-forever-eu" in u for u, _, _ in _icn.log if "media" in u),
+      "iconos: se piden a la ruta de medios de Forever (static-forever-eu)")
+_icn2 = _FakeNet({"/data/wow/media/item/5": (500, {}, b""), "/data/wow/media/item/6": _media(1)})
+_ic.execute("INSERT OR IGNORE INTO items (item_id) VALUES (5), (6)"); _ic.commit()
+_i4 = API.fill_icons(_ic, API.Client(("ID", "S"), fetch=_icn2, cache_dir=_tf.mkdtemp()), limit=10)
+check(_i4["icons"] == 0 and 5 not in {r[0] for r in _ic.execute("SELECT item_id FROM api_icons")},
+      "iconos: un error del servidor corta la vuelta y se reintenta la próxima")
+_ic.close()
+check(isinstance(plan.get("icons"), dict), "iconos: el plan lleva el mapa de iconos (vacío sin archivo)")
+_ui9 = open(os.path.join(os.path.dirname(os.path.abspath(API.__file__)), "planner_ui.html"), encoding="utf-8").read()
+check(API.ICON_URL.split("{}")[0] in _ui9 and "${icon(e.item)}" in _ui9,
+      "iconos: «Qué tienes» pinta el icono con la misma dirección que la API")
+
 print("\nTODO OK" if ok else "\nHAY FALLOS")
 for line in list(G.LOG.values())[-8:]:
     print("   ", line)

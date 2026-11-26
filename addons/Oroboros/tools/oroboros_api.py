@@ -89,6 +89,7 @@ CREATE TABLE IF NOT EXISTS api_band_week (       -- resumen permanente por seman
     last_day TEXT,                                   -- último día con medición (para contar días al acumular)
     PRIMARY KEY (house, item_id, week, band)) WITHOUT ROWID;
 CREATE TABLE IF NOT EXISTS api_missing (item_id INTEGER PRIMARY KEY, t INTEGER);   -- la ruta de objetos dio 404
+CREATE TABLE IF NOT EXISTS api_icons (item_id INTEGER PRIMARY KEY, fid INTEGER);    -- icono del objeto (0: no tiene)
 """
 
 
@@ -894,6 +895,60 @@ def fill_names(con, client, limit=2000, clock=time.time):
     return {"asked": len(ids), "named": named}
 
 
+ICON_URL = "https://render.worldofwarcraft.com/forever-eu/icons/56/{}.jpg"
+ICONS_PER_RUN = 500       # iconos que se piden en cada vuelta del panel (una por hora)
+
+
+def fill_icons(con, client, limit=ICONS_PER_RUN, first=()):
+    """Pide a la ruta de medios de objetos (static-forever-eu) el icono de los objetos que aún no lo
+    tienen; primero los de `first` (lo que llevan tus personajes). Guarda solo el número de archivo:
+    la imagen es ICON_URL con ese número. Lo que no tiene icono (404 o sin «icon») queda con 0 y no se
+    vuelve a pedir. Devuelve {"asked", "icons"}."""
+    have = {r[0] for r in con.execute("SELECT item_id FROM api_icons")}
+    pri = [i for i in dict.fromkeys(first) if i not in have]
+    rest = [r[0] for r in con.execute(
+        "SELECT item_id FROM items WHERE item_id NOT IN (SELECT item_id FROM api_icons) ORDER BY item_id LIMIT ?",
+        (limit + len(pri),))]
+    ids = list(dict.fromkeys(pri + rest))[:limit]
+    got = 0
+    for i in ids:
+        st, _, d = client.get(f"/data/wow/media/item/{i}", namespace=STATIC_NAMESPACE)
+        if st == 200:
+            fid = next((a.get("file_data_id") for a in (d or {}).get("assets", []) if a.get("key") == "icon"), None)
+            con.execute("INSERT OR REPLACE INTO api_icons VALUES (?,?)", (i, int(fid or 0)))
+            got += bool(fid)
+        elif st == 404:
+            con.execute("INSERT OR REPLACE INTO api_icons VALUES (?,0)", (i,))
+        else:
+            break                       # otro error: se reintenta en la próxima vuelta
+        con.commit()                    # no dejar la escritura abierta mientras se pregunta a la red
+    return {"asked": len(ids), "icons": got}
+
+
+def icons(con, items=None):
+    """{objeto: número de icono} de lo que ya se ha pedido (sin los que no tienen)."""
+    try:
+        rows = con.execute("SELECT item_id, fid FROM api_icons WHERE fid > 0").fetchall()
+    except sqlite3.OperationalError:
+        return {}
+    want = set(items) if items is not None else None
+    return {i: f for i, f in rows if want is None or i in want}
+
+
+def _held_items(plan_db):
+    """Lo que llevan tus personajes, según el SQLite del plan: sus iconos se piden primero."""
+    if not plan_db or not os.path.exists(plan_db):
+        return []
+    try:
+        c = sqlite3.connect(plan_db)
+        try:
+            return [r[0] for r in c.execute("SELECT DISTINCT item_id FROM inventory")]
+        finally:
+            c.close()
+    except sqlite3.Error:
+        return []
+
+
 # ----------------------------------------------------------------------
 # Descarga
 # ----------------------------------------------------------------------
@@ -949,6 +1004,14 @@ def maintenance(archive, client, now=None, log=_log, names_limit=2000, plan_db=N
     day = _day(now)
     con = open_api(archive)
     try:
+        # iconos: en cada vuelta un poco, hasta tenerlos todos (no es parte del mantenimiento diario)
+        if client:
+            try:
+                ic = fill_icons(con, client, first=_held_items(plan_db))
+                if ic["icons"]:
+                    log(f"iconos: {ic['icons']} nuevos")
+            except (ApiError, OSError, ValueError) as e:
+                log(f"iconos: {e if isinstance(e, ApiError) else type(e).__name__}")
         row = con.execute("SELECT value FROM meta WHERE key='api_maintenance'").fetchone()
         if row and row[0] == day:
             return None

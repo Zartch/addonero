@@ -146,6 +146,12 @@ class Data:
                       if archive and os.path.exists(archive) else {})
         # ventas por día estimadas con la API de Blizzard (docs/planes/2026-11-23-api-blizzard.md)
         self.api_rates, self.api_days, self.api_calibrated = {}, 0, False
+        self.icons = {}           # {objeto: número de icono} pedidos a la API (para la página)
+        if archive and os.path.exists(archive):
+            import oroboros_api
+            acon = sqlite3.connect(archive)
+            self.icons = oroboros_api.icons(acon)
+            acon.close()
         if archive and os.path.exists(archive) and self.market:
             import oroboros_api
             acon = sqlite3.connect(archive)
@@ -1591,6 +1597,8 @@ def build_plan(data, horizon_h=48, budget_pct=0.8, synthetic=False, spec_pct=0.1
         "chars": {k: {"short": short_char(k), "money": v["money"], "level": v["level"], "class": v["class"],
                       "professions": data.professions.get(k, {})} for k, v in data.chars.items()},
         "items": items,
+        # número de icono de cada objeto que sale en el plan (la imagen: oroboros_api.ICON_URL)
+        "icons": {i: data.icons[i] for i in items_used | {f["out_item"] for f in neutral["items"]} if i in data.icons},
     }
 
 
