@@ -204,14 +204,16 @@ Opciones: `--casas 111,114,117` y `--reino CAMWOWEU5Realm5PvE` (la clave de merc
 |---|---|
 | Precio del día (`daily`) | La API. El escaneo del juego cubre los días sin API |
 | Precio de ahora del plan | El más reciente (la última foto de la API trae profundidad real) |
-| Ventas por día del plan | La API, con 3 días de fotos. Hasta calibrarla, cuenta como **estimada**: el plan propone lotes de prueba |
+| Ventas por día del plan | Comprobada (ver abajo), la API. Sin comprobar: si tus escaneos miden las ventas, mandan ellos y la API solo puede bajarlas; si no, la API con 3 días de medición cuenta como **estimada** y el plan propone lotes de prueba |
 | Franjas horarias | La API en cada franja con 3 mediciones en 2 días. Si no, los escaneos |
 | `Resumen.lua` | Lleva «vendidas al día» de la API. Solo los mercados con datos del juego (la Horda y Aguasnegras, en el panel) |
 
 ### Cuidado con las ventas estimadas
 
 Las primeras fotos dan cifras muy altas: en la 111, unas 15 000 subastas normales «vendidas» por hora, y el Paño de lino, decenas de miles al día. Seguramente buena parte son recolocaciones: alguien retira una subasta barata y la vuelve a poner un poco más barata, y eso parece una venta. Por eso:
-- el plan no se fía de ellas hasta que la **calibración** con tus ventas del correo lo confirma (5 ventas tuyas comprobadas y al menos el 80 % visto como vendido);
+- una subasta barata que desaparece y reaparece en la misma foto con la misma cantidad, al mismo precio o hasta un 20 % más barata, cuenta como cancelada (recolocación). Las ventas por día solo usan las fotos clasificadas con esta regla (desde el 25/11); las de antes no entran;
+- el plan no se fía de ellas hasta que la **calibración** lo confirma con dos cosas: que tus ventas del correo aparezcan entre las vendidas (5 ventas tuyas y al menos el 80 %) y que la casa no salga vendida más de una vez al día (rotación: vendidas al día entre lo que hay a la venta). La primera sola no basta: el 24/11 se cumplía con la casa «vendiéndose» 4,7 veces al día;
+- los «días de fotos» son tiempo medido: 24 fotos seguidas son un día, caigan en las fechas que caigan;
 - en la pestaña Ventas y con `--calibrar` ves qué parte de tus ventas reales ve la estimación y cuánto fuiste tú del total.
 
 ### Cuánto ocupa
@@ -454,6 +456,17 @@ Cómo decide:
 - **Ventas por día:** se estiman con las bajadas de cantidad publicada entre un día y el siguiente.
 - **Margen mínimo:** 8 % sobre el coste. Por debajo, la receta sale como no rentable, con el motivo.
 - **Aguasnegras → tu casa:** lista aparte en la pestaña Ideas. Compra en la subasta neutral (sin comisión para el comprador) lo que deja al menos un 15 % vendiéndolo en tu casa por debajo de lo más barato de allí y sin pasar de su mediana de 7 días. Solo materiales que se apilan y con ventas comprobadas en tu casa; como mucho, la mitad de lo que se vende en el horizonte. Usa el oro que queda para apuestas. Dice si compensa el viaje (2 oro o más, con una foto de menos de 3 h) y da las líneas `BUY` para pegar allí.
+- **Tu parte de las ventas:** el lote de una fabricación no pasa de la mitad de lo que se vende en el horizonte, igual que las reventas.
+- **Prueba de esfuerzo del depósito:** si con la mitad de las ventas estimadas el depósito perdido al republicar se come el margen, el lote se encoge hasta que no dé pérdidas, y lo dice.
+- **Techo de reventa:** una reventa (también desde Aguasnegras) no cuenta con vender más de un 15 % por encima de lo más barato de cada uno de los últimos 7 días. Si cada día vuelve a haber género al precio de hoy, ese es su precio.
+- **Ideas:** el rebote se mide con lo más barato de cada día y no entra si el precio lleva días bajando; la sequía no entra si hoy ya ha saltado un 25 % sobre su mediana; si el depósito es grande para lo que ganas, la idea avisa.
+- **No se compra lo que viene bajando:** una reventa (también desde Aguasnegras) o un rebote no entran si lo más barato de cada día va cuesta abajo, lleva tres días seguidos bajando o ayer ya estaba al precio de hoy.
+- **Precio de venta de las recetas:** tiene el mismo techo que las reventas (un 15 % sobre lo más barato de cada día).
+- **Ideas:** el beneficio de cada idea cuenta un depósito perdido.
+- **Qué aprender, con tu oro:** no cuenta con fabricar al día más de lo que tu oro compra; si no llega ni para una, lo dice. Una profesión que no tienes no lleva plazo (subirla no está contado) y no sale en la portada.
+- **Farmeo medido:** con menos de 10 muertes y 5 minutos, confianza baja y por detrás de lo medido con muestra.
+- **Qué aprender:** el beneficio al día cuenta con la mitad de lo que se vende (como la ruta), no con todo el mercado. Es un techo con los precios de hoy.
+- **Ideas con suelo de vendedor:** si el vendedor paga más de lo que sacarías vendiendo al stop, la pérdida máxima se calcula con el precio del vendedor.
 - **Enfriamientos:** una receta con enfriamiento se valora en «qué aprender» como renta diaria: beneficio por uso × usos al día, con un máximo de 2 usos al día. Las que comparten enfriamiento (`cooldown_groups` del catálogo) no se suman: en la ruta, por personaje se queda la que más da.
 - **Mínimo por fabricación:** 2 oro a la hora, a 3 s por fabricación (unos 17 cobres cada una). Por debajo, la receta sale como no rentable: no merece el tiempo.
 - **Confianza** (alta, media, baja): según la volatilidad, las ventas por día y los días de histórico.
@@ -551,7 +564,7 @@ Completa lo que el juego no da al addon, con **datos reales de Forever** (revisa
 | `facts` | Lo que el catálogo da por cierto de Forever: `text`, `source` (fuente), `verified` (comprobado en nuestros datos o en una nota oficial) y `how` (cómo se comprobó). La pestaña Ideas los enseña con su marca. |
 | `price_caps` | Techo de precio por itemID: `cap` (en cobre), `note`, `source` y `verified`. Si un vendedor da el objeto a precio fijo, el objetivo de una idea no pasa de ahí. Trae Loto negro y Cristal Arcano a 50 oro (mercado negro, sin comprobar). |
 | `server` | `raid_reset_weekday`: día del reinicio semanal de las bandas (lunes = 0; trae 2, miércoles, sin comprobar). `launch`: apertura del servidor, el 4/11/2026. `low_level_max_ilvl`: nivel de objeto hasta el que un material cuenta como de nivel bajo (40). `progression_horizon_days`: plazo de las apuestas de progresión (21). |
-| `recipes` | Enfriamiento de recetas en horas (`cooldown_h`), con `source` y `verified`. Trae las transmutaciones: arcanita y legionita 47 h, esencias 23 h, hierro a oro y mitril a veraplata 1 h (sin comprobar). También admite `skill`, `learn_cost` y `learn_note`, que mandan sobre ProfessionDB. |
+| `recipes` | Enfriamiento de recetas en horas (`cooldown_h`), con `source` y `verified`. Trae las transmutaciones: arcanita y legionita 47 h, esencias 23 h, hierro a oro y mitril a veraplata 1 h, y la tela lunar, 95 h (sin comprobar). Vale también para recetas de profesiones que no tienes. También admite `skill`, `learn_cost` y `learn_note`, que mandan sobre ProfessionDB. |
 | `cooldown_groups` | Recetas que comparten enfriamiento, por grupo. Trae `transmutar` (sin confirmar en Forever). |
 | `events` | Fechas que mueven la demanda: `name`, `date`, `items`, `uplift` (multiplicador supuesto) y `note`. Trae la apertura del 9/12/2026 (Barrow Deeps 10, Hyjal Summit 20 y Onyxia's Lair 40) en tres eventos: pociones y hierbas, elixires (con los 13 nuevos de nivel 55) y frascos (con los cuatro naturales); y aparte la protección contra el fuego para Onyxia. Un objeto va en un solo evento. Las dos tandas de 2027 se añadirán cuando tengan fecha. |
 | `progression` | Por itemID de nivel bajo: `note` (para qué se sigue usando a nivel 60) y `scenario` (multiplicador supuesto). |

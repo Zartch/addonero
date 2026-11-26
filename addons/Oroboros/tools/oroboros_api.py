@@ -55,6 +55,7 @@ CHEAP = 1.25                     # «barata»: ≤ mínimo del objeto × 1,25 (e
 MV_PERCENT = 0.15                # valor de mercado: media del 15 % más barato (como DB.Aggregate del addon)
 KEEP_DAYS = 14                   # api_item_hour en detalle; las semanas más viejas pasan a api_band_week
 MAX_GAP = 90 * 60                # más de 90 min entre fotos: no se clasifica (hueco)
+RELIST_DROP = 0.20               # recolocación: la misma cantidad reaparece hasta un 20 % más barata
 TIME_LEFT = {"SHORT": 0, "MEDIUM": 1, "LONG": 2, "VERY_LONG": 3}
 
 SCHEMA = """
@@ -310,7 +311,11 @@ def classify(prev, cur, gap=False):
 
     Una subasta que desaparece cuenta como vendida solo si era barata (≤ mínimo × CHEAP) y no sigue
     viva ninguna más barata del mismo objeto y variante: quien compra, compra primero lo más barato,
-    así que si la barata sigue ahí, la otra la retiró su dueño (cancelada)."""
+    así que si la barata sigue ahí, la otra la retiró su dueño (cancelada).
+
+    Recolocación: si en la misma foto aparece otra subasta del mismo objeto y variante, con la misma
+    cantidad y a un precio igual o algo más bajo (hasta RELIST_DROP), es su dueño bajando el precio y
+    cuenta como cancelada. Cada subasta nueva empareja con una sola desaparecida."""
     key = lambda v: (v[0], v[4] if len(v) > 4 else "")
     mins, alive = {}, {}
     for aid, v in prev.items():
@@ -321,8 +326,15 @@ def classify(prev, cur, gap=False):
             mins[k] = p
         if aid in cur and (k not in alive or p < alive[k]):
             alive[k] = p
+    fresh = defaultdict(list)          # (objeto, variante, cantidad) → precios de las subastas nuevas
+    for aid, v in cur.items():
+        if aid not in prev and v[2] is not None:
+            fresh[(*key(v), v[1])].append(v[2])
+    for ps in fresh.values():
+        ps.sort(reverse=True)
     out = defaultdict(lambda: {"new": 0, "sold": 0, "expired": 0, "cancelled": 0, "partial": 0})
-    for aid, v in prev.items():
+    # de cara a barata: la más cara desaparecida empareja antes con su recolocación
+    for aid, v in sorted(prev.items(), key=lambda kv: -(kv[1][2] or 0)):
         item, q, p, tl = v[:4]
         nxt = cur.get(aid)
         if nxt is None:
@@ -335,6 +347,11 @@ def classify(prev, cur, gap=False):
                 k = "cancelled"
             else:
                 k = "sold"
+                ps = fresh.get((*k2, q))
+                j = next((i for i, np_ in enumerate(ps or ()) if p * (1 - RELIST_DROP) <= np_ <= p), None)
+                if j is not None:
+                    ps.pop(j)
+                    k = "cancelled"            # recolocada: misma cantidad, mismo precio o algo menos
             o = out[item]
             o[k] = o.get(k, 0) + q
         elif nxt[1] < q:
@@ -409,6 +426,12 @@ def ingest(con, house, t, auctions):
     first = last is None
     gap = (not first) and t - last > MAX_GAP
     moves = {} if first else classify(prev, cur, gap=gap)
+    # desde qué foto se clasifica con la regla de recolocaciones: las horas de antes cuentan de más
+    # y no entran en las ventas por día (rule_since). Un archivo nuevo la lleva desde el principio.
+    if con.execute("SELECT 1 FROM meta WHERE key='api_rule_t'").fetchone() is None:
+        any_snap = con.execute("SELECT 1 FROM api_snaps LIMIT 1").fetchone()
+        with con:
+            con.execute("INSERT INTO meta VALUES ('api_rule_t', ?)", (str(t if any_snap else 0),))
     by_item = defaultdict(list)
     for item, q, p, tl, _var in cur.values():
         by_item[item].append((p, q))
@@ -573,18 +596,32 @@ def house_for_market(con, market_key):
     return r[0] if r else None
 
 
+def rule_since(con):
+    """Primera foto clasificada con la regla de recolocaciones (0 si todas, None si ninguna todavía)."""
+    try:
+        r = con.execute("SELECT value FROM meta WHERE key='api_rule_t'").fetchone()
+    except sqlite3.OperationalError:
+        return None
+    return int(r[0]) if r else None
+
+
 def move_rates(con, house, now=None, days=7, items=None):
     """Movimientos por día y objeto con las fotos de los últimos `days` días: {objeto: {sold (incluidas
-    las compras parciales), expired, cancelled, new}}, y los días con mediciones. Solo cuentan los
-    intervalos medidos (con foto anterior y sin hueco)."""
+    las compras parciales), expired, cancelled, new}}, y los días medidos: el tiempo que cubren los
+    intervalos con medición, en días (28 fotos seguidas son poco más de un día, aunque caigan en tres
+    fechas). Solo cuentan los intervalos medidos (con foto anterior y sin hueco) y clasificados ya con
+    la regla de recolocaciones (rule_since)."""
     now = now or time.time()
-    since = now - days * 86400
+    rule = rule_since(con)
+    if rule is None:
+        return {}, 0                   # todo lo guardado es de antes de la regla: contaba recolocaciones
+    since = max(now - days * 86400, rule)
     snaps = con.execute("""SELECT t, prev_t FROM api_snaps WHERE house=? AND t >= ? AND prev_t IS NOT NULL
                            AND t - prev_t <= ?""", (house, since, MAX_GAP)).fetchall()
     secs = sum(t - p for t, p in snaps)
     if not secs:
         return {}, 0
-    cov = len({_day(t) for t, _ in snaps})
+    cov = round(secs / 86400, 2)
     extra = f" AND h.item_id IN ({','.join('?' * len(items))})" if items else ""
     rates = {}
     for item, sold, exp, can, new in con.execute(
@@ -606,10 +643,25 @@ def sold_rates(con, house, now=None, days=7, items=None):
 
 CALIB_MIN_COVER = 0.8            # cobertura mínima de tus ventas reales para fiarse de las vendidas estimadas
 CALIB_MIN_SALES = 5              # y con al menos tantas ventas tuyas comprobadas
+CALIB_MAX_TURNOVER = 1.0         # y que la casa entera no salga vendida más de una vez al día
+
+
+def turnover(con, house, now=None, days=7):
+    """Rotación de la casa: unidades «vendidas» al día entre las que hay a la venta en la última foto.
+    Una casa no se vende entera varias veces al día: si sale muy por encima de 1, lo que se cuenta
+    como venta son sobre todo recolocaciones. None si no hay mediciones."""
+    rates, _ = move_rates(con, house, now, days)
+    live = con.execute("SELECT SUM(qty) FROM api_live WHERE house=?", (house,)).fetchone()[0]
+    if not rates or not live:
+        return None
+    return sum(r["sold"] for r in rates.values()) / live
 
 
 def is_calibrated(con, house):
-    """¿La última calibración con el libro (calibrate) dio cobertura suficiente para esta casa?"""
+    """¿Nos fiamos de las vendidas estimadas de esta casa? Hacen falta las dos cosas de la última
+    calibración (calibrate): que tus ventas reales aparezcan entre las vendidas (cobertura: no se le
+    escapan ventas) y que la rotación de la casa sea creíble (no cuenta de más). La cobertura sola no
+    basta: un clasificador que lo diera todo por vendido tendría cobertura del 100 %."""
     try:
         r = con.execute("SELECT value FROM meta WHERE key=?", (f"api_calibration_{house}",)).fetchone()
     except sqlite3.OperationalError:
@@ -620,7 +672,8 @@ def is_calibrated(con, house):
         d = json.loads(r[0])
     except ValueError:
         return False
-    return (d.get("sales") or 0) >= CALIB_MIN_SALES and (d.get("coverage") or 0) >= CALIB_MIN_COVER
+    return ((d.get("sales") or 0) >= CALIB_MIN_SALES and (d.get("coverage") or 0) >= CALIB_MIN_COVER
+            and d.get("turnover") is not None and d["turnover"] <= CALIB_MAX_TURNOVER)
 
 
 CALIB_MARGIN = 3600              # la hora del correo no es exacta: ±1 h alrededor de la venta
@@ -634,6 +687,7 @@ def calibrate(archive, plan_db, house=DEFAULT_HOUSES[0], margin=CALIB_MARGIN, sa
       coverage:    covered / units — debería acercarse a 1
       share:       covered / vendidas estimadas en esos intervalos (qué parte fuiste tú)
       outside:     ventas tuyas sin fotos de la API (no se pueden comprobar)
+      turnover:    vendidas estimadas al día entre lo que hay a la venta en la casa (ver turnover)
       detail:      por venta, lo que la estimación vio de ese objeto (vendidas, canceladas, caducadas)
     Guarda el resultado en meta (api_calibration_<casa>), que usa is_calibrated."""
     con = open_api(archive)
@@ -675,12 +729,20 @@ def calibrate(archive, plan_db, house=DEFAULT_HOUSES[0], margin=CALIB_MARGIN, sa
                               "expired": expired, "covered": cov})
     res["coverage"] = res["covered"] / res["units"] if res["units"] else None
     res["share"] = res["covered"] / res["est_sold"] if res["est_sold"] else None
+    res["turnover"] = turnover(con, house)
     if save:
         con.execute("INSERT OR REPLACE INTO meta VALUES (?, ?)", (f"api_calibration_{house}", json.dumps(
-            {"sales": res["sales"], "coverage": res["coverage"], "share": res["share"], "t": int(time.time())})))
+            {"sales": res["sales"], "coverage": res["coverage"], "share": res["share"],
+             "turnover": res["turnover"], "t": int(time.time())})))
         con.commit()
     con.close()
     return res
+
+
+def has_variants(con, house):
+    """¿La última foto guardó variantes de equipo? Un archivo de antes de la fase 5 (o un panel sin
+    reiniciar) no las tiene, y entonces no se sabe qué equipo mezcla productos distintos."""
+    return con.execute("SELECT 1 FROM api_var WHERE house=? LIMIT 1", (house,)).fetchone() is not None
 
 
 def variant_items(con, house):
@@ -723,7 +785,7 @@ BARGAIN_SHARE = 0.5              # de lo que se vende al día, lo que cuento que
 
 def bargains(con, house, now=None, top=10):
     """Gangas de la última foto: subastas que han aparecido en ella (first_t = la foto) muy por debajo del
-    precio habitual del objeto (mediana del valor de mercado de los 7 días anteriores). No cuenta si ya
+    precio habitual del objeto (mediana de lo más barato de cada uno de los 7 días anteriores). No cuenta si ya
     había subastas viejas a ese precio (entonces es el precio nuevo, no una ganga), ni el equipo con
     variantes (mientras no haya variantes guardadas, ningún objeto que no se apile), ni lo que no tiene
     ventas estimadas. La cantidad no pasa de la mitad de lo que se vende al día. Devuelve {"t", "items": [{id, name, quality, price, max, qty,
@@ -742,11 +804,12 @@ def bargains(con, house, now=None, top=10):
     if not fresh:
         return out
     hist = defaultdict(list)
-    for item, mv in con.execute("SELECT item_id, mv FROM daily WHERE market_id=? AND day>=? AND day<? AND mv IS NOT NULL",
-                                (mk[0], _day(t - 7 * 86400), _day(t))):
+    # lo habitual es lo más barato de cada día (a ese precio se vende), no el valor de mercado
+    for item, mv in con.execute("""SELECT item_id, COALESCE(min_low, mv) FROM daily WHERE market_id=? AND day>=? AND day<?
+                                   AND COALESCE(min_low, mv) IS NOT NULL""", (mk[0], _day(t - 7 * 86400), _day(t))):
         hist[item].append(mv)
     variants = variant_items(con, house)
-    has_var = con.execute("SELECT 1 FROM api_var WHERE house=? LIMIT 1", (house,)).fetchone() is not None
+    has_var = has_variants(con, house)
     single = set() if has_var else {r[0] for r in con.execute(
         f"SELECT item_id FROM items WHERE COALESCE(stack, 1) <= 1 AND item_id IN ({','.join('?' * len(fresh))})",
         list(fresh))}
@@ -754,6 +817,10 @@ def bargains(con, house, now=None, top=10):
         "SELECT item_id, MIN(price) FROM api_live WHERE house=? AND first_t<? AND price IS NOT NULL GROUP BY item_id",
         (house, t)))
     sold, _ = sold_rates(con, house, now or t)
+    # sin comprobar, las vendidas cuentan recolocaciones: se rebajan hasta que la casa no salga vendida
+    # más de una vez al día (sirve para no proponer cantidades disparatadas, no para saber cuánto se vende)
+    turn = None if is_calibrated(con, house) else turnover(con, house, now or t)
+    k_sold = 1 / turn if turn and turn > CALIB_MAX_TURNOVER else 1
     rows = []
     for item, lad in fresh.items():
         h = sorted(hist.get(item, ()))
@@ -763,7 +830,7 @@ def bargains(con, house, now=None, top=10):
         limit = usual * (1 - BARGAIN_DISCOUNT)
         if item in old_min and old_min[item] <= limit:
             continue                                   # ya estaba así de barato antes de esta foto
-        cap = max(1, int(sold[item] * BARGAIN_SHARE))
+        cap = max(1, int(sold[item] * k_sold * BARGAIN_SHARE))
         cheap = []
         for p, q in lad:
             if p > limit or cap <= 0:
@@ -983,6 +1050,10 @@ def main():
             print(f"Casa {h}: {r['sales']} ventas tuyas con fotos ({r['units']:.0f} u.), la estimación ve {r['covered']:.0f} "
                   f"como vendidas → cobertura {cov}; tu parte de lo vendido estimado {share}; "
                   f"{r['outside']} ventas sin fotos.")
+            if r["turnover"] is not None:
+                print(f"  Rotación: la casa saldría vendida {r['turnover']:.1f} veces al día"
+                      + (" — demasiado: se cuentan recolocaciones como ventas, y el plan no usa estas cifras."
+                         if r["turnover"] > CALIB_MAX_TURNOVER else "."))
             for d in r["detail"]:
                 if d["covered"] < d["qty"]:
                     print(f"   {time.strftime('%d/%m %H:%M', time.localtime(d['t']))} objeto {d['item']}: vendiste {d['qty']:.0f}, "

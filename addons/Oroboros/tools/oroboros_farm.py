@@ -254,6 +254,7 @@ def estimate(ac, prices, level, skinning=False):
 CONF_KILLS = 30             # con 30 muertes, lo medido sustituye a la estimación
 CONF_SECS = 1200            # y con 20 minutos activos, confianza alta
 MIN_SECS = 60               # menos tiempo activo que esto no da oro por hora
+MID_KILLS, MID_SECS = 10, 300   # por debajo, la muestra es demasiado pequeña: confianza baja
 HERB_WORDS = ("herbor", "herbal", "botán", "botan")    # en Forever en español: «Botánica»
 MINE_WORDS = ("miner", "mining")
 
@@ -306,7 +307,11 @@ def per_npc(mobs):
 
 
 def _confidence(kills, secs):
-    return "alta" if kills >= CONF_KILLS and secs >= CONF_SECS else "media"
+    """Alta con 30 muertes y 20 minutos; media con 10 muertes y 5 minutos; con menos, un botín con suerte
+    lo decide todo (5 muertes en un minuto y un objeto verde daban 48 oro a la hora)."""
+    if kills >= CONF_KILLS and secs >= CONF_SECS:
+        return "alta"
+    return "media" if kills >= MID_KILLS and secs >= MID_SECS else "baja"
 
 
 def combine(est_rows, by_npc, ac, prices):
@@ -381,7 +386,8 @@ def measured_places(mobs, npcs, ac, prices):
                     "per_kill": p["value"] / p["kills"] if p["kills"] else None, "top_items": top,
                     "mobs": sorted(p["mobs"], key=lambda x: -x["kills"]), "source": "medido",
                     "confidence": _confidence(p["kills"], p["secs"])})
-    out.sort(key=lambda x: -(x["gph"] if x["gph"] is not None else -1))
+    # primero lo que tiene muestra: una cifra alta con cinco muertes no va delante de una medida de verdad
+    out.sort(key=lambda x: (x["confidence"] == "baja", -(x["gph"] if x["gph"] is not None else -1)))
     return out
 
 

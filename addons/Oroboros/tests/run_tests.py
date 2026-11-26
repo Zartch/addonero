@@ -958,7 +958,8 @@ _mp = OF.measured_places([_m(1, "Bosque X", 10, 300, 5000), _m(4242, "Cueva", 5,
                          {4242: {"name": "Kobold", "lvl": 9, "cls": "normal"}}, _ac, _prices)
 _cueva = [r for r in _mp if r["sub"] == "Cueva"]
 check(len(_mp) == 2 and _cueva and abs(_cueva[0]["gph"] - 20400) < 1e-6 and _cueva[0]["mobs"][0]["name"] == "Kobold"
-      and _cueva[0]["confidence"] == "media", "farmeo: una criatura solo medida (no está en AzerothCore) aparece con su oro por hora real")
+      and _cueva[0]["confidence"] == "baja" and _mp[0]["sub"] == "Bosque X" and _mp[0]["confidence"] == "media",
+      "farmeo: una criatura solo medida (no está en AzerothCore) aparece con su oro por hora real; con 5 muertes, confianza baja")
 _fp = OF.farm_plan(_ac, _gm, _prices, {"Zartch-R": {"level": 11, "professions": {"Herboristería": {}}}},
                    {"mobs": [_m(1, "Bosque X", 10, 300, 5000)], "npcs": {}})
 _fz = _fp["chars"]["Zartch-R"]
@@ -1206,6 +1207,7 @@ def _f5(vendor_sell=0, deposits=(), variants=(), ladder=None, vol=None):
     _f.commit(); _f.close()
     dd = _Data(fdb, CAT_TEST, now=_now)
     dd.variants = set(variants)
+    dd.variants_known = True
     if ladder is not None:
         dd.ladders = {777777: ladder}
     return dd
@@ -1654,6 +1656,10 @@ check(_ri == 2 and _cx.execute("SELECT sold FROM api_item_hour WHERE t=? AND ite
       f"API: importa fotos guardadas en orden ({_ri})")
 _cx.close()
 
+# Las pruebas que siguen comprueban sumas, franjas y resúmenes con un mercado de juguete en el que cada
+# hora se vende una subasta y entra otra igual. Con la regla de recolocaciones eso contaría como
+# cancelada, así que aquí se apaga; la regla tiene sus pruebas en la pasada del 25/11.
+API.RELIST_DROP = -1
 # retención: api_item_hour de las semanas viejas → api_band_week, y las franjas no cambian
 _rd = _tf.mkdtemp(); _ra = os.path.join(_rd, "r.sqlite")
 _cr = API.open_api(_ra); API.set_house(_cr, 111, "Casa de subastas de la Alianza", realm="R5")
@@ -1719,6 +1725,8 @@ _pfa(_cp, _vp); _cp.close()
 _pr = sqlite3.connect(_vp).execute("SELECT min, src, d110 FROM prices WHERE market=? AND item_id=2589", (mk_,)).fetchone()
 check(_pr == (30, "api", 2),f"plan: el precio de ahora es el más reciente (la API, con profundidad) {_pr}")
 _dv = Data(_vp, CAT_TEST, archive=_va)
+for _h in _dv.history.get(2589, []):
+    _h["qty"] = None       # sin medida de escaneos (si no, según la hora del día salían 2 o 3 bajadas y la prueba bailaba)
 _sv = _dv.stats(2589)
 check(abs(_sv["vol"] - 24) < 0.01 and _sv["vol_src"] == "api" and _sv["vol_est"] is True,
       f"plan: con 3 días de API, las ventas por día salen de la API (estimadas hasta calibrar) {_sv['vol']}, {_sv.get('vol_src')}, {_sv['vol_est']}")
@@ -1920,6 +1928,7 @@ check('id="v-inicio"' in _plain and '[["inicio", "Inicio"]].concat(API_VIEWS)' i
       "panel: la pestaña Inicio existe y es la que se abre primero con el panel")
 check("/*__PANEL__*/false" in _plain,"plan.html sin panel: las pestañas nuevas dicen que hay que abrir el panel")
 
+API.RELIST_DROP = 0.20
 # ---- Fase 7: Aguasnegras → tu casa, enfriamientos como renta y gangas ----
 _d7 = _tf.mkdtemp(); _c7 = API.open_api(os.path.join(_d7, "n.sqlite"))
 API.set_house(_c7, 111, "Casa de subastas de la Alianza", realm="R5")
@@ -2003,6 +2012,180 @@ check(_inc and all(e.get("income") for e in _inc if "profit" in e)
 _ui7 = open(os.path.join(ROOT, "tools", "planner_ui.html"), encoding="utf-8").read()
 check("neutralHtml(PLAN.neutral)" in _ui7 and "Gangas de la última foto" in _ui7 and "renta diaria" in _ui7,
       "página: Aguasnegras en Ideas, gangas en Inicio y la marca de renta diaria en Qué aprender")
+
+# ---- Pasada del 25/11: las «vendidas» de la API no se dan por buenas sin comprobar que no cuentan de más ----
+_d8 = _tf.mkdtemp(); _a8 = os.path.join(_d8, "p8.sqlite")
+_c8 = API.open_api(_a8); API.set_house(_c8, 111, "Casa de subastas de la Alianza", realm="R5")
+_lv8 = [_au(1, 100, 5, 50, "LONG"), _au(2, 100, 5, 50, "LONG")]
+for _k in range(28):       # 28 fotos seguidas que caen en tres fechas: poco más de un día de medición
+    API.ingest(_c8, 111, _ts(20, 22, 23) + _k * 3600, _lv8)
+    _lv8 = [_lv8[1], _au(100 + _k, 100, 5, 60 + _k, "LONG")]      # se vende la barata y entra otra más cara
+_r8, _cov8 = API.move_rates(_c8, 111, _ts(22, 2, 0))
+check(1.0 < _cov8 < 1.3, f"API: los días medidos son tiempo medido, no fechas distintas ({_cov8})")
+_t8 = API.turnover(_c8, 111, _ts(22, 2, 0))
+check(_t8 is not None and abs(_t8 - 12) < 0.01, f"API: rotación de la casa = vendidas al día entre lo que hay a la venta ({_t8})")
+def _cal8(**kw):
+    _c8.execute("INSERT OR REPLACE INTO meta VALUES ('api_calibration_111', ?)", (json.dumps(kw),)); _c8.commit()
+    return API.is_calibrated(_c8, 111)
+check(_cal8(sales=6, coverage=1.0, turnover=0.4) is True, "calibración: con cobertura y una rotación creíble, vale")
+check(_cal8(sales=6, coverage=1.0, turnover=4.7) is False,
+      "calibración: si la casa saldría vendida varias veces al día, las ventas de la API no se dan por buenas")
+check(_cal8(sales=6, coverage=1.0) is False, "calibración: una calibración vieja, sin rotación, no vale")
+# recolocaciones: la misma cantidad que reaparece igual o algo más barata la retiró su dueño
+_rl = lambda prev, cur: API.classify(API.as_live(prev), API.as_live(cur)).get(100, {})
+_o = [_au(1, 100, 5, 1000, "LONG"), _au(2, 100, 5, 1500, "LONG")]
+check(_rl(_o, [_o[1]])["sold"] == 5, "recolocación: la barata desaparece y no entra nada: vendida")
+_x = _rl(_o, [_o[1], _au(3, 100, 5, 950, "LONG")])
+check(_x["sold"] == 0 and _x["cancelled"] == 5 and _x["new"] == 5,
+      f"recolocación: reaparece la misma cantidad un 5 % más barata: cancelada ({_x})")
+check(_rl(_o, [_o[1], _au(3, 100, 5, 1000, "LONG")])["sold"] == 0, "recolocación: al mismo precio, también")
+check(_rl(_o, [_o[1], _au(3, 100, 5, 1100, "LONG")])["sold"] == 5, "recolocación: si lo nuevo es más caro, fue una venta")
+check(_rl(_o, [_o[1], _au(3, 100, 4, 950, "LONG")])["sold"] == 5, "recolocación: con otra cantidad, fue una venta")
+check(_rl(_o, [_o[1], _au(3, 100, 5, 500, "LONG")])["sold"] == 5, "recolocación: a mitad de precio no es la misma subasta")
+_o2 = [_au(1, 100, 5, 1000, "LONG"), _au(2, 100, 5, 1000, "LONG"), _au(9, 100, 5, 1500, "LONG")]
+_x = _rl(_o2, [_o2[2], _au(3, 100, 5, 990, "LONG")])
+check(_x["sold"] == 5 and _x["cancelled"] == 5, f"recolocación: cada subasta nueva empareja con una sola desaparecida ({_x})")
+# la regla empieza en una foto: las horas de antes no entran en las ventas por día
+check(API.rule_since(_c8) == 0, "regla: un archivo nuevo la lleva desde la primera foto")
+_c8.execute("UPDATE meta SET value=? WHERE key='api_rule_t'", (str(_ts(21, 20, 23)),)); _c8.commit()
+_r8b, _cov8b = API.move_rates(_c8, 111, _ts(22, 2, 0))
+check(0.2 < _cov8b < 0.3 and abs(_r8b[100]["sold"] - _r8[100]["sold"]) < 0.01,
+      f"regla: solo cuentan las fotos clasificadas con ella ({_cov8b} días)")
+_c8.execute("DELETE FROM meta WHERE key='api_rule_t'"); _c8.commit()
+check(API.move_rates(_c8, 111, _ts(22, 2, 0)) == ({}, 0), "regla: un archivo de antes, sin fotos nuevas, no da ventas por día")
+API.ingest(_c8, 111, _ts(22, 2, 23), _lv8)
+check(API.rule_since(_c8) == _ts(22, 2, 23), "regla: en un archivo de antes, empieza con la primera foto que se mete ahora")
+# el plan: con medida de tus escaneos, la API sin comprobar solo puede bajarla
+def _st8(api, cal):
+    dd = _f5(); dd.api_rates = {777777: api}; dd.api_days = 3; dd.api_calibrated = cal; dd._stats = {}
+    return dd.stats(777777)
+_s8 = _f5().stats(777777)
+_s8a, _s8b, _s8c = _st8(_s8["vol"] * 50, False), _st8(_s8["vol"] / 4, False), _st8(_s8["vol"] * 50, True)
+check(_s8["vol"] and _s8a["vol"] == _s8["vol"] and _s8a["vol_est"] is False and _s8a["vol_src"] == "escaneos",
+      f"plan: la API sin comprobar no sube las ventas medidas con tus escaneos ({_s8['vol']} → {_s8a['vol']})")
+check(abs(_s8b["vol"] - _s8["vol"] / 4) < 1e-9 and _s8b["vol_est"] is False, "plan: pero sí las baja si ve menos")
+check(_s8c["vol"] == _s8["vol"] * 50 and _s8c["vol_src"] == "api" and _s8c["vol_est"] is False,
+      "plan: comprobada con tus ventas, la API manda")
+_d8v = _f5(ladder=[(300, 12), (320, 8), (900, 40), (1000, 100)]); _d8v.variants_known = False
+check([f for f in find_flips(_d8v, 48, next(iter(_d8v.chars))) if f["out_item"] == 777777] == [],
+      "reventa: sin variantes guardadas, lo que no se apila no se revende (puede ser equipo con sufijo)")
+_d8v.items[777777]["stack"] = 20
+check(len([f for f in find_flips(_d8v, 48, next(iter(_d8v.chars))) if f["out_item"] == 777777]) == 1,
+      "reventa: sin variantes guardadas, lo que se apila sí")
+# ideas: el precio del vendedor es un suelo
+check(_OI.worst_loss(100, 80, 0) == 100 - 80 * 0.95 and _OI.worst_loss(100, 80, 90) == 10 and _OI.worst_loss(62, 50, 62) == 0,
+      "ideas: lo peor es vender al stop en la subasta o, si paga más, al vendedor")
+# catálogo: lo aprendido en la pasada
+check(_cat_real["recipes"]["18560"]["cooldown_h"] == 95 and "Hyjal" in _cat_real["recipes"]["1317279"]["learn_note"],
+      "catálogo: la tela lunar lleva su enfriamiento y la legionita dice que su receta cae en Hyjal")
+_l8 = [e for e in plan["learn"] if "profit" in e and not e.get("cooldown_h") and e.get("vol")]
+check(_l8 and all(abs(e["per_day"] - e["vol"] * _OP.SELL_SHARE / e["yield"]) < 1e-9 for e in _l8),
+      "qué aprender: cuenta con tu parte de lo que se vende al día, no con todo")
+_ui8 = open(os.path.join(ROOT, "tools", "planner_ui.html"), encoding="utf-8").read()
+check("rotación de la casa" in _ui8 and "días medidos" in _ui8, "página: la calibración enseña la rotación y los días medidos")
+
+# ---- Auditoría a mano del 25/11: lo que el programa proponía y un jugador no haría ----
+# reventa: si cada día vuelve a haber género al precio de hoy, ese es su precio
+check(_OP.resale_price({"med7": 1000, "low7": 1000}, 2000) == 1000
+      and _OP.resale_price({"med7": 3812, "low7": 2800}, 4849) == 2800 * _OP.LOW_CEIL
+      and _OP.resale_price({"med7": 1000, "low7": None}, 900) == 900,
+      "reventa: el precio de reventa no pasa de un 15 % sobre lo más barato de cada día")
+def _f9(mins):
+    dd = _f5(ladder=[(300, 12), (320, 8), (900, 40), (1000, 100)])
+    for h, m in zip(dd.history[777777], mins):
+        h["min"] = m
+    dd._stats = {}
+    return [f for f in find_flips(dd, 48, next(iter(dd.chars))) if f["out_item"] == 777777]
+check(len(_f9([1000, 1000, 1000, 1000])) == 1, "reventa: bajada puntual (los días de antes lo más barato estaba arriba): sí")
+check(_f9([300, 310, 300, 320]) == [], "reventa: si cada día ya había género a ese precio, no hay reventa")
+# fabricar: tu parte de las ventas
+_e9 = [o for o in plan["opportunities"] if o["kind"] == "craft" and not o.get("trial") and not o.get("cooldown_h") and o.get("vol")]
+check(_e9 and all(o["units"] <= max(o["yield"], o["vol"] * _OP.SELL_SHARE * 48 / 24 + o["yield"]) for o in _e9),
+      "fabricar: el lote no pasa de tu parte de lo que se vende en el horizonte")
+# prueba de esfuerzo del depósito: con la mitad de ventas no debe dar pérdidas
+def _stress9(vendor):
+    dd = _f5(vendor_sell=vendor)
+    dd.items[777778] = dict(dd.items[777777], item_id=777778, name="Material de prueba", vendor_sell=1)
+    dd.vendor_buy[777778] = 100
+    r = {"id": 990001, "char": next(iter(dd.chars)), "prof": "Cocina", "name": "Gema cocinada", "learned": True,
+         "out": 777777, "yield": 1, "reagents": [(777778, 1)], "source": None, "cd_until": None, "enchant": False,
+         "cooldown_h": None, "skill_req": None, "learn_cost": None, "learn_note": None, "difficulty": None}
+    return _OP.evaluate(dd, r, 48), dd
+_ea, _da = _stress9(0)
+_eb, _db = _stress9(1000)
+if "profit" in _ea and "profit" in _eb:
+    _gain9 = _eb["net"] - _eb["cost"]
+    check(1 <= _eb["crafts"] < _ea["crafts"] and any("Lote reducido" in w for w in _eb["why"]) and _eb["profit"] > 0
+          and _gain9 - _db.deposit(777777) * _OP.lost_posts(_eb["crafts"], _eb["vol"] * _OP.STRESS_VOL) >= 0,
+          f"depósito alto: el lote se encoge hasta no perder con la mitad de ventas ({_ea['crafts']} → {_eb['crafts']})")
+    check(not any("Lote reducido" in w for w in _ea["why"]), "depósito mínimo: el lote no se toca")
+else:
+    check(False, f"depósito alto: la receta de prueba no se pudo valorar ({_ea.get('reason')} / {_eb.get('reason')})")
+# ideas: rebote con lo más barato de cada día, nunca en una cuesta abajo; sequía, no si ya ha saltado
+check(_OI.sliding([180, 108, 94, 87, 79, 76, 73, 56]) is True and _OI.sliding([100, 101, 99, 100, 102, 100]) is False
+      and _OI.sliding([100, 90]) is False, "ideas: una cuesta abajo de días no es un bache del que se rebota")
+class _I9:
+    today, catalog = "2026-11-25", {}
+    def __init__(self, hist, mn, mv, med7=None):
+        self.history = {5: [{"day": f"2026-11-{10 + i:02d}", "min": lo, "mv": m, "qty": q} for i, (lo, m, q) in enumerate(hist)]}
+        self.prices = {5: {"min": mn, "mv": mv, "qty": 100}}
+        self._st = {"min": mn, "mv": mv, "vol": 50, "days": len(hist), "med7": med7, "depth": None}
+    def stats(self, item):
+        return self._st
+    def name(self, item):
+        return "Objeto de prueba"
+_reb = lambda hist, mn, mv: [c["item"] for c in _OI.detect_rebound(_I9([(lo, m, 100) for lo, m in hist], mn, mv), set())]
+check(_reb([(100, 100)] * 8, 60, 62) == [5], "rebote: estable y hoy un 40 % más barato: sí")
+check(_reb([(30, 36), (32, 75), (28, 57), (28, 28), (26, 66), (39, 39), (29, 80)], 35, 35) == [],
+      "rebote: el valor de mercado salta entre dos escalones, pero lo más barato de cada día es lo de hoy: no está hundido")
+check(_reb([(180, 180), (108, 108), (94, 99), (87, 88), (79, 89), (76, 79), (73, 73), (56, 60)], 60, 60) == [],
+      "rebote: un precio que baja cada día no es un bache")
+_dry = [(10, 10 + i, 5000 - 400 * i) for i in range(10)]
+_drt = lambda mv, med7: [c["item"] for c in _OI.detect_drought(_I9(_dry, mv, mv, med7), {5: ["Receta de prueba"]})]
+check(_drt(20, 18) == [5], "sequía: cada día hay menos y el precio sube poco a poco: sí")
+check(_drt(33, 19) == [], "sequía: si hoy ya ha saltado un 25 % sobre su mediana, llegas tarde")
+
+# ---- Segunda auditoría a mano (25/11): reventas, ideas, qué aprender y farmeo ----
+check(_OI.streak([400, 349, 297, 200]) is True and _OI.streak([103, 102, 101, 100]) is False
+      and _OI.streak([200, 400, 349, 297]) is False and _OI.streak([349, 297, 200]) is False,
+      "ideas: tres bajadas seguidas que suman un 15 % son una racha; un goteo de céntimos, no")
+check(_OI.falling([3999, 1897, 999, 898], 797) is True and _OI.falling([1000, 1000, 1000, 1000], 300) is False
+      and _OI.falling([99999, 130000, 110000, 70000, 100000, 89900, 80000], 60000) is True,
+      "reventa: un precio que cae cada día (aunque solo haya 4 días de histórico) no es una bajada puntual")
+check(_f9([2000, 1500, 1000, 700]) == [], "reventa: no se compra un precio que viene bajando día tras día")
+check(_f9([1000, 1000, 1000, 320]) == [], "reventa: si ayer lo más barato ya estaba a este precio, es su precio (aunque el valor de mercado diga otra cosa)")
+# rebote: ni racha de bajadas ni un precio que ya lleva más de un día
+check(_reb([(400, 400), (400, 400), (349, 349), (297, 297), (200, 200)], 132, 132) == [],
+      "rebote: cuatro días bajando y hoy más: no es un bache")
+check(_reb([(390, 390), (300, 300), (280, 280), (259, 259), (850, 850), (470, 470), (200, 200)], 199, 199) == [],
+      "rebote: ayer ya estaba a este precio: no es un bache de hoy")
+# ideas: el beneficio cuenta un depósito perdido
+_src9 = open(os.path.join(os.path.dirname(os.path.abspath(_OI.__file__)), "oroboros_ideas.py"), encoding="utf-8").read()
+check("profit_u = net_target - entry - dep" in _src9, "ideas: el beneficio por unidad descuenta un depósito perdido")
+# qué aprender: tu oro manda; una profesión nueva no «se paga en 0 días»
+_d9 = _f5()
+_l9 = _OP.learn_suggestions(_d9, 48)
+_gold9 = sum(c["money"] or 0 for c in _d9.chars.values())
+print("   (aprender: %d recetas, %d de profesión nueva, %d con beneficio)" % (len(_l9), sum(1 for l in _l9 if l.get("new_profession")), sum(1 for l in _l9 if (l.get("daily_profit") or 0) > 0)))
+check(all(l["per_day"] <= _gold9 / l["cost"] + 1e-9 for l in _l9 if l.get("per_day") and l.get("cost")),
+      "aprender: no se fabrica al día más de lo que tu oro compra")
+check(all(l["payback_days"] is None for l in _l9 if l.get("new_profession")),
+      "aprender: una profesión nueva no dice en cuántos días se paga (subirla no está contado)")
+def _poor9():
+    import copy
+    dd = copy.copy(_d9)
+    dd.chars = {k: dict(v, money=1) for k, v in _d9.chars.items()}
+    dd._stats = {}
+    return _OP.learn_suggestions(dd, 48)
+_lp9 = [l for l in _poor9() if l.get("gold_cap")]
+check(_lp9 and all(not l["per_day"] and not l["daily_profit"] and "No te llega el oro" in l["verdict"][0] for l in _lp9),
+      "aprender: si no te llega el oro ni para una fabricación, lo dice y no promete nada")
+# farmeo: una cifra alta con cinco muertes no va delante de una medida de verdad
+_m9 = lambda sub, kills, secs, copper: {"npc": 1, "zone": "Zona", "sub": sub, "map": 1, "kills": kills, "secs": secs, "copper": copper, "items": {}}
+_mp9 = OF.measured_places([_m9("Mucho rato", 40, 1500, 20000), _m9("Golpe de suerte", 5, 74, 100000)], {}, _ac, _prices)
+check([r["sub"] for r in _mp9] == ["Mucho rato", "Golpe de suerte"] and _mp9[0]["confidence"] == "alta"
+      and _mp9[1]["confidence"] == "baja" and _mp9[1]["gph"] > _mp9[0]["gph"],
+      "farmeo: cinco muertes con un botín de suerte: confianza baja y por detrás de lo medido con muestra")
 
 print("\nTODO OK" if ok else "\nHAY FALLOS")
 for line in list(G.LOG.values())[-8:]:
