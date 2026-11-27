@@ -165,6 +165,8 @@ CREATE TABLE recipes    (char TEXT, profession TEXT, recipe_id INTEGER, name TEX
                          enchant INTEGER, source TEXT, cd_until INTEGER, PRIMARY KEY (char, recipe_id));
 CREATE TABLE reagents   (recipe_id INTEGER, item_id INTEGER, qty REAL, alternatives TEXT,
                          PRIMARY KEY (recipe_id, item_id));
+CREATE TABLE quest_items(item_id INTEGER PRIMARY KEY, quest_id INTEGER, title TEXT, money INTEGER, xp INTEGER,
+                         rewards TEXT, choices TEXT, objective TEXT, t INTEGER);  -- misión que empieza con el objeto
 CREATE VIEW recipe_cost AS
   SELECT r.recipe_id, r.item_id, r.qty,
          COALESCE(i.vendor_buy, p.min) AS unit_cost,
@@ -247,6 +249,17 @@ def write_sqlite(db, path):
     for item_id, p in as_dict(db.get("positions")).items():
         con.execute("INSERT INTO positions VALUES (?,?,?,?,?,?,?,?)", (int(item_id), p.get("qty"), p.get("entry"),
                     p.get("target"), p.get("stop"), p.get("due"), p.get("t"), p.get("char")))
+    def pairs_list(x):
+        out = []
+        for r in (x if isinstance(x, list) else as_dict(x).values()):
+            r = r if isinstance(r, list) else [r.get(1), r.get(2)]
+            if r and r[0]:
+                out.append([int(r[0]), r[1] if len(r) > 1 and r[1] else 1])
+        return out
+    for item_id, q in as_dict(db.get("questItems")).items():
+        con.execute("INSERT INTO quest_items VALUES (?,?,?,?,?,?,?,?,?)", (
+            int(item_id), q.get("q"), q.get("title"), q.get("money") or 0, q.get("xp") or 0,
+            json.dumps(pairs_list(q.get("items"))), json.dumps(pairs_list(q.get("choices"))), q.get("obj"), q.get("t")))
     wb = db.get("warband")
     if isinstance(wb, dict):
         for item_id, n in as_dict(wb.get("items")).items():

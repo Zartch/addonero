@@ -197,6 +197,12 @@ class Data:
             self.config = {r["key"]: r["value"] for r in q("SELECT * FROM config")}
         except sqlite3.OperationalError:
             self.config = {}
+        try:      # recompensa de las misiones que empiezan con un objeto (Oroboros/Misiones.lua)
+            self.quest_items = {r["item_id"]: dict(r, rewards=json.loads(r["rewards"] or "[]"),
+                                                   choices=json.loads(r["choices"] or "[]"))
+                                for r in q("SELECT * FROM quest_items")}
+        except sqlite3.OperationalError:      # SQLite de una versión anterior
+            self.quest_items = {}
         self.professions = defaultdict(dict)
         for r in q("SELECT * FROM professions"):
             self.professions[r["char"]][r["profession"]] = dict(r)
@@ -262,6 +268,16 @@ class Data:
         """Depósito por unidad de una publicación de POST_HOURS (mínimo 1 cobre)."""
         vend = (self.items.get(item_id) or {}).get("vendor_sell") or 0
         return max(1.0, vend * self.deposit_rate)
+
+    def item_by_name(self, name):
+        """Objeto con ese nombre (sin mayúsculas); el de id más bajo si hay varios."""
+        if not hasattr(self, "_by_name"):
+            self._by_name = {}
+            for i in sorted(self.items, reverse=True):
+                n = self.items[i].get("name")
+                if n:
+                    self._by_name[n.lower()] = i
+        return self._by_name.get((name or "").strip().lower())
 
     def stack(self, item_id):
         it = self.items.get(item_id)
@@ -1184,6 +1200,76 @@ def _chain_depth(node):
 # ----------------------------------------------------------------------
 # Qué tienes
 # ----------------------------------------------------------------------
+QUEST_SCROLL = "Libranza del artesano:"     # pergaminos que dan una misión de fabricación
+FLOOR = 0.85                                # no publicar por debajo del 85 % del precio recomendado
+
+
+def _sell_value(data, item):
+    """Lo que sacas por una unidad: subasta neta o vendedor, lo que sea más."""
+    st = data.stats(item)
+    ah = st["sell"] * (1 - AH_CUT) if st["sell"] else 0
+    return max(ah, (data.items.get(item) or {}).get("vendor_sell") or 0)
+
+
+def quest_scroll(data, item, sell, owned):
+    """¿Vender la libranza o cumplir su misión? None si el objeto no da una misión.
+    sell: lo que sacas vendiéndola (neto); owned: {objeto: cantidad} del personaje."""
+    name = data.name(item)
+    qi = data.quest_items.get(item)
+    if not qi and not name.startswith(QUEST_SCROLL):
+        return None
+    want = name.split(":", 1)[1].strip() if name.startswith(QUEST_SCROLL) else None
+    req = data.item_by_name(want) if want else None
+    obj = (qi or {}).get("objective") or ""
+    m = re.search(r"\b(\d{1,3})\b", obj)
+    qty, qty_est = (int(m.group(1)), False) if m and int(m.group(1)) > 0 else (1, True)
+    cost, how = None, None
+    if req:
+        if owned.get(req, 0) >= qty:
+            cost, how = _sell_value(data, req) * qty, "ya lo tienes: cuento lo que sacarías vendiéndolo"
+        else:
+            src = data.best_source(req, qty)
+            if src:
+                cost = src["unit"] * qty
+                how = {"fabricar": "fabricándolo", "subasta": "comprándolo en subasta",
+                       "vendedor": "comprándolo al vendedor"}[src["method"]]
+    out = {"req": req, "req_name": data.name(req) if req else want, "qty": qty, "qty_est": qty_est,
+           "cost": cost, "sell": sell, "reward": None, "gain": None, "known": bool(qi)}
+    what = (f"{qty}× {out['req_name']}" + (" (cantidad supuesta)" if qty_est else "")) if out["req_name"] \
+        else "lo que pide"
+    cost_txt = f"{what} cuesta {money(cost)} ({how})" if cost is not None else f"no sé cuánto cuesta {what}"
+    if qi:
+        items = sum(_sell_value(data, i) * n for i, n in qi["rewards"])
+        choice = max((_sell_value(data, i) * n for i, n in qi["choices"]), default=0)
+        reward = (qi["money"] or 0) + items + choice
+        gain = reward - (cost or 0)
+        out["reward"], out["gain"] = reward, gain
+        parts = [money(qi["money"])] if qi["money"] else []
+        if qi["rewards"]:
+            parts.append("objetos por " + money(items))
+        if choice:
+            parts.append("a elegir, lo mejor vale " + money(choice))
+        da = ("da " + ", ".join(parts)) if parts else "no da oro ni objetos"
+        xp = f" (y {num(qi['xp'])} de experiencia, que aquí no se pasa a oro)" if qi.get("xp") else ""
+        if gain > (sell or 0):
+            out["action"] = "cumplir"
+            out["why"] = (f"Cúmplela: {da}{xp}; {cost_txt}. Ganas {money(gain)}, más que vendiéndola "
+                          f"({money(sell or 0)}).")
+        else:
+            out["action"] = "subasta" if sell else "nada"
+            out["why"] = (f"Véndela: la misión {da}{xp} y {cost_txt}; te deja {money(gain)} y venderla "
+                          f"{money(sell or 0)}.")
+    elif sell and cost is not None and cost >= sell:
+        out["action"] = "subasta"
+        out["why"] = (f"Véndela: {cost_txt}, más de lo que sacas vendiéndola ({money(sell)}). "
+                      "Solo compensaría si la recompensa diera mucho.")
+    else:
+        out["action"] = "mirar"
+        out["why"] = (f"Ábrela en el juego (clic derecho y mira la ventana, sin aceptar) para que se apunte la "
+                      f"recompensa. Venderla da {money(sell or 0)}; {cost_txt}.")
+    return out
+
+
 def inventory_view(data, plan, learn, horizon_h, positions=None, bets=None):
     positions, bets = positions or {}, bets or {}
     reserve = {}
@@ -1206,6 +1292,10 @@ def inventory_view(data, plan, learn, horizon_h, positions=None, bets=None):
     for ow in owners:
         locs = ("bags", "bank") if ow != "Banda" else ("warband",)
         entries = []
+        owned = defaultdict(int)
+        for loc in locs:
+            for item, count in data.inventory.get((ow, loc), {}).items():
+                owned[item] += count
         for loc in locs:
             for item, count in sorted(data.inventory.get((ow, loc), {}).items()):
                 st = data.stats(item)
@@ -1218,6 +1308,7 @@ def inventory_view(data, plan, learn, horizon_h, positions=None, bets=None):
                 unit = max(ah or 0, vend)
                 stack = data.stack(item)
                 slots = math.ceil(count / stack)
+                scroll = quest_scroll(data, item, ah, owned)
                 if used and free <= 0:
                     action, why = "ruta", f"La ruta usa las {used}."
                 elif item in positions:
@@ -1227,28 +1318,55 @@ def inventory_view(data, plan, learn, horizon_h, positions=None, bets=None):
                                               "mira la pestaña Ideas antes de venderlo.")
                 elif item in reserve:
                     action, why = "guardar", f"Guárdalo: es material de {reserve[item]}."
+                elif scroll:
+                    action, why = scroll["action"], scroll["why"]
                 elif ah and ah >= vend * 1.2 and (st["vol"] or 0) >= 1:
                     action = "subasta"
-                    why = f"Véndelo en subasta (~{money(ah)} neto cada uno)."
+                    why = "Véndelo en subasta."
                     if used:
                         why = f"La ruta usa {used}; el resto ({free}) véndelo en subasta."
                 elif vend:
                     action = "vendedor"
-                    why = (f"Al vendedor: {money(vend)} cada uno"
-                           + (f" (en subasta solo sacas {money(ah)})." if ah else " (no se vende en subasta)."))
+                    why = f"Al vendedor: {money(vend)} cada uno" + vendor_reason(ah, vend, st["vol"])
                 else:
                     action, why = "nada", "Sin valor de venta conocido."
-                if used and action in ("guardar", "vendedor", "nada"):
+                if used and action in ("guardar", "vendedor", "nada", "mirar", "cumplir"):
                     why = f"La ruta usa {used}; con el resto ({free}): " + why[0].lower() + why[1:]
+                # a qué precio publicarlo y cuántas se venden: lo mismo que usa el plan
+                price = st["sell"] if action == "subasta" else None
+                if price:
+                    why += sale_hint(data, item, ah)
                 entries.append({"item": item, "name": data.name(item), "loc": loc, "count": count, "used": used,
                                 "free": free, "unit": unit, "ah": ah, "vendor": vend, "total": unit * count,
                                 "slots": slots, "per_slot": unit * count / slots if slots else 0,
-                                "action": action, "why": why})
+                                "action": action, "why": why, "price": price,
+                                "floor": price * FLOOR if price else None,
+                                "vol": st["vol"] if price else None,
+                                "vol_est": bool(st.get("vol_est")) if price else None, "scroll": scroll})
         slot_info = {loc: data.slots.get((ow, loc)) for loc in locs}
         views.append({"owner": ow, "short": short_char(ow) if ow != "Banda" else "Banco de banda",
                       "money": (data.chars.get(ow) or {}).get("money"), "slots": slot_info, "items": entries,
                       "value": sum(e["total"] for e in entries)})
     return views, reserve
+
+
+def vendor_reason(ah, vend, vol):
+    """Por qué al vendedor y no a subasta (la subasta tiene que dar un 20 % más y venderse a diario)."""
+    if not ah:
+        return " (no se vende en subasta)."
+    if ah <= vend:
+        return f" (en subasta solo sacas {money(ah)})."
+    if (vol or 0) < 1:
+        return f". En subasta sacarías {money(ah)}, pero se vende menos de uno al día."
+    return (f". En subasta sacarías {money(ah)}, menos de un 20 % más: no compensa el depósito ni la espera.")
+
+
+def sale_hint(data, item, ah):
+    """« Publícalo a X (~Y neto) y no bajes de Z. Se venden ~N al día.»"""
+    st = data.stats(item)
+    return (f" Publícalo a {money(st['sell'])} cada uno (~{money(ah)} neto) y no bajes de "
+            f"{money(st['sell'] * FLOOR)}. Se venden ~{st['vol'] or 0:.0f} al día"
+            + (" (supuesto: aún faltan días de datos)." if st.get("vol_est") else "."))
 
 
 def add_stock_sales(data, plan, views, horizon_h):
@@ -1300,7 +1418,7 @@ def add_stock_sales(data, plan, views, horizon_h):
                         cs["sell"][k] = (i, num(qq + q), mn)
                         break
                 else:
-                    cs["stock_sell"].append((e["item"], q, int(e["ah"] / (1 - AH_CUT) * 0.85)))
+                    cs["stock_sell"].append((e["item"], q, int(e["ah"] / (1 - AH_CUT) * FLOOR)))
                 e["sell_now"] = q
                 if q < e["free"]:
                     e["why"] += f" Vende {q} ahora y el resto más adelante (el mercado no absorbe más)."

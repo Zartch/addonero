@@ -617,7 +617,7 @@ function icon(item) {
 }
 
 function renderInventario() {
-  const ACTION = { ruta: ["la usa la ruta", "good"], guardar: ["guardar", "info"], subasta: ["vender en subasta", "gold"], vendedor: ["al vendedor", "mute"], esperar: ["vender más tarde", "warn"], cartera: ["apuesta abierta", "gold"], nada: ["—", "mute"] };
+  const ACTION = { ruta: ["la usa la ruta", "good"], guardar: ["guardar", "info"], subasta: ["vender en subasta", "gold"], vendedor: ["al vendedor", "mute"], esperar: ["vender más tarde", "warn"], cartera: ["apuesta abierta", "gold"], cumplir: ["cumplir la misión", "good"], mirar: ["abre la misión", "warn"], nada: ["—", "mute"] };
   const LOC = { bags: "bolsas", bank: "banco", warband: "banco de banda" };
   const blocks = PLAN.inventory.map(v => {
     const slots = Object.entries(v.slots).filter(([, s]) => s).map(([loc, s]) => {

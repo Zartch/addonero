@@ -81,7 +81,21 @@ BAGS = { [-1] = { [1] = { itemID = 14047, stackCount = 20 }, [2] = { itemID = 14
 C_Container = {
     GetContainerNumSlots = function(b) return BAGS[b] and 16 or 0 end,
     GetContainerItemInfo = function(b, s) return BAGS[b] and BAGS[b][s] end,
+    GetContainerItemID = function(b, s) return BAGS[b] and BAGS[b][s] and BAGS[b][s].itemID end,
+    UseContainerItem = function(b, s) call("UseContainerItem", b, s) end,
 }
+-- Ventana de una misión (QUEST_DETAIL): lo que enseña la recompensa
+QUEST = { id = 0, title = "", money = 0, xp = 0, rewards = {}, choices = {}, obj = "" }
+function GetQuestID() return QUEST.id end
+function GetTitleText() return QUEST.title end
+function GetRewardMoney() return QUEST.money end
+function GetRewardXP() return QUEST.xp end
+function GetObjectiveText() return QUEST.obj end
+function GetNumQuestRewards() return #QUEST.rewards end
+function GetNumQuestChoices() return #QUEST.choices end
+local function qlist(kind) return kind == "choice" and QUEST.choices or QUEST.rewards end
+function GetQuestItemLink(kind, i) local r = qlist(kind)[i]; return r and ("|Hitem:" .. r[1] .. ":::|h[x]|h") end
+function GetQuestItemInfo(kind, i) local r = qlist(kind)[i]; return "x", nil, r and r[2] end
 ItemLocation = { CreateFromBagAndSlot = function(_, b, s) return { bag = b, slot = s } end }
 
 -- Subasta
