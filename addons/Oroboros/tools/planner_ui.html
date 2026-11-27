@@ -90,6 +90,8 @@ section.view.on { display: grid; }
 .money.neg { color: var(--bad); }
 .money.pos { color: var(--good); }
 
+.inv-obj { display: flex; align-items: center; gap: 10px; }
+.ico { width: 40px; height: 40px; flex: none; display: inline-block; border: 1px solid #5a5040; border-radius: 4px; background: #1a1712; }
 .pill { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; padding: 0 8px; border: 1px solid; white-space: nowrap; }
 .pill.good { background: var(--good-soft); color: var(--good); border-color: #2f6a2f; }
 .pill.warn { background: var(--warn-soft); color: var(--warn); border-color: #6b4f1a; }
@@ -607,8 +609,15 @@ function renderCartera() {
 }
 
 let invLoc = "todo", invSort = "total";
+// icono del objeto, pedido a la API de Blizzard (tools/oroboros_api.py, fill_icons); si aún no está, un hueco vacío
+const ICON_URL = "https://render.worldofwarcraft.com/forever-eu/icons/56/";
+function icon(item) {
+  const fid = (PLAN.icons || {})[item];
+  return fid ? `<img class="ico" src="${ICON_URL}${fid}.jpg" alt="" loading="lazy" width="40" height="40">` : '<span class="ico"></span>';
+}
+
 function renderInventario() {
-  const ACTION = { ruta: ["la usa la ruta", "good"], guardar: ["guardar", "info"], subasta: ["vender en subasta", "gold"], vendedor: ["al vendedor", "mute"], esperar: ["vender más tarde", "warn"], cartera: ["apuesta abierta", "gold"], nada: ["—", "mute"] };
+  const ACTION = { ruta: ["la usa la ruta", "good"], guardar: ["guardar", "info"], subasta: ["vender en subasta", "gold"], vendedor: ["al vendedor", "mute"], esperar: ["vender más tarde", "warn"], cartera: ["apuesta abierta", "gold"], cumplir: ["cumplir la misión", "good"], mirar: ["abre la misión", "warn"], nada: ["—", "mute"] };
   const LOC = { bags: "bolsas", bank: "banco", warband: "banco de banda" };
   const blocks = PLAN.inventory.map(v => {
     const slots = Object.entries(v.slots).filter(([, s]) => s).map(([loc, s]) => {
@@ -617,7 +626,7 @@ function renderInventario() {
     }).join("");
     let items = v.items.filter(e => invLoc === "todo" || e.loc === invLoc);
     items.sort((a, b) => invSort === "slot" ? a.per_slot - b.per_slot : b.total - a.total);
-    const rows = items.map(e => `<tr><td><b>${esc(e.name)}</b><div class="sub">${LOC[e.loc]}</div></td><td class="n">${e.count}</td>
+    const rows = items.map(e => `<tr><td><div class="inv-obj">${icon(e.item)}<div><b>${esc(e.name)}</b><div class="sub">${LOC[e.loc]}</div></div></div></td><td class="n">${e.count}</td>
       <td class="n">${money(e.unit)}</td><td class="n">${money(e.total)}</td><td class="n">${e.slots}</td><td class="n">${money(e.per_slot)}</td>
       <td><span class="pill ${ACTION[e.action][1]}">${ACTION[e.action][0]}</span><div class="sub">${esc(e.why)}</div></td></tr>`).join("");
     return `<div class="panel"><header><h2>${esc(v.short)}</h2><span class="stats">${v.money !== null && v.money !== undefined ? `<span>Oro <b>${money(v.money)}</b></span>` : ""}<span>Objetos <b>${money(v.value)}</b></span></span></header>

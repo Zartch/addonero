@@ -257,6 +257,21 @@ Con los datos del 25/11, el plan pasa de «18,9 oro invirtiendo 34,5» (con 4 re
 1. La rotación de la casa con la regla nueva, cuando haya tres días de fotos (a partir del 28/11). Si sigue muy por encima de 1, las ventas de la API seguirán sin usarse.
 2. La precisión de verdad: hace falta que el addon apunte tus subastas caducadas y canceladas.
 
+## Libranzas y precio de venta en «Qué tienes» (27/11)
+
+Plan: `docs/planes/2026-11-27-libranzas-y-precio-de-venta.md`. **Hecho fuera del juego.**
+
+- Cada objeto que va a subasta dice a qué precio publicarlo, el mínimo (85 %) y cuántas se venden al día (y si es una suposición). Si conviene ponerse una pieza lo decide ProItem, no Oroboros.
+- **Libranzas del artesano:**
+  - Al abrir la ventana de la misión, el addon (`Misiones.lua`) apunta la recompensa: dinero, experiencia, objetos y los de elegir. Solo lee: no acepta nada.
+  - Con la recompensa apuntada, el plan compara cumplirla (recompensa menos lo que cuesta lo que pide) con vender la libranza.
+  - Sin ella, propone venderla si cumplirla ya cuesta más; si no, abrir la misión para valorarla.
+
+**Por comprobar en el juego:**
+1. Que `QUEST_DETAIL` da el objeto que empieza la misión.
+2. Que la cantidad que pide sale del texto de objetivos.
+3. Si aceptar la misión gasta la libranza.
+
 ## Ideas para después (fuera de estas fases)
 
 - Apuntar en el libro las subastas propias que caducan o se cancelan (correo de «subasta caducada»), para medir cuántas da por vendidas la estimación de la API.

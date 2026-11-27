@@ -13,7 +13,7 @@ CAT_TEST = os.path.join(ROOT, "tests", "catalogo_sintetico.json")
 lua = LuaRuntime(unpack_returned_tuples=True)
 lua.execute(open(os.path.join(ROOT, "tests", "mock_wow.lua"), encoding="utf-8").read())
 ns = lua.eval("{}")
-for f in ["Core.lua", "DB.lua", "Scanner.lua", "Professions.lua", "Ledger.lua", "Queue.lua", "Style.lua", "Chart.lua", "UI.lua", "PriceHistory.lua", "Inventory.lua", "Farm.lua", "FarmPanel.lua"]:
+for f in ["Core.lua", "DB.lua", "Scanner.lua", "Professions.lua", "Ledger.lua", "Queue.lua", "Style.lua", "Chart.lua", "UI.lua", "PriceHistory.lua", "Inventory.lua", "Farm.lua", "FarmPanel.lua", "Misiones.lua"]:
     chunk = lua.execute("return function(src, name) return assert(loadstring(src, name)) end")(
         open(os.path.join(ADDON, f), encoding="utf-8").read(), "@" + f)
     chunk("Oroboros", ns)
@@ -2186,6 +2186,122 @@ _mp9 = OF.measured_places([_m9("Mucho rato", 40, 1500, 20000), _m9("Golpe de sue
 check([r["sub"] for r in _mp9] == ["Mucho rato", "Golpe de suerte"] and _mp9[0]["confidence"] == "alta"
       and _mp9[1]["confidence"] == "baja" and _mp9[1]["gph"] > _mp9[0]["gph"],
       "farmeo: cinco muertes con un botín de suerte: confianza baja y por detrás de lo medido con muestra")
+
+# ---- Iconos de objetos con la API (26/11) ----
+_ic_dir = _tf.mkdtemp()
+_ic = API.open_api(os.path.join(_ic_dir, "a.sqlite"))
+_ic.execute("INSERT OR IGNORE INTO items (item_id) VALUES (1), (2), (3), (4), (900)"); _ic.commit()
+_media = lambda fid: (200, {}, _js.dumps({"id": 1, "assets": [{"key": "icon", "value": "https://render.worldofwarcraft.com/forever-eu/icons/56/%d.jpg" % fid, "file_data_id": fid}]}).encode())
+_icn = _FakeNet({"/data/wow/media/item/1": _media(132889), "/data/wow/media/item/2": _media(135130),
+                 "/data/wow/media/item/900": _media(133134),
+                 "/data/wow/media/item/3": (200, {}, _js.dumps({"id": 3, "assets": []}).encode())})
+_icc = API.Client(("ID", "S"), fetch=_icn, cache_dir=_tf.mkdtemp())
+_i1 = API.fill_icons(_ic, _icc, limit=2, first=[900])
+check(_i1 == {"asked": 2, "icons": 2} and API.icons(_ic) == {1: 132889, 900: 133134},
+      f"iconos: respeta el límite y pide primero lo que llevas encima ({_i1}, {API.icons(_ic)})")
+_i2 = API.fill_icons(_ic, _icc, limit=10)
+_i3 = API.fill_icons(_ic, _icc, limit=10)
+check(_i2 == {"asked": 3, "icons": 1} and _i3["asked"] == 0 and API.icons(_ic, [2, 3, 4]) == {2: 135130},
+      f"iconos: sin icono o 404 no se vuelve a pedir, y solo se guarda el número de archivo ({_i2}, {_i3})")
+check(all("namespace=static-forever-eu" in u for u, _, _ in _icn.log if "media" in u),
+      "iconos: se piden a la ruta de medios de Forever (static-forever-eu)")
+_icn2 = _FakeNet({"/data/wow/media/item/5": (500, {}, b""), "/data/wow/media/item/6": _media(1)})
+_ic.execute("INSERT OR IGNORE INTO items (item_id) VALUES (5), (6)"); _ic.commit()
+_i4 = API.fill_icons(_ic, API.Client(("ID", "S"), fetch=_icn2, cache_dir=_tf.mkdtemp()), limit=10)
+check(_i4["icons"] == 0 and 5 not in {r[0] for r in _ic.execute("SELECT item_id FROM api_icons")},
+      "iconos: un error del servidor corta la vuelta y se reintenta la próxima")
+_ic.close()
+check(isinstance(plan.get("icons"), dict), "iconos: el plan lleva el mapa de iconos (vacío sin archivo)")
+_ui9 = open(os.path.join(os.path.dirname(os.path.abspath(API.__file__)), "planner_ui.html"), encoding="utf-8").read()
+check(API.ICON_URL.split("{}")[0] in _ui9 and "${icon(e.item)}" in _ui9,
+      "iconos: «Qué tienes» pinta el icono con la misma dirección que la API")
+
+# ---- Libranzas y precio de venta en «Qué tienes» (27/11) ----
+# addon: al abrir la ventana de una misión que empieza con un objeto se apunta lo que da
+lua.execute("""QUEST = { id = 777, title = "Encargo: jarabe", money = 15000, xp = 450,
+    rewards = { { 262889, 1 } }, choices = { { 2589, 5 }, { 4306, 2 } }, obj = "Trae 3 jarabes Ojo de gato." }""")
+fire("QUEST_DETAIL", 264060)
+_qi = G.OroborosDB.questItems[264060]
+check(_qi and _qi.money == 15000 and _qi.xp == 450 and _qi.q == 777 and _qi["items"][1][1] == 262889
+      and _qi.choices[2][1] == 4306 and _qi.choices[2][2] == 2 and "3 jarabes" in _qi.obj,
+      "misiones: al abrir la ventana se apunta dinero, experiencia, objetos y los de elegir")
+G.C_Container.UseContainerItem(0, 1)       # usa la Bolt of Linen Cloth (2996) desde la bolsa
+fire("QUEST_DETAIL", 0)
+check(G.OroborosDB.questItems[2996] is not None, "misiones: si el juego no da el objeto, vale el que acabas de usar")
+lua.execute("OroborosDB.questItems[2996] = nil")
+fire("QUEST_DETAIL", 0)
+check(G.OroborosDB.questItems[2996] is None, "misiones: una misión de un PNJ (sin objeto) no apunta nada")
+_mis_src = open(os.path.join(ADDON, "Misiones.lua"), encoding="utf-8").read()
+check("Misiones.lua" in open(os.path.join(ADDON, "Oroboros.toc"), encoding="utf-8").read()
+      and "AcceptQuest" not in _mis_src and "CompleteQuest" not in _mis_src,
+      "misiones: está en el TOC y no acepta ni entrega nada por ti")
+# exportar: la tabla quest_items
+import oroboros_export as _EX9
+_qdb = os.path.join(_tf.mkdtemp(), "q.sqlite")
+_EX9.write_sqlite({"questItems": {264060: {"q": 777, "title": "x", "money": 15000, "xp": 450,
+                                           "items": [[262889, 1]], "choices": {1: {1: 2589, 2: 5}}, "obj": "Trae 3", "t": 1}}}, _qdb)
+_qr = sqlite3.connect(_qdb).execute("SELECT item_id, money, rewards, choices, objective FROM quest_items").fetchall()
+check(_qr == [(264060, 15000, "[[262889, 1]]", "[[2589, 5]]", "Trae 3")], f"exportar: la recompensa de cada misión va a quest_items ({_qr})")
+
+
+# plan: vender la libranza o cumplirla
+class _QD:
+    def __init__(self, qi=None, cost=50, sell_req=None):
+        self.items = {264060: {"name": "Libranza del artesano: jarabe Ojo de gato", "vendor_sell": 1},
+                      10592: {"name": "Jarabe Ojo de gato", "vendor_sell": 0},
+                      262889: {"name": "Libranza del experto sellada", "vendor_sell": 0},
+                      2589: {"name": "Linen Cloth", "vendor_sell": 10}}
+        self.quest_items = {264060: qi} if qi else {}
+        self._cost, self._sell = cost, {262889: 3000, 2589: 100, 10592: sell_req or 0}
+
+    def name(self, i):
+        return self.items[i]["name"]
+
+    def item_by_name(self, n):
+        return {v["name"].lower(): k for k, v in self.items.items()}.get(n.lower())
+
+    def best_source(self, i, n):
+        return {"method": "subasta", "unit": self._cost}
+
+    def stats(self, i):
+        return {"sell": self._sell.get(i)}
+
+
+_qs = _OP.quest_scroll
+_s1 = _qs(_QD(cost=200), 264060, 10000, {})
+check(_s1["action"] == "mirar" and _s1["req"] == 10592 and _s1["qty_est"] and "recompensa" in _s1["why"],
+      "libranza sin recompensa apuntada y barata de cumplir: abre la misión para valorarla")
+_s2 = _qs(_QD(cost=20000), 264060, 10000, {})
+check(_s2["action"] == "subasta" and "más de lo que sacas" in _s2["why"],
+      "libranza que cuesta más cumplir que vender: véndela")
+_rich = {"money": 15000, "xp": 450, "rewards": [[262889, 1]], "choices": [[2589, 5], [4306, 2]], "objective": "Trae 3 jarabes"}
+_s3 = _qs(_QD(_rich, cost=200), 264060, 10000, {})
+# da 1,5 oro + 3000 × 0,95 (sellada) + lo mejor de elegir (5 × 95); cuesta 3 × 200
+check(_s3["action"] == "cumplir" and _s3["qty"] == 3 and not _s3["qty_est"]
+      and abs(_s3["reward"] - (15000 + 2850 + 475)) < 1 and abs(_s3["gain"] - (18325 - 600)) < 1
+      and "experiencia" in _s3["why"],
+      f"libranza cuya recompensa compensa: cúmplela (da {_s3['reward']}, ganas {_s3['gain']})")
+_s4 = _qs(_QD({"money": 500, "xp": 0, "rewards": [], "choices": [], "objective": ""}, cost=200), 264060, 10000, {})
+check(_s4["action"] == "subasta" and "Véndela" in _s4["why"], "libranza cuya recompensa no compensa: véndela")
+_s5 = _qs(_QD({"money": 500, "xp": 0, "rewards": [], "choices": [], "objective": "Trae 2"}, cost=99999, sell_req=100),
+          264060, 300, {10592: 5})
+check(_s5["cost"] == 2 * 95 and "ya lo tienes" in _s5["why"] and _s5["action"] == "cumplir",
+      "libranza: si ya llevas lo que pide, cuesta lo que sacarías vendiéndolo")
+check(_qs(_QD(), 2589, 100, {}) is None, "un objeto normal no es una libranza")
+# todas las filas que van a subasta dicen precio, mínimo y ventas al día
+_sub9 = [e for v in plan["inventory"] for e in v["items"] if e["action"] == "subasta"]
+check(_sub9 and all(e["price"] and e["floor"] < e["price"] and e["vol"] is not None and "Publícalo a" in e["why"]
+                    and "al día" in e["why"] for e in _sub9),
+      f"qué tienes: cada objeto para subasta lleva precio recomendado, mínimo y ventas al día ({len(_sub9)})")
+_vr = _OP.vendor_reason
+check("solo sacas" in _vr(300, 375, 50) and "menos de un 20 % más" in _vr(426, 375, 50)
+      and "menos de uno al día" in _vr(4162, 3585, 0.2) and "no se vende" in _vr(None, 375, 0),
+      "al vendedor: si la subasta da algo más, dice por qué no compensa (no «solo sacas»)")
+check(all("." not in e["why"].split("Se venden ~")[1].split(" ")[0] for e in _sub9),
+      "qué tienes: las ventas al día salen redondeadas")
+_ui10 = open(os.path.join(ROOT, "tools", "planner_ui.html"), encoding="utf-8").read()
+check('cumplir: ["cumplir la misión"' in _ui10 and 'mirar: ["abre la misión"' in _ui10,
+      "qué tienes: la página sabe pintar «cumplir la misión» y «abre la misión»")
 
 print("\nTODO OK" if ok else "\nHAY FALLOS")
 for line in list(G.LOG.values())[-8:]:
