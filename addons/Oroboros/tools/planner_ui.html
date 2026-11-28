@@ -386,7 +386,7 @@ function renderResumen() {
       <div class="p">${money(o.profit_total, { signed: true, color: true })}</div>
       <div class="w">${fmtN(o.units)} uds × ${money(o.profit)} · ${esc((o.why || [])[2] || o.why[0] || "")}</div>
     </div>`).join("");
-  const order = `<p class="lead">${esc(s.order_txt)} Unos ${s.clicks} clics en total.</p>`;
+  const order = `<p class="lead">${esc(s.order_txt)} Unos ${s.clicks} clics en total.</p>${farmRateHtml(PLAN.farm_rate)}`;
   const top = PLAN.learn.filter(l => l.daily_profit > 0 && l.reach !== "desconocido" && !l.new_profession).slice(0, 3).map(l =>
     `<li><b>${esc(l.name)}</b> (${esc(l.prof)}): ${money(l.daily_profit)}/día${l.payback_days !== null ? ", se paga en " + (l.payback_days < 1 ? "menos de un día" : fmtN(l.payback_days) + " días") : ""}${l.skill_gap ? `; te faltan ${l.skill_gap} puntos` : ""}${l.new_profession ? "; profesión nueva" : ""}.</li>`).join("");
   $("#v-resumen").innerHTML = tiles + warn + `<div class="grid2">
@@ -511,16 +511,28 @@ function renderAprender() {
 
 const RISK = { bajo: "good", medio: "warn", alto: "bad" };
 let ideaChar = null;
+// Norma: nada que gane menos que farmear. De dónde sale el ritmo y cuánto fiarse
+function farmRateHtml(f) {
+  if (!f) return "";
+  const mins = s => Math.round((s || 0) / 60);
+  const part = (p, what, unit) => !p || !p.n ? "" : p.secs ? `${what} ${p.gph != null ? money(p.gph) + "/h" : "sin ritmo"} (${mins(p.secs)} min, ${fmtN(p.n)} ${unit})`
+    : `${what}: ${fmtN(p.n)} ${unit} sin tiempo medido, no cuentan`;
+  const parts = f.est ? "" : [part(f.mobs, "criaturas", "muertes"), part(f.gather, "plantas y minerales", "nodos")].filter(Boolean).join(" · ");
+  const pct = x => Math.round(x * 100) + " %";
+  const down = f.est || f.active_share == null ? "" : ` Cuenta descansos y movimientos (matas y recoges el ${pct(f.active_share)} del tiempo: ${f.active_measured != null ? `medido ${pct(f.active_measured)} en ${mins(f.span_secs)} min de sesión, mezclado con` : "aún sin medir,"} el supuesto) y ${f.town_min_per_h} min por hora de viajes a vender; solo matando y recogiendo serían ${money(f.gph_active)} a la hora.`;
+  return `<p class="sub">Mínimo de todo el plan: lo que sacas farmeando, ${money(f.gph)} a la hora${f.est ? " (supuesto: aún no hay nada medido con el addon)" : ` con ${mins(f.secs)} min activos medidos ${confPill(f.conf)}`}${parts ? ". " + parts : ""}.${down}</p>`;
+}
+
 // Aguasnegras → tu casa: lo que está más barato en la subasta neutral y se vende en la tuya
 function neutralHtml(n) {
   if (!n || !n.house) return "";
   const inc = n.items.filter(f => f.included);
-  const rows = n.items.map(f => `<tr${f.included ? "" : ' style="opacity:.6"'}><td>${esc(f.name)}</td><td class="n">${fmtN(f.units)}</td><td class="n">${money(f.max_buy)}</td><td class="n">${money(f.sell)}</td><td class="n">${money(f.cost * f.units)}</td><td class="n">${money(f.profit_total, { color: true })}</td><td class="n">${Math.round(f.margin * 100)} %</td><td>${f.included ? "entra" : "no cabe en el oro que queda"}</td></tr>`).join("");
+  const rows = n.items.map(f => `<tr${f.included ? "" : ' style="opacity:.6"'}><td>${esc(f.name)}</td><td class="n">${fmtN(f.units)}</td><td class="n">${money(f.max_buy)}</td><td class="n">${money(f.sell)}</td><td class="n">${money(f.cost * f.units)}</td><td class="n">${money(f.profit_total, { color: true })}</td><td class="n">${Math.round(f.margin * 100)} %</td><td>${f.included ? (f.why || []).some(w => w.startsWith("Reducido")) ? "entra, reducido" : "entra" : esc(f.skip || "")}</td></tr>`).join("");
   const verdict = n.stale ? '<span class="pill bad">foto de hace más de 3 h: no vayas con esta lista</span>'
     : n.worth ? '<span class="pill good">compensa el viaje</span>' : '<span class="pill mute">hoy no compensa el viaje</span>';
   return `<div class="panel"><header><h2>Aguasnegras → tu casa</h2></header>
-    <p class="lead">Lo que está más barato en la subasta neutral (${esc(n.name || "")}) que en la tuya, ya con la comisión del 5 % al vender y el depósito. Solo materiales que se apilan y con ventas comprobadas en tu casa. Hay que ir a una subasta neutral, así que no entra en la ruta normal. Usa el oro que queda para apuestas (${money(n.budget)}).</p>
-    <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">${verdict}<span class="sub">${inc.length} objetos · pones ${money(n.invest)} · ganarías ${money(n.profit)} · mínimo para el viaje: 2 oro</span></div>
+    <p class="lead">Lo que está más barato en la subasta neutral (${esc(n.name || "")}) que en la tuya, ya con la comisión del 5 % al vender y el depósito. Solo materiales que se apilan y con ventas comprobadas en tu casa. Hay que ir a una subasta neutral, así que no entra en la ruta normal. Primero lo que más gana en total, con el oro libre (${money(n.budget)}). No se plantea lo que da menos que farmear (${money(n.farm_gph)} a la hora${n.farm_est ? ", supuesto" : ""}).</p>
+    <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">${verdict}<span class="sub">${inc.length} objetos · pones ${money(n.invest)} · ganarías ${money(n.profit)} tras ${money(n.trip_cost)} de vuelos${n.trip_cost_est ? " (supuesto)" : ""} · mínimo para el viaje: ${money(n.trip_min)} (farmear ${n.trip_minutes} min)</span></div>
     ${rows ? `<div class="tablewrap"><table><thead><tr><th>Objeto</th><th class="n">Unidades</th><th class="n">Compra hasta</th><th class="n">Vende a</th><th class="n">Pones</th><th class="n">Ganancia</th><th class="n">Margen</th><th></th></tr></thead><tbody>${rows}</tbody></table></div>` : '<p class="sub">Ahora no hay nada que deje margen.</p>'}
     ${n.route ? `<div class="route"><pre style="margin:0;white-space:pre-wrap">${esc(n.route)}</pre></div><div class="filters"><button class="btn" id="copyn">Copiar compras de Aguasnegras</button><span class="sub" id="copiedn" role="status"></span></div>` : ""}</div>`;
 }
@@ -712,7 +724,19 @@ function renderFarmear() {
   const keys = Object.keys(F.chars).sort((a, b) => (F.chars[b].level || 0) - (F.chars[a].level || 0));
   if (!farmChar || !F.chars[farmChar]) farmChar = keys[0];
   const C = F.chars[farmChar] || { explore: [], gather: [], kinds: [] };
-  const measured = F.measured.length ? `<div class="tablewrap"><table><thead><tr><th>Dónde</th><th class="n">Oro/h</th><th class="n">Muertes</th><th class="n">Tiempo activo</th><th class="n">Por muerte</th><th>Criaturas</th><th>Lo que más te dejó</th><th>Confianza</th></tr></thead><tbody>${
+  // Por zona: «cuando pasaste por aquí ganaste…» y dentro, cada criatura y lo recogido
+  const subs = l => l && l.length ? `<div class="sub">${l.map(esc).join(", ")}</div>` : "";
+  const rate = v => v != null ? money(v) + '<span class="sub">/h</span>' : '<span class="sub">poco tiempo</span>';
+  const zones = (F.zones || []).length ? F.zones.map((z, i) => `<details class="zone"${i === 0 ? " open" : ""}><summary>
+      Cuando pasaste por <b>${esc(z.zone)}</b> ganaste <b>${money(z.value)}</b> en unos ${fTime(z.secs)} activos
+      (${fmtN(z.kills)} muertes${z.nodes ? `, ${fmtN(z.nodes)} nodos` : ""}): ${rate(z.gph)} contando descansos y viajes a vender ${confPill(z.confidence)}</summary>
+      <div class="tablewrap"><table><thead><tr><th>Criatura</th><th class="n">Muertes</th><th class="n">Por muerte</th><th class="n">Ganado</th><th class="n">Oro/h</th><th>Lo que más te dejó</th><th>Confianza</th></tr></thead><tbody>${
+      z.mobs.map(m => `<tr><td><b>${esc(m.name)}</b>${m.level ? ` <span class="sub">niv. ${m.level}</span>` : ""}${m.cls && m.cls !== "normal" ? ` <span class="pill warn">${esc(m.cls)}</span>` : ""}${subs(m.subs)}</td>
+        <td class="n">${fmtN(m.kills)}</td><td class="n">${money(m.per_kill)}</td><td class="n">${money(m.value)}</td><td class="n">${rate(m.gph)}</td>
+        <td><ul class="why">${fTop(m.top_items)}</ul></td><td>${confPill(m.confidence)}</td></tr>`).join("")}${
+      z.gather.map(g => `<tr><td><b>Plantas y minerales</b>${subs(g.subs)}</td><td class="n">${fmtN(g.nodes)} nodos</td><td class="n">${money(g.nodes ? g.value / g.nodes : 0)}<span class="sub">/nodo</span></td>
+        <td class="n">${money(g.value)}</td><td class="n">${g.secs ? rate(g.gph) : '<span class="sub">sin tiempo medido</span>'}</td><td><ul class="why">${fTop(g.top_items)}</ul></td><td></td></tr>`).join("")}</tbody></table></div></details>`).join("") : "";
+  const measured = zones ? zones : F.measured.length ? `<div class="tablewrap"><table><thead><tr><th>Dónde</th><th class="n">Oro/h</th><th class="n">Muertes</th><th class="n">Tiempo activo</th><th class="n">Por muerte</th><th>Criaturas</th><th>Lo que más te dejó</th><th>Confianza</th></tr></thead><tbody>${
     F.measured.map(r => `<tr><td><b>${esc(r.sub)}</b><div class="sub">${esc(r.zone)}</div></td>
       <td class="n">${r.gph !== null ? money(r.gph) : '<span class="sub">poco tiempo</span>'}</td><td class="n">${r.kills}</td><td class="n">${fTime(r.secs)}</td>
       <td class="n">${money(r.per_kill)}</td>

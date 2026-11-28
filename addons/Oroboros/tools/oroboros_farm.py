@@ -271,7 +271,7 @@ def read_measured(archive, market):
     """{"mobs": [{npc, sub, zone, map, kills, secs, copper, items}], "npcs": {npc: {name, lvl, cls}}} del archivo."""
     import json
     import sqlite3
-    out = {"mobs": [], "npcs": {}, "places": {}, "maps": {}}
+    out = {"mobs": [], "npcs": {}, "places": {}, "maps": {}, "gather": []}
     if not archive or not os.path.exists(archive):
         return out
     con = sqlite3.connect(archive)
@@ -280,17 +280,161 @@ def read_measured(archive, market):
             row = con.execute("SELECT value FROM meta WHERE key = ?", (key,)).fetchone()
             if row:
                 out[field] = json.loads(row[0])
-        rows = con.execute("SELECT f.npc, f.sub, f.zone, f.map, f.kills, f.secs, f.copper, f.items FROM farm_mobs f "
+        cols = [r[1] for r in con.execute("PRAGMA table_info(farm_mobs)")]
+        span = "f.span" if "span" in cols else "0"
+        rows = con.execute(f"SELECT f.npc, f.sub, f.zone, f.map, f.kills, f.secs, f.copper, f.items, {span} FROM farm_mobs f "
                            "JOIN markets m ON m.market_id = f.market_id WHERE m.key = ?", (market,)).fetchall()
         npcs = con.execute("SELECT npc, name, lvl, cls FROM farm_npcs").fetchall()
+        try:
+            gcols = [r[1] for r in con.execute("PRAGMA table_info(farm_gather)")]
+            gspan = "g.span" if "span" in gcols else "0"
+            gat = con.execute(f"SELECT g.sub, g.zone, g.map, g.nodes, g.secs, g.items, {gspan} FROM farm_gather g "
+                              "JOIN markets m ON m.market_id = g.market_id WHERE m.key = ?", (market,)).fetchall()
+        except sqlite3.OperationalError:    # archivo sin el tiempo de recolección
+            gat = []
     except sqlite3.OperationalError:        # archivo anterior al farmeo
         return out
     finally:
         con.close()
-    for npc, sub, zone, mapid, kills, secs, copper, items in rows:
+    for npc, sub, zone, mapid, kills, secs, copper, items, sp in rows:
         out["mobs"].append({"npc": npc, "sub": sub, "zone": zone, "map": mapid, "kills": kills or 0, "secs": secs or 0,
-                            "copper": copper or 0, "items": {int(k): v for k, v in json.loads(items or "{}").items()}})
+                            "copper": copper or 0, "items": {int(k): v for k, v in json.loads(items or "{}").items()},
+                            "span": sp or 0})
     out["npcs"] = {n: {"name": name, "lvl": lvl, "cls": cls} for n, name, lvl, cls in npcs}
+    for sub, zone, mapid, nodes, secs, items, sp in gat:
+        out["gather"].append({"sub": sub, "zone": zone, "map": mapid, "nodes": nodes or 0, "secs": secs or 0,
+                              "items": {int(k): v for k, v in json.loads(items or "{}").items()}, "span": sp or 0})
+    return out
+
+
+RATE_MIN_SECS = 60              # con menos de un minuto medido no hay ritmo
+RATE_LOW_SECS = 30 * 60         # menos de media hora: confianza baja
+RATE_HIGH_SECS = 2 * 3600       # dos horas o más: confianza alta
+# Farmear no es solo matar y recoger: descansar, moverse entre grupos y volver a vender también es tiempo.
+DOWN_ACTIVE = 0.6               # supuesto: el 60 % de la sesión es matar y recoger (40 % descansos y movimientos)
+DOWN_PRIOR_SECS = 3600          # peso del supuesto: con una hora de sesión medida, mitad medido y mitad supuesto
+TOWN_MIN_PER_H = 10             # viajes a vender, reparar y vaciar bolsas: minutos por cada hora de sesión
+
+
+def unit_secs(rows, count):
+    """Segundos activos por muerte (o por nodo) en lo que sí tiene tiempo; None si nada lo tiene."""
+    timed = [r for r in rows if r.get("secs")]
+    n = sum(r.get(count) or 0 for r in timed)
+    return sum(r["secs"] for r in timed) / n if n else None
+
+
+def eff_secs(r, count, spu):
+    """Tiempo de una fila: el medido o, si no tiene (la primera muerte de cada sesión, nodos de antes del 28/11),
+    lo que suele costar cada muerte o nodo. Así su botín no sube el ritmo de balde."""
+    if r.get("secs"):
+        return r["secs"]
+    return (r.get(count) or 0) * spu if spu else 0
+
+
+def farm_rate(meas, ac, prices, overhead=None):
+    """Oro por hora farmeando, con todo lo medido: criaturas (oro + botín) y plantas/minerales (botín). Es el mínimo
+    que el plan pide a cualquier propuesta. None con menos de un minuto medido.
+    El tiempo no es solo el activo: se amortizan los descansos y movimientos (la parte activa de la sesión, medida con
+    `span` y mezclada con el supuesto DOWN_ACTIVE según cuánto hay medido) y los viajes a vender (TOWN_MIN_PER_H).
+    overhead: catalog.json["farm_overhead"] ({"active", "prior_secs", "town_min_per_h"}) para cambiar los supuestos."""
+    ov = overhead or {}
+    a0 = ov.get("active", DOWN_ACTIVE)
+    w0 = ov.get("prior_secs", DOWN_PRIOR_SECS)
+    town = ov.get("town_min_per_h", TOWN_MIN_PER_H)
+    def part(rows, count):
+        spu = unit_secs(rows, count)
+        val = lambda r: (r.get("copper") or 0) + sum(q * unit_value(it, ac, prices) for it, q in r["items"].items())
+        timed = [r for r in rows if eff_secs(r, count, spu)]          # sin ningún tiempo medido, no cuenta
+        value = sum(val(r) for r in timed)
+        secs = sum(eff_secs(r, count, spu) for r in timed)
+        return {"value": value, "secs": secs, "measured_secs": sum(r.get("secs") or 0 for r in rows),
+                "n": sum(r.get(count) or 0 for r in rows), "untimed": sum(val(r) for r in rows) - value,
+                "gph": value / secs * 3600 if secs >= RATE_MIN_SECS else None}
+    mobs, gather = part(meas.get("mobs") or [], "kills"), part(meas.get("gather") or [], "nodes")
+    secs = mobs["secs"] + gather["secs"]
+    if secs < RATE_MIN_SECS:
+        return None
+    measured = mobs["measured_secs"] + gather["measured_secs"]      # la confianza, con lo medido de verdad
+    conf = "baja" if measured < RATE_LOW_SECS else "media" if measured < RATE_HIGH_SECS else "alta"
+    value = mobs["value"] + gather["value"]
+    # parte activa de la sesión: lo medido (solo filas con sesión) mezclado con el supuesto; con poco medido, el supuesto
+    rows = [r for r in (meas.get("mobs") or []) + (meas.get("gather") or []) if r.get("span")]
+    act_m, span_m = sum(r["secs"] or 0 for r in rows), sum(r["span"] for r in rows)
+    active = min(1.0, (act_m + a0 * w0) / (span_m + w0)) if span_m + w0 > 0 else a0
+    session = secs / active
+    total = session * (1 + town / 60)
+    return {"gph": value / total * 3600, "gph_active": value / secs * 3600, "secs": secs, "conf": conf,
+            "active_share": active, "active_measured": act_m / span_m if span_m else None, "span_secs": span_m,
+            "town_min_per_h": town, "mobs": mobs, "gather": gather}
+
+
+def amortized_gph(value, secs, rate):
+    """Oro por hora de `value` ganado en `secs` activos, con los descansos, movimientos y viajes a vender del ritmo
+    general (farm_rate). None con menos de un minuto."""
+    if not secs or secs < RATE_MIN_SECS:
+        return None
+    share = (rate or {}).get("active_share") or DOWN_ACTIVE
+    town = (rate or {}).get("town_min_per_h", TOWN_MIN_PER_H)
+    return value / (secs / share * (1 + town / 60)) * 3600
+
+
+def measured_zones(meas, ac, prices, rate):
+    """«Cuando pasaste por aquí ganaste…»: lo medido agrupado por zona y, dentro, cada criatura (todas sus subzonas
+    juntas) y lo recogido. El oro por hora cuenta descansos y viajes a vender, como el ritmo del plan."""
+    zones = {}
+    zone = lambda name: zones.setdefault(name or "?", {"zone": name or "?", "value": 0.0, "secs": 0, "span": 0,
+                                                       "kills": 0, "nodes": 0, "mobs": {}, "gather": {}})
+    npcs = meas.get("npcs") or {}
+    spk = unit_secs(meas.get("mobs") or [], "kills")
+    spn = unit_secs(meas.get("gather") or [], "nodes")
+    for m in meas.get("mobs") or []:
+        z = zone(m["zone"])
+        secs = eff_secs(m, "kills", spk)
+        v = (m["copper"] or 0) + sum(q * unit_value(it, ac, prices) for it, q in m["items"].items())
+        c = z["mobs"].setdefault(m["npc"], {"npc": m["npc"], "kills": 0, "secs": 0, "value": 0.0, "copper": 0,
+                                            "qty": {}, "subs": []})
+        c["kills"] += m["kills"]; c["secs"] += secs; c["value"] += v; c["copper"] += m["copper"] or 0
+        c["measured"] = c.get("measured", 0) + (m["secs"] or 0)
+        if m["sub"] and m["sub"] not in c["subs"]:
+            c["subs"].append(m["sub"])
+        for it, q in m["items"].items():
+            c["qty"][it] = c["qty"].get(it, 0) + q
+        z["value"] += v; z["secs"] += secs; z["span"] += m.get("span") or 0; z["kills"] += m["kills"]
+        z["measured"] = z.get("measured", 0) + (m["secs"] or 0)
+    for g in meas.get("gather") or []:
+        z = zone(g["zone"])
+        v = sum(q * unit_value(it, ac, prices) for it, q in g["items"].items())
+        h = z["gather"].setdefault("all", {"nodes": 0, "secs": 0, "value": 0.0, "qty": {}, "subs": []})
+        secs = eff_secs(g, "nodes", spn)
+        h["nodes"] += g["nodes"]; h["secs"] += secs; h["value"] += v
+        if g["sub"] and g["sub"] not in h["subs"]:
+            h["subs"].append(g["sub"])
+        for it, q in g["items"].items():
+            h["qty"][it] = h["qty"].get(it, 0) + q
+        z["nodes"] += g["nodes"]; z["span"] += g.get("span") or 0
+        z["measured"] = z.get("measured", 0) + (g["secs"] or 0)
+        if secs:                            # sin ningún nodo con tiempo, lo recogido no entra en el oro por hora
+            z["value"] += v; z["secs"] += secs
+    top = lambda qty: sorted(((it, q, q * unit_value(it, ac, prices)) for it, q in qty.items()), key=lambda x: -x[2])[:3]
+    out = []
+    for z in zones.values():
+        mobs = []
+        for c in z["mobs"].values():
+            t = (ac or {}).get("templates", {}).get(c["npc"]) if ac else None
+            n = npcs.get(c["npc"]) or {}
+            mobs.append({"npc": c["npc"], "name": n.get("name") or (t and t["name"]) or f"npc:{c['npc']}",
+                         "level": n.get("lvl") or (t and t["maxlevel"]), "cls": n.get("cls"), "kills": c["kills"],
+                         "secs": c["secs"], "value": c["value"], "per_kill": c["value"] / c["kills"] if c["kills"] else None,
+                         "gph": amortized_gph(c["value"], c["secs"], rate), "subs": c["subs"], "top_items": top(c["qty"]),
+                         "confidence": _confidence(c["kills"], c.get("measured", 0))})
+        mobs.sort(key=lambda x: -x["value"])
+        gather = [{"nodes": h["nodes"], "secs": h["secs"], "value": h["value"], "subs": h["subs"],
+                   "gph": amortized_gph(h["value"], h["secs"], rate), "top_items": top(h["qty"])}
+                  for h in z["gather"].values()]
+        out.append({"zone": z["zone"], "value": z["value"], "secs": z["secs"], "span": z["span"], "kills": z["kills"],
+                    "nodes": z["nodes"], "gph": amortized_gph(z["value"], z["secs"], rate),
+                    "confidence": _confidence(z["kills"], z.get("measured", 0)), "mobs": mobs, "gather": gather})
+    out.sort(key=lambda x: -x["value"])
     return out
 
 
@@ -489,6 +633,8 @@ def item_ids(farm):
     """Objetos que aparecen en el bloque del plan (para ponerles nombre)."""
     ids = set()
     rows = list(farm["measured"])
+    for z in farm.get("zones") or []:
+        rows += z["mobs"] + z["gather"]
     for c in farm["chars"].values():
         rows += c["explore"] + c["gather"]
     for r in rows:
@@ -512,6 +658,8 @@ def for_plan(data, archive, ac_dir=None, wow_path=None, farmeo_path=None):
     farm = farm_plan(ac, gm, prices, {k: {"level": c["level"], "professions": data.professions.get(k, {})}
                                       for k, c in data.chars.items()}, meas)
     farm["places"], farm["maps"] = meas["places"], meas["maps"]
+    farm["rate"] = farm_rate(meas, ac, prices, (getattr(data, "catalog", None) or {}).get("farm_overhead"))
+    farm["zones"] = measured_zones(meas, ac, prices, farm["rate"])
     if farmeo_path and ac:
         farm["farmeo_bytes"] = write_farmeo(farmeo_path, farmeo_data(ac, gm, prices, meas))
     names = {}

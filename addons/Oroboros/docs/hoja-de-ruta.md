@@ -198,7 +198,7 @@ El 24/11 se repasaron todas las maneras de ganar oro (fabricar, transformar, apr
 
 **Dos arreglos después (25/11):**
 - La idea de evento ya no parte de la mediana si el objeto está hundido (un 15 % o más por debajo): parte del punto medio entre hoy y la mediana, y lo dice.
-- Mínimo por fabricación: una receta que da menos de 2 oro a la hora (a 3 s por fabricación, unos 17 cobres cada una) se descarta con su motivo. Constantes `CRAFT_SECONDS` y `MIN_CRAFT_HOUR` en `tools/oroboros_plan.py`.
+- Mínimo por fabricación: una receta que da menos de 2 oro a la hora (a 3 s por fabricación, unos 17 cobres cada una) se descarta con su motivo. Constantes `CRAFT_SECONDS` y `MIN_CRAFT_HOUR` en `tools/oroboros_plan.py`. **Sustituido el 28/11** por la norma de farmeo (ver `docs/arquitectura.md`): el mínimo ya no es fijo, es lo que sacas farmeando.
 
 ### Fase 7: maneras nuevas
 

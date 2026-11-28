@@ -49,6 +49,7 @@ Para probar el addon en el juego, enlaza la carpeta en vez de copiarla (así los
 - **Un clic o una tecla por acción protegida** (comprar, publicar, fabricar). Nada de automatizarlo: es botting y hay baneo.
 - El addon no tiene red ni escribe archivos: solo SavedVariables (se escriben en `/reload` o al salir).
 - Los números los calcula código; un LLM solo explica o propone ideas.
+- Nada que gane menos que farmear el mismo rato: cualquier propuesta nueva del plan pasa por `farm_value` (tiempo × ritmo de farmeo) y ordena por ganancia total, no por %. Los viajes cuentan su tiempo y su coste.
 - Los objetivos de las ideas son escenarios, no predicciones: siempre con riesgo y stop.
 - Cada cambio de lógica lleva su comprobación en `tests/run_tests.py`.
 - Eventos o funciones del juego que puedan no existir en Forever: registrar con `ns.On` (ya usa `pcall`) o comprobar antes de llamar.

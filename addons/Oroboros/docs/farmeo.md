@@ -110,6 +110,9 @@ Se calcula **fuera del juego**, como el plan. Dentro solo entra un resumen peque
 - **Qué subzona es**: el juego da el nombre de la subzona (`GetSubZoneText`) y el mapa (`C_Map.GetBestMapForUnit`), no el `areaId`. El addon traduce a su nombre en español cada `areaId` de `Farmeo.lua` (`C_Map.GetAreaInfo`), los compara con la subzona actual y guarda esa tabla `areaId → nombre` en `OroborosDB.farmAreas`. Lo medido se guarda con el `areaId` que coincide, o con el nombre si no coincide ninguno. El exportador empareja estimado y medido con esa tabla.
 - **«Medido»** = oro recogido + botín valorado a los precios de hoy (como hace Goblinomics), no lo cobrado al vender.
 - Recolección: nodos recogidos y objetos (los hechizos de recolección, `UNIT_SPELLCAST_SUCCEEDED` y el botín).
+- **Tiempo de recolección (28/11):** un solo reloj para muertes y nodos; el hueco hasta un nodo cuenta para la recolección si es de menos de 3 minutos (hasta una muerte, 2). Así el ritmo de farmeo del plan incluye las plantas sin contar dos veces el mismo rato. Los nodos de antes no tienen tiempo: cuentan lo que suele costar un nodo (si no hay ninguno con tiempo, no cuentan).
+- **Sesión (28/11):** además del tiempo activo, cada criatura y cada recolección guardan `span`, los huecos de hasta 10 minutos (descansos, moverse entre grupos). El ritmo del plan usa la parte activa de la sesión para amortizar esos ratos y suma 10 minutos por hora de viajes a vender.
+- **Donde ya has farmeado (28/11), por zona:** «Cuando pasaste por <zona> ganaste X en Y activos: Z/h contando descansos y viajes a vender» y, dentro, cada criatura con todas sus subzonas juntas (muertes, por muerte, ganado, oro por hora, lo que más soltó) y lo recogido. Lo que va a `Farmeo.lua` sigue siendo por subzona.
 - El exportador lo pasa al archivo (tablas `farm_obs`).
 - **Lo medido manda**:
   - con **30 muertes o más** de una criatura en una subzona, su valor por muerte y su ritmo son los medidos, sin mezclar;

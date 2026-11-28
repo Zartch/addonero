@@ -7,11 +7,13 @@ local _, ns = ...
 local Farm = {}
 ns.Farm = Farm
 
-local ACTIVE_GAP = 120      -- huecos entre muertes de menos de 2 min cuentan como tiempo activo
+local ACTIVE_GAP = 120      -- huecos de menos de 2 min antes de una muerte cuentan como tiempo activo
+local GATHER_GAP = 180      -- antes de un nodo, 3 min (entre nodos se va volando o corriendo)
+local SESSION_GAP = 600     -- hasta 10 min es la misma sesión: descansar, moverse, buscar grupos (span)
 local SEEN_MAX = 300        -- botines ya contados que se recuerdan (para no contar dos veces al reabrir)
 local LOOT_MONEY = 2        -- tipo de hueco de botín: dinero
 
-local lastKill
+local lastActive            -- última muerte o último nodo: el tiempo se reparte sin contarlo dos veces
 local seen, seenList = {}, {}
 
 local function split(s)
@@ -58,7 +60,7 @@ local function mob(npc)
     local key = npc .. "@" .. sub
     local m = data().mobs[key]
     if not m then
-        m = { npc = npc, zone = zone, sub = sub, map = map, kills = 0, copper = 0, secs = 0, items = {} }
+        m = { npc = npc, zone = zone, sub = sub, map = map, kills = 0, copper = 0, secs = 0, span = 0, items = {} }
         data().mobs[key] = m
     end
     return m
@@ -68,10 +70,21 @@ local function gatherBucket()
     local zone, sub, map = where()
     local g = data().gather[sub]
     if not g then
-        g = { zone = zone, sub = sub, map = map, nodes = 0, items = {} }
+        g = { zone = zone, sub = sub, map = map, nodes = 0, secs = 0, span = 0, items = {} }
         data().gather[sub] = g
     end
     return g
+end
+
+-- Reparte el hueco desde lo último (muerte o nodo): activo si es corto, sesión si es de menos de 10 min
+local function clock(bucket, gap)
+    local now = time()
+    if lastActive then
+        local d = now - lastActive
+        if d < gap then bucket.secs = (bucket.secs or 0) + d end
+        if d < SESSION_GAP then bucket.span = (bucket.span or 0) + d end
+    end
+    lastActive = now
 end
 
 local function firstTime(key)
@@ -85,11 +98,9 @@ end
 function Farm.OnKill(destGUID)
     local npc = Farm.NpcFromGUID(destGUID)
     if not npc or not OroborosDB then return end
-    local now = time()
     local m = mob(npc)
     m.kills = m.kills + 1
-    if lastKill and now - lastKill < ACTIVE_GAP then m.secs = m.secs + (now - lastKill) end
-    lastKill = now
+    clock(m, ACTIVE_GAP)
 end
 
 -- Botín: cada objeto y cada moneda va a la criatura (o al nodo) de donde sale, según GetLootSourceInfo
@@ -110,7 +121,10 @@ ns.On("LOOT_OPENED", function()
                     elseif id then m.items[id] = (m.items[id] or 0) + qty end
                 elseif guid:match("^GameObject") then
                     local g = gatherBucket()
-                    if firstTime(guid .. ":node") then g.nodes = g.nodes + 1 end
+                    if firstTime(guid .. ":node") then
+                        g.nodes = g.nodes + 1
+                        clock(g, GATHER_GAP)
+                    end
                     if id then g.items[id] = (g.items[id] or 0) + qty end
                 end
             end
