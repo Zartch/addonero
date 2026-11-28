@@ -280,6 +280,21 @@ lua.execute("""LOOT = { { type = 1, link = "|Hitem:2447::|h[Peacebloom]|h", qty 
 fire("LOOT_OPENED")
 _g = lua.eval('OroborosDB.farm.gather["Bosque X"]')
 check(_g.nodes == 1 and _g["items"][2447] == 2, "farmeo: recolección (nodo) aparte")
+lua.execute("FARM_T = FARM_T + 90")
+lua.execute("""LOOT = { { type = 1, link = "|Hitem:2447::|h[Peacebloom]|h", qty = 1, sources = { "GameObject-0-1-0-1-1617-56", 1 } } }""")
+fire("LOOT_OPENED")
+lua.execute("FARM_T = FARM_T + 600")
+lua.execute("""LOOT = { { type = 1, link = "|Hitem:2447::|h[Peacebloom]|h", qty = 1, sources = { "GameObject-0-1-0-1-1617-57", 1 } } }""")
+fire("LOOT_OPENED")
+_g = lua.eval('OroborosDB.farm.gather["Bosque X"]')
+check(_g.nodes == 3 and _g.secs == 90, f"farmeo: el tiempo entre nodos cuenta para la recolección, salvo las pausas largas ({_g.secs})")
+check(_g.span == 90 and lua.eval('OroborosDB.farm.mobs["1234@Bosque X"]').span >= 20,
+      f"farmeo: la sesión cuenta también los huecos de hasta 10 min (descansos), no las pausas largas ({_g.span})")
+lua.execute("FARM_T = FARM_T + 300")
+lua.execute("""LOOT = { { type = 1, link = "|Hitem:2447::|h[Peacebloom]|h", qty = 1, sources = { "GameObject-0-1-0-1-1617-58", 1 } } }""")
+fire("LOOT_OPENED")
+_g = lua.eval('OroborosDB.farm.gather["Bosque X"]')
+check(_g.secs == 90 and _g.span == 390, f"farmeo: un descanso de 5 min es sesión pero no tiempo activo ({_g.secs}, {_g.span})")
 lua.execute('TARGET = { guid = "Creature-0-1-0-1-1234-10", name = "Lobo", lvl = 12, cls = "normal", attack = true }')
 fire("PLAYER_TARGET_CHANGED")
 _n = lua.eval("OroborosDB.farm.npcs[1234]")
@@ -832,7 +847,7 @@ from oroboros_archive import append_farm
 _fdb = {"chars": {"Zartch-R": {"market": "M"}}, "farm": {
     "mobs": {"1234@Bosque X": {"npc": 1234, "zone": "Elwynn", "sub": "Bosque X", "map": 1429, "kills": 4, "copper": 57,
                                "secs": 20, "items": {2589: 2}}},
-    "gather": {"Bosque X": {"zone": "Elwynn", "sub": "Bosque X", "map": 1429, "nodes": 1, "items": {2447: 2}}},
+    "gather": {"Bosque X": {"zone": "Elwynn", "sub": "Bosque X", "map": 1429, "nodes": 1, "secs": 45, "items": {2447: 2}}},
     "npcs": {1234: {"name": "Lobo", "lvl": 12, "cls": "normal"}}}}
 arch_f = os.path.join(_tf.mkdtemp(), "f.sqlite")
 _cf = open_archive(arch_f)
@@ -840,7 +855,7 @@ append_farm(_cf, _fdb, "M"); append_farm(_cf, _fdb, "M")
 _row = _cf.execute("SELECT npc, sub, zone, map, kills, copper, secs, items FROM farm_mobs").fetchall()
 check(len(_row) == 1 and _row[0][:7] == (1234, "Bosque X", "Elwynn", 1429, 4, 57, 20) and json.loads(_row[0][7]) == {"2589": 2},
       f"farmeo al archivo: sin duplicar y con las cifras del juego {_row}")
-check(_cf.execute("SELECT nodes FROM farm_gather").fetchone() == (1,) and
+check(_cf.execute("SELECT nodes, secs FROM farm_gather").fetchone() == (1, 45) and
       _cf.execute("SELECT name, lvl, cls FROM farm_npcs WHERE npc=1234").fetchone() == ("Lobo", 12, "normal"),
       "farmeo al archivo: recolección y datos de la criatura")
 _cf.close()
@@ -1240,15 +1255,15 @@ check(_lflip(_f5(ladder=[(300, 100000), (900, 40)]), 777777, 48, "x") is None,
 _fx = [f for f in find_flips(_dl, 48, next(iter(_dl.chars))) if f["out_item"] == 777777]
 check(len(_fx) == 1 and _fx[0]["units"] == 20, "reventa: con la lista de precios de la API, find_flips usa los escalones")
 
-# mínimo por fabricación: lo que da menos de 2 oro a la hora no entra, aunque el margen sea bueno
+# mínimo por fabricación: lo que da menos que farmear esos 3 s no entra, aunque el margen sea bueno
 _dm = _f5()
 _good = [o for o in (_OP.evaluate(_dm, r, 48) for r in _dm.recipes) if o.get("profit") and not o.get("reason")]
-_keep = _OP.MIN_CRAFT_PROFIT
-_OP.MIN_CRAFT_PROFIT = _good[0]["profit"] + 1
+_keep = _OP.farm_value(_dm, _OP.CRAFT_SECONDS)
+_OP.set_farm(_dm, (_good[0]["profit"] + 1) * 3600 / _OP.CRAFT_SECONDS)
 _bad = _OP.evaluate(_dm, next(r for r in _dm.recipes if r["id"] == _good[0]["recipe"]), 48)
-_OP.MIN_CRAFT_PROFIT = _keep
-check(_good and "No merece el tiempo" in (_bad.get("reason") or "") and abs(_keep - 20000 * 3 / 3600) < 1e-9,
-      f"recetas: una fabricación que da menos de 2 oro a la hora se descarta con su motivo ({_bad.get('reason')})")
+check(_good and "farmeando" in (_bad.get("reason") or "") and abs(_keep - _OP.FARM_GPH_DEFAULT * 3 / 3600) < 1e-9
+      and not _dm.farm_est,
+      f"recetas: una fabricación que da menos que farmear se descarta con su motivo ({_bad.get('reason')})")
 check(all(o["profit"] >= _keep for o in plan["opportunities"] if o.get("included") and o["kind"] == "craft"),
       "recetas: nada de lo elegido baja del mínimo por fabricación")
 
@@ -1442,11 +1457,31 @@ _opps = ([{"kind": "flip", "name": f"reventa {k}", "conf": "baja", "cost_total":
            "crafts": 1, "reason": None} for k in range(5)] +
          [{"kind": "craft", "name": f"lote {k}", "conf": "baja", "cost_total": 5, "profit_total": 5, "profit": 5,
            "crafts": 1, "trial": True, "reason": None} for k in range(3)])
-_OP.select(None, _FakePlan(), _opps, 100, 48)
+_OP.select(type("_FD", (), {"farm_gph": 1})(), _FakePlan(), _opps, 100, 48)   # sin norma de farmeo: solo el riesgo
 _OP.apply_flip, _OP.apply_opportunity = _orig
 _inc_f = sum(1 for o in _opps if o["kind"] == "flip" and o.get("included"))
 _inc_t = sum(1 for o in _opps if o["kind"] == "craft" and o.get("included"))
 check((_inc_f, _inc_t) == (1, 3), f"riesgo: las reventas usan como mucho la mitad del 30 % y los lotes de prueba entran ({_inc_f} reventas, {_inc_t} lotes)")
+# Norma: nada que gane menos que farmear el mismo rato; y primero lo que más gana en total, no el %
+_OP.apply_flip = _OP.apply_opportunity = _fake_apply
+_FD = type("_FD", (), {"farm_gph": 36000})()           # 10 cobres por segundo
+_on = [{"kind": "flip", "name": "poco y al 400 %", "conf": "alta", "cost_total": 10, "profit_total": 40, "profit": 40,
+        "crafts": 1, "reason": None},                    # 30 s = 300 cobres farmeando: no se plantea
+       {"kind": "flip", "name": "mucho y al 50 %", "conf": "alta", "cost_total": 80, "profit_total": 4000, "profit": 4000,
+        "crafts": 1, "reason": None},
+       {"kind": "flip", "name": "algo y al 300 %", "conf": "alta", "cost_total": 30, "profit_total": 900, "profit": 900,
+        "crafts": 1, "reason": None}]
+_ch = _OP.select(_FD, _FakePlan(), _on, 100, 48)
+_OP.apply_flip, _OP.apply_opportunity = _orig
+check([o["name"] for o in _ch] == ["mucho y al 50 %"] and "farmeando" in (_on[0].get("skip") or "")
+      and "No cabe" in (_on[2].get("skip") or ""),
+      f"norma: entra primero lo que más gana en total y lo que da menos que farmear se descarta ({[o['name'] for o in _ch]}, {_on[0].get('skip')})")
+_tree = [{"method": "subasta", "per_craft": 2}, {"method": "vendedor", "per_craft": 1},
+         {"method": "fabricar", "per_craft": 1, "yield": 2, "children": [{"method": "subasta", "per_craft": 3}]}]
+check(_OP.op_seconds({"kind": "craft", "crafts": 4, "tree": _tree})
+      == 4 * 3 + _OP.BUY_SECONDS + _OP.VENDOR_SECONDS + 2 * 3 + _OP.BUY_SECONDS + _OP.POST_SECONDS
+      and _OP.op_seconds({"kind": "flip"}) == _OP.BUY_SECONDS + _OP.POST_SECONDS,
+      "norma: el tiempo de una receta suma compras, vendedor, fabricaciones (también lo intermedio) y publicar")
 # Subasta o vendedor se decide por objeto (bolsas + banco), no por sitio
 _vdb = os.path.join(tmp, "vend.sqlite"); _sh.copy(os.path.join(tmp, "a.sqlite"), _vdb)
 _cv = sqlite3.connect(_vdb)
@@ -1990,6 +2025,105 @@ check(_OP.proven_sales(_dn, 777777) is None and _OP.find_neutral(_dn, 48, _ch7, 
       "Aguasnegras: sin ventas comprobadas en tu casa no se propone")
 check(_OP.find_neutral(_f5(), 48, _ch7, 10 ** 6)["house"] is None and plan["neutral"]["items"] == [],
       "Aguasnegras: sin fotos de la casa neutral, la lista sale vacía")
+
+# Aguasnegras: primero lo que más gana en total, no el %; lo que no cabe se reduce; nada que gane menos que farmear
+def _n8(lad_a, lad_b):
+    """Dos objetos iguales en tu casa (a 1000): 777777 y su copia 777778, cada uno con su lista en Aguasnegras."""
+    _dd = _f5(ladder=[(1000, 50)])
+    _f = sqlite3.connect(fdb)
+    for _tb in ("items", "prices", "history"):
+        _cols = [r[1] for r in _f.execute(f"PRAGMA table_info({_tb})")]
+        _sel = ", ".join("777778" if c == "item_id" else c for c in _cols)
+        _f.execute(f"INSERT INTO {_tb} ({', '.join(_cols)}) SELECT {_sel} FROM {_tb} WHERE item_id = 777777")
+    _f.execute("UPDATE items SET name = 'Gema copia' WHERE item_id = 777778")
+    _f.commit(); _f.close()
+    _dd = _Data(fdb, CAT_TEST, now=_now)
+    _dd.variants, _dd.variants_known = set(), True
+    _dd.ladders = {777777: [(1000, 50)], 777778: [(1000, 50)]}
+    for _i in (777777, 777778):
+        _dd.items[_i]["stack"] = 20
+    _dd.neutral = {"house": 117, "name": "Aguasnegras", "t": _dd.now, "ladders": {777777: lad_a, 777778: lad_b},
+                   "variants": set()}
+    return _dd
+_big = _OP.find_neutral(_n8([(400, 5)], [(700, 200)]), 48, _ch7, 10 ** 7)
+_ga, _gb = ({f["out_item"]: f for f in _big["items"]}.get(i, {}) for i in (777777, 777778))
+check(_ga.get("margin", 0) > _gb.get("margin", 1) and _gb.get("profit_total", 0) > _ga.get("profit_total", 1),
+      f"Aguasnegras (prueba): 777777 tiene más % y 777778 gana más ({_ga.get('margin')}, {_gb.get('margin')})")
+_room = _gb.get("investment", 0) + _ga.get("investment", 0) * 0.8     # cabe la de más ganancia y 4 de las 5 de la otra
+_sel8 = _OP.find_neutral(_n8([(400, 5)], [(700, 200)]), 48, _ch7, _room)
+_sa, _sb = ({f["out_item"]: f for f in _sel8["items"]}.get(i, {}) for i in (777777, 777778))
+check(_sb.get("included") and _sel8["items"][0]["out_item"] == 777778,
+      f"Aguasnegras: entra primero lo que más gana en total, aunque tenga menos % ({_sb.get('included')}, {_sa.get('included')})")
+check(_sa.get("included") and _sa.get("units", 0) < _ga.get("units", 0)
+      and any(w.startswith("Reducido") for w in _sa.get("why", [])),
+      f"Aguasnegras: lo que no cabe entero se reduce a lo que cabe ({_sa.get('units')} de {_ga.get('units')})")
+_rich = _OP.find_neutral(_n8([(400, 5)], [(700, 200)]), 48, _ch7, 10 ** 7, farm_gph=_ga["profit_total"] * 60 * 1.5)
+_ra = {f["out_item"]: f for f in _rich["items"]}.get(777777, {})
+check(not _ra.get("included") and "farmeando" in _ra.get("skip", "")
+      and abs(_rich["trip_min"] - _ga["profit_total"] * 60 * 1.5 * 14 / 60) < 1e-6 and not _rich["farm_est"],
+      f"Aguasnegras: lo que gana menos que farmear el minuto que cuesta no se plantea, y el viaje pide 14 min de farmeo ({_ra.get('skip')})")
+check(_big["farm_est"] and _big["farm_gph"] == _OP.FARM_GPH_DEFAULT,
+      "Aguasnegras: sin farmeo medido, supone el ritmo por defecto y lo dice")
+check(abs(_big["profit"] - (_big["gross"] - _OP.NEUTRAL_TRIP_COST)) < 1e-6 and _big["trip_cost_est"],
+      "Aguasnegras: lo que ganas es tras pagar los vuelos (supuestos sin catalog.json)")
+_dt8 = _n8([(400, 5)], [(700, 200)])
+_dt8.catalog = dict(_dt8.catalog, neutral_trip={"minutes": 30, "cost": 12345})
+_t8 = _OP.find_neutral(_dt8, 48, _ch7, 10 ** 7, farm_gph=60000)
+check(abs(_t8["profit"] - (_t8["gross"] - 12345)) < 1e-6 and not _t8["trip_cost_est"] and _t8["trip_minutes"] == 30
+      and abs(_t8["trip_min"] - 30000) < 1e-6,
+      f"Aguasnegras: el viaje (minutos y vuelos) sale de catalog.json ({_t8['trip_min']}, {_t8['trip_cost']})")
+import oroboros_farm as _OFR
+_mz = {"mobs": [{"copper": 3000, "secs": 300, "kills": 10, "items": {1: 2}}],
+       "gather": [{"secs": 200, "nodes": 8, "items": {2: 10}}]}
+_rz = _OFR.farm_rate(_mz, None, {1: {"value": 500}, 2: {"value": 100}})
+_tot = lambda act, share=0.6: act / share * (1 + 10 / 60)       # descansos y movimientos, y 10 min por hora a vender
+check(_rz and abs(_rz["gph"] - 5000 / _tot(500) * 3600) < 1e-6 and abs(_rz["gph_active"] - 5000 / 500 * 3600) < 1e-6
+      and _rz["conf"] == "baja" and _rz["active_share"] == 0.6 and _rz["active_measured"] is None
+      and abs(_rz["gather"]["gph"] - 1000 / 200 * 3600) < 1e-6 and _rz["gather"]["n"] == 8 and _rz["mobs"]["n"] == 10,
+      f"farmeo: el ritmo suma criaturas y plantas y amortiza descansos y viajes a vender; con poco tiempo, confianza baja ({_rz})")
+_mz["mobs"][0]["secs"] = 7200
+check(_OFR.farm_rate(_mz, None, {})["conf"] == "alta" and _OFR.farm_rate({"mobs": [], "gather": []}, None, {}) is None,
+      "farmeo: con dos horas medidas, confianza alta; sin nada medido, no hay ritmo (vale el supuesto)")
+_mz["mobs"][0]["secs"], _mz["gather"][0]["secs"] = 300, 0
+check(abs(_OFR.farm_rate(_mz, None, {1: {"value": 500}, 2: {"value": 100}})["gph"] - 4000 / _tot(300) * 3600) < 1e-6,
+      "farmeo: lo recogido sin tiempo medido no sube el ritmo")
+# con sesión medida, la parte activa se acerca a lo medido según cuánto hay: 1 h medida al 80 % → mitad y mitad
+_ms = {"mobs": [{"copper": 36000, "secs": 2880, "span": 3600, "kills": 50, "items": {}}], "gather": []}
+_rs = _OFR.farm_rate(_ms, None, {})
+check(abs(_rs["active_measured"] - 0.8) < 1e-9 and abs(_rs["active_share"] - 0.7) < 1e-9
+      and abs(_rs["gph"] - 36000 / _tot(2880, 0.7) * 3600) < 1e-6,
+      f"farmeo: los descansos medidos se mezclan con el supuesto según el tiempo de sesión ({_rs['active_share']})")
+_ro = _OFR.farm_rate(_ms, None, {}, {"active": 0.5, "prior_secs": 0, "town_min_per_h": 0})
+check(abs(_ro["active_share"] - 0.8) < 1e-9 and abs(_ro["gph"] - 36000 / 3600 * 3600) < 1e-6,
+      "farmeo: los supuestos se cambian en catalog.json (farm_overhead)")
+# por zona: cada criatura con todas sus subzonas, y lo recogido aparte
+_mzz = {"npcs": {7: {"name": "Raptor", "lvl": 35, "cls": "normal"}},
+        "mobs": [{"npc": 7, "zone": "Vega", "sub": "Costa", "kills": 4, "secs": 120, "span": 200, "copper": 400, "items": {1: 2}},
+                 {"npc": 7, "zone": "Vega", "sub": "Selva", "kills": 6, "secs": 180, "span": 240, "copper": 600, "items": {}},
+                 {"npc": 8, "zone": "Desolace", "sub": "Kolkar", "kills": 2, "secs": 60, "span": 60, "copper": 50, "items": {}}],
+        "gather": [{"zone": "Vega", "sub": "Costa", "nodes": 3, "secs": 90, "span": 90, "items": {2: 3}},
+                   {"zone": "Vega", "sub": "Selva", "nodes": 1, "secs": 0, "span": 0, "items": {2: 1}}]}
+_pz = {1: {"value": 500}, 2: {"value": 100}}
+_zz = _OFR.measured_zones(_mzz, None, _pz, _OFR.farm_rate(_mzz, None, _pz))
+_vz = _zz[0] if _zz else {}
+_rp = (_vz.get("mobs") or [{}])[0]
+check([z["zone"] for z in _zz] == ["Vega", "Desolace"] and _vz["kills"] == 10 and _vz["nodes"] == 4
+      and abs(_vz["value"] - (2000 + 300 + 100)) < 1e-6 and _vz["secs"] == 120 + 180 + 90 + 30
+      and _rp.get("name") == "Raptor" and _rp.get("kills") == 10 and _rp.get("subs") == ["Costa", "Selva"]
+      and abs(_rp.get("per_kill", 0) - 200) < 1e-6 and _vz["gather"][0]["nodes"] == 4 and abs(_vz["gather"][0]["value"] - 400) < 1e-6,
+      f"farmeo por zona: cada criatura junta sus subzonas y lo recogido va aparte; un nodo sin tiempo cuenta lo que suele costar un nodo ({_vz})")
+_mfk = {"mobs": [{"copper": 6000, "secs": 600, "kills": 10, "items": {}}, {"copper": 9000, "secs": 0, "kills": 1, "items": {}}],
+        "gather": []}
+_rk = _OFR.farm_rate(_mfk, None, {}, {"active": 1, "prior_secs": 0, "town_min_per_h": 0})
+check(abs(_rk["gph"] - 15000 / 660 * 3600) < 1e-6 and _rk["mobs"]["measured_secs"] == 600,
+      f"farmeo: la primera muerte de una sesión (sin tiempo) cuenta lo que suele costar una muerte ({_rk['gph']})")
+check(_vz["gph"] < _vz["value"] / _vz["secs"] * 3600 and _zz[1]["gph"] is not None,
+      "farmeo por zona: el oro por hora cuenta descansos y viajes a vender")
+_dz = _f5()
+_OP.set_farm(_dz, _rz)
+_sz = _OP.farm_summary(_dz)
+check(not _sz["est"] and _sz["conf"] == "baja" and abs(_sz["gph"] - _rz["gph"]) < 1e-6 and _sz["gather"]["n"] == 8,
+      "plan: usa el ritmo medido aunque sea de confianza baja, y la página dice cuánto viene de cada cosa")
 
 # enfriamiento compartido y renta diaria
 class _DC:

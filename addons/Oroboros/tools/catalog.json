@@ -311,5 +311,16 @@
       "note": "reactivo de la Poción de acción libre; sale de pesca en zonas de nivel medio",
       "scenario": 1.6
     }
+  },
+  "neutral_trip": {
+    "_nota": "Ir a la subasta de Aguasnegras (Bahía del Botín) y volver desde Ventormenta: minutos que no farmeas y lo que cuestan los vuelos (en cobres). Dato del usuario (28/11): unos 7 minutos y 30 platas por trayecto.",
+    "minutes": 14,
+    "cost": 6000
+  },
+  "farm_overhead": {
+    "_nota": "Farmear no es solo matar y recoger. active: parte de la sesión que matas y recoges (el resto, descansar y moverse); se mezcla con lo medido por el addon, con el peso de prior_secs segundos de sesión. town_min_per_h: minutos de viajes a vender, reparar y vaciar bolsas por cada hora de sesión. Supuestos del 28/11: cámbialos si no se parecen a cómo juegas.",
+    "active": 0.6,
+    "prior_secs": 3600,
+    "town_min_per_h": 10
   }
 }

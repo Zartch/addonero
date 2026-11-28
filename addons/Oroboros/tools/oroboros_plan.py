@@ -48,12 +48,18 @@ FLIP_MIN_PROFIT = 10000   # menos de 1 oro no merece los clics
 LOW_CEIL = 1.15           # reventa: no cuento con vender más de un 15 % por encima de lo más barato de cada día
 STRESS_VOL = 0.5          # prueba de esfuerzo: el lote no debe dar pérdidas si se vende la mitad de lo estimado
 CRAFT_SECONDS = 3         # lo que tarda una fabricación
-MIN_CRAFT_HOUR = 20000    # fabricar por menos de 2 oro a la hora no merece el tiempo
-MIN_CRAFT_PROFIT = MIN_CRAFT_HOUR * CRAFT_SECONDS / 3600      # ≈ 17 cobres por fabricación
+# Norma: nada que gane menos que farmear el mismo rato. El ritmo es el medido (farm_rate) o FARM_GPH_DEFAULT.
+BUY_SECONDS = 15          # buscar y comprar un material en la subasta
+VENDOR_SECONDS = 5        # comprarlo al vendedor
+POST_SECONDS = 15         # publicar lo fabricado o revendido (y recoger el oro del correo)
 NEUTRAL_MIN_SOLD = 1.0    # Aguasnegras → tu casa: ventas comprobadas al día en tu casa
 NEUTRAL_MIN_PROFIT = 2000 # por objeto, 20 platas
 NEUTRAL_MIN_TRIP = 20000  # el viaje a la subasta neutral compensa a partir de 2 oro en total
 NEUTRAL_MAX_AGE = 3 * 3600  # una foto de Aguasnegras de más de 3 h ya no sirve para ir a comprar
+NEUTRAL_TRIP_H = 14 / 60  # Ventormenta → Bahía del Botín y vuelta: unos 14 minutos sin farmear (catalog.json, neutral_trip)
+NEUTRAL_ITEM_H = 1 / 60   # comprar un objeto allí y publicarlo en tu casa: un minuto
+FARM_GPH_DEFAULT = 50000  # oro por hora farmeando si no hay bastante medido (5 oro)
+NEUTRAL_TRIP_COST = 6000  # vuelos de ida y vuelta (30 platas cada uno) si catalog.json no dice otra cosa
 COOLDOWN_USES_DAY = 2     # un enfriamiento corto no se usa cada hora: cuento con entrar dos veces al día
 
 
@@ -131,6 +137,8 @@ def daily_drops(hist):
 # ----------------------------------------------------------------------
 class Data:
     def __init__(self, db_path, catalog_path, now=None, archive=None):
+        self.farm_gph, self.farm_est = FARM_GPH_DEFAULT, True     # main() pone el medido con set_farm
+        self.farm_info = None
         con = sqlite3.connect(db_path)
         con.row_factory = sqlite3.Row
         q = lambda sql, *a: con.execute(sql, a).fetchall()
@@ -572,10 +580,10 @@ def evaluate(data, r, horizon_h, crafts_override=None):
                          f"que lo que cobras al venderlo ({money(net * y)}).")
     elif margin < MIN_MARGIN:
         out["reason"] = f"Margen demasiado pequeño ({margin * 100:.1f} %): no compensa el riesgo ni el tiempo."
-    elif profit < MIN_CRAFT_PROFIT:
+    elif profit < farm_value(data, CRAFT_SECONDS):
         out["reason"] = (f"Ganas {money(profit)} por fabricación: a {CRAFT_SECONDS} s cada una son "
-                         f"{money(profit * 3600 / CRAFT_SECONDS)} a la hora, menos de {money(MIN_CRAFT_HOUR)}. "
-                         "No merece el tiempo.")
+                         f"{money(profit * 3600 / CRAFT_SECONDS)} a la hora, menos de lo que sacas farmeando "
+                         f"({money(data.farm_gph)} a la hora). No merece el tiempo.")
     return out
 
 
@@ -687,14 +695,22 @@ def select(data, plan, opps, budget, horizon_h):
         t = plan.clone()
         (apply_opportunity if o["kind"] == "craft" else apply_flip)(t, o)
         o["solo_investment"] = t.spend()
-    # primero lo que más rinde por cada oro invertido, ponderado por confianza
-    key = lambda o: o["profit_total"] * CONF_FACTOR[o["conf"]] / (o["solo_investment"] + 50000)
+    # primero lo que más gana en total, ponderado por confianza (el % no: el tiempo cuesta lo mismo)
+    key = lambda o: o["profit_total"] * CONF_FACTOR[o["conf"]]
     low_cap, low_spent = budget * LOW_CONF_SHARE, 0.0
     risk_cap, risk_spent = low_cap * RISK_SHARE, 0.0       # el resto queda para lotes de prueba
     for o in sorted(opps, key=key, reverse=True):
         low = o["conf"] == "baja"
         risky = low and not o.get("trial")
         for attempt in range(3):
+            secs = op_seconds(o)
+            o["seconds"] = secs
+            if o["profit_total"] < farm_value(data, secs):        # norma: más que farmear el mismo rato
+                took = f"{secs:.0f} s" if secs < 90 else f"{round(secs / 60)} min"
+                work = "comprar, fabricar y publicar" if o["kind"] == "craft" else "comprar y publicar"
+                o["reason"] = (f"Ganas {money(o['profit_total'])} en unos {took} de {work}: farmeando ese rato "
+                               f"sacas {money(farm_value(data, secs))}.")
+                break
             trial = plan.clone()
             before = trial.spend()
             if o["kind"] == "craft":
@@ -872,13 +888,69 @@ def proven_sales(data, item_id):
     return st["vol"] if st["vol"] and not st["vol_est"] else None
 
 
-def find_neutral(data, horizon_h, char, budget):
+def farm_value(data, seconds):
+    """Lo que sacarías farmeando `seconds` segundos: el mínimo que tiene que ganar cualquier cosa del plan."""
+    return (getattr(data, "farm_gph", None) or FARM_GPH_DEFAULT) * seconds / 3600
+
+
+def set_farm(data, rate):
+    """Ritmo de farmeo medido: el de oroboros_farm.farm_rate (con su confianza) o un número; None deja el supuesto."""
+    if isinstance(rate, dict):
+        data.farm_info = rate
+        rate = rate.get("gph")
+    if rate:
+        data.farm_gph, data.farm_est = rate, False
+
+
+def _tree_seconds(nodes, crafts):
+    secs = 0.0
+    for n in nodes:
+        if n["method"] == "fabricar":
+            c = math.ceil(n["per_craft"] * crafts / (n.get("yield") or 1))
+            secs += c * CRAFT_SECONDS + _tree_seconds(n.get("children") or [], c)
+        elif n["method"] == "vendedor":
+            secs += VENDOR_SECONDS
+        else:
+            secs += BUY_SECONDS
+    return secs
+
+
+def op_seconds(o):
+    """Lo que tardas en una oportunidad: comprar cada material, fabricar (también lo intermedio) y publicar."""
+    if o["kind"] != "craft":
+        return BUY_SECONDS + POST_SECONDS
+    return o["crafts"] * CRAFT_SECONDS + _tree_seconds(o.get("tree") or [], o["crafts"]) + POST_SECONDS
+
+
+def farm_summary(data):
+    """El ritmo de farmeo que usa el plan, para la página: cuánto, de dónde sale y con qué confianza."""
+    info = getattr(data, "farm_info", None) or {}
+    est = getattr(data, "farm_est", True)
+    return {"gph": farm_value(data, 3600), "est": est, "conf": None if est else info.get("conf", "media"),
+            "secs": info.get("secs"), "mobs": info.get("mobs"), "gather": info.get("gather"),
+            "gph_active": info.get("gph_active"), "active_share": info.get("active_share"),
+            "active_measured": info.get("active_measured"), "span_secs": info.get("span_secs"),
+            "town_min_per_h": info.get("town_min_per_h")}
+
+
+def find_neutral(data, horizon_h, char, budget, farm_gph=None):
     """Aguasnegras → tu casa: comprar en la subasta neutral lo que allí está más barato y venderlo en la
     tuya. Al comprar no hay comisión; al vender en tu casa, el 5 % de siempre. Solo materiales apilables
     (el equipo con sufijo mezcla productos distintos) y solo lo que tiene ventas comprobadas en tu casa.
     No entra en la ruta: hay que ir a una subasta neutral, así que va en su propia lista."""
+    if farm_gph:
+        set_farm(data, farm_gph)
+    farm = data.farm_gph
+    trip = data.catalog.get("neutral_trip") or {}
+    trip_h = (trip.get("minutes") or NEUTRAL_TRIP_H * 60) / 60
+    trip_cost = trip.get("cost", NEUTRAL_TRIP_COST)
+    # el viaje tiene que pagar los vuelos y dar más que farmear ese rato; cada objeto, más que farmear lo que cuesta
+    trip_min = max(NEUTRAL_MIN_TRIP, farm * trip_h)
+    item_min = max(NEUTRAL_MIN_PROFIT, farm * NEUTRAL_ITEM_H)
     out = {"house": None, "name": None, "t": None, "stale": False, "items": [], "invest": 0, "profit": 0,
-           "worth": False, "route": "", "budget": budget}
+           "gross": 0, "worth": False, "route": "", "budget": budget, "farm_gph": farm, "farm_est": data.farm_est,
+           "trip_min": trip_min, "item_min": item_min, "trip_minutes": round(trip_h * 60), "trip_cost": trip_cost,
+           "trip_cost_est": "cost" not in trip}
     nt = data.neutral
     if not nt:
         return out
@@ -917,18 +989,33 @@ def find_neutral(data, horizon_h, char, budget):
         if f:
             f.update({"kind": "neutral", "name": data.name(item_id), "investment": cost})
             cands.append(f)
-    # primero lo que más rinde por oro; entra lo que cabe en el oro que queda para apuestas
-    cands.sort(key=lambda f: -f["margin"])
+    # primero lo que más gana en total (el %, no: 30 platas al 40 % no pagan el viaje y 10 oro al 400 % sí);
+    # lo que no cabe entero se reduce a lo que cabe, y lo que gana menos que farmear ese rato no se plantea
+    cands.sort(key=lambda f: -f["profit_total"])
     left = budget
     for f in cands:
-        f["included"] = f["investment"] <= left
-        if f["included"]:
-            left -= f["investment"]
+        f["included"] = False
+        if f["profit_total"] < item_min:
+            f["skip"] = (f"Gana {money(f['profit_total'])}: farmeando sacas {money(item_min)} en lo que tardas en "
+                         "comprarlo y publicarlo.")
+            continue
+        if f["investment"] > left:
+            new = int(left // f["cost"]) if f["cost"] > 0 else 0
+            if new < 1 or f["profit"] * new < item_min:
+                f["skip"] = f"No cabe en el oro libre ({money(left)})."
+                continue
+            f["why"].append(f"Reducido de {f['units']} a {new} para que quepa en el oro libre.")
+            f["crafts"] = f["units"] = new
+            f["investment"] = f["cost"] * new
+            f["profit_total"] = f["profit"] * new
+        f["included"] = True
+        left -= f["investment"]
     inc = [f for f in cands if f["included"]]
     out["items"] = sorted(cands, key=lambda f: (not f["included"], -f["profit_total"]))
     out["invest"] = sum(f["investment"] for f in inc)
-    out["profit"] = sum(f["profit_total"] for f in inc)
-    out["worth"] = out["profit"] >= NEUTRAL_MIN_TRIP and not out["stale"]
+    out["gross"] = sum(f["profit_total"] for f in inc)
+    out["profit"] = out["gross"] - trip_cost if inc else 0        # lo que queda tras pagar los vuelos
+    out["worth"] = out["profit"] >= trip_min and not out["stale"]
     if inc:
         gen = time.strftime("%d/%m %H:%M", time.localtime(nt["t"]))
         lines = [f"# Compras en Aguasnegras (subasta neutral) con {short_char(char)} — foto del {gen}"]
@@ -1635,7 +1722,9 @@ def build_plan(data, horizon_h=48, budget_pct=0.8, synthetic=False, spec_pct=0.1
     ideas = oroboros_ideas.build_ideas(data, spec_budget, buyer, storages, route_buys,
                                        {f["out_item"] for f in flips}, horizon_h, held=set(open_pos), banker=banker)
     ideas["buyer"] = short_char(buyer)
-    neutral = find_neutral(data, horizon_h, buyer, max(0, spec_budget - ideas["invest"]))
+    # Aguasnegras no es una apuesta: es reventa con el precio de tu casa a la vista, así que usa el oro libre
+    # (el de todos: el que no lo tiene se lo pide por correo al otro)
+    neutral = find_neutral(data, horizon_h, buyer, max(0, sum(leftover.values()) * 0.9 - ideas["invest"]))
     ideas["spec_pct"] = spec_pct
 
     warnings = []
@@ -1707,6 +1796,7 @@ def build_plan(data, horizon_h=48, budget_pct=0.8, synthetic=False, spec_pct=0.1
         "learn": learn,
         "ideas": ideas,
         "neutral": neutral,
+        "farm_rate": farm_summary(data),
         "portfolio": portfolio,
         "inventory": views,
         "routes": routes,
@@ -1753,9 +1843,11 @@ def main():
 
     from make_synthetic import parse_now
     data = Data(a.db, a.catalog, now=parse_now(a.now), archive=a.archive)
-    plan = build_plan(data, a.horizon, a.budget, a.synthetic, a.spec, a.banker)
     import oroboros_farm
-    plan["farm"] = oroboros_farm.for_plan(data, a.archive, a.azerothcore, a.wow, a.farmeo)
+    farm = oroboros_farm.for_plan(data, a.archive, a.azerothcore, a.wow, a.farmeo)
+    set_farm(data, farm.get("rate"))          # antes del plan: es el mínimo de todo lo que propone
+    plan = build_plan(data, a.horizon, a.budget, a.synthetic, a.spec, a.banker)
+    plan["farm"] = farm
     if plan["farm"].get("farmeo_bytes"):
         print(f"Farmeo.lua: {plan['farm']['farmeo_bytes'] / 1024:.0f} KB → {a.farmeo}")
     if a.brief:

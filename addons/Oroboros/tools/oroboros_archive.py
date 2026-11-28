@@ -46,9 +46,12 @@ CREATE TABLE IF NOT EXISTS daily (
 CREATE TABLE IF NOT EXISTS farm_mobs (          -- farmeo medido en el juego: totales por criatura y subzona
     market_id INTEGER, npc INTEGER, sub TEXT, zone TEXT, map INTEGER,
     kills INTEGER, copper INTEGER, secs INTEGER, items TEXT,      -- items: JSON {itemID: cantidad}
+    span INTEGER,               -- tiempo de sesión: también descansos y movimientos (desde el 28/11)
     PRIMARY KEY (market_id, npc, sub)) WITHOUT ROWID;
 CREATE TABLE IF NOT EXISTS farm_gather (
     market_id INTEGER, sub TEXT, zone TEXT, map INTEGER, nodes INTEGER, items TEXT,
+    secs INTEGER,               -- tiempo activo recogiendo (desde el 28/11)
+    span INTEGER,               -- tiempo de sesión (desde el 28/11)
     PRIMARY KEY (market_id, sub)) WITHOUT ROWID;
 CREATE TABLE IF NOT EXISTS farm_npcs (npc INTEGER PRIMARY KEY, name TEXT, lvl INTEGER, cls TEXT);
 CREATE TABLE IF NOT EXISTS weekly_band (
@@ -98,6 +101,12 @@ def open_archive(path):
         con.executescript(SCHEMA)
         con.execute("INSERT OR IGNORE INTO meta VALUES ('schema', ?)", (str(SCHEMA_VERSION),))
         con.commit()
+    for table, cols in (("farm_gather", ("secs", "span")), ("farm_mobs", ("span",))):   # archivo anterior al 28/11
+        have = [r[1] for r in con.execute(f"PRAGMA table_info({table})")]
+        for col in cols:
+            if col not in have:
+                con.execute(f"ALTER TABLE {table} ADD COLUMN {col} INTEGER")
+    con.commit()
     return con
 
 
@@ -361,15 +370,17 @@ def append_farm(con, db, market):
     for m in _as_dict(farm.get("mobs")).values():
         if not isinstance(m, dict) or not m.get("npc"):
             continue
-        con.execute("INSERT OR REPLACE INTO farm_mobs VALUES (?,?,?,?,?,?,?,?,?)",
+        con.execute("INSERT OR REPLACE INTO farm_mobs (market_id, npc, sub, zone, map, kills, copper, secs, items, span) "
+                    "VALUES (?,?,?,?,?,?,?,?,?,?)",
                     (mid, int(m["npc"]), m.get("sub") or "", m.get("zone"), m.get("map"), m.get("kills") or 0,
-                     m.get("copper") or 0, m.get("secs") or 0, items(m.get("items"))))
+                     m.get("copper") or 0, m.get("secs") or 0, items(m.get("items")), m.get("span") or 0))
         n_m += 1
     for g in _as_dict(farm.get("gather")).values():
         if not isinstance(g, dict):
             continue
-        con.execute("INSERT OR REPLACE INTO farm_gather VALUES (?,?,?,?,?,?)",
-                    (mid, g.get("sub") or "", g.get("zone"), g.get("map"), g.get("nodes") or 0, items(g.get("items"))))
+        con.execute("INSERT OR REPLACE INTO farm_gather (market_id, sub, zone, map, nodes, items, secs, span) "
+                    "VALUES (?,?,?,?,?,?,?,?)", (mid, g.get("sub") or "", g.get("zone"), g.get("map"), g.get("nodes") or 0,
+                                                 items(g.get("items")), g.get("secs") or 0, g.get("span") or 0))
         n_g += 1
     for npc, n in _as_dict(farm.get("npcs")).items():
         if isinstance(n, dict):
